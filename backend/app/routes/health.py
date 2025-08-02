@@ -1,8 +1,8 @@
-"""
-Health check routes for ReportRx backend.
-"""
+"""Health check routes for ReportRx backend."""
+
 from fastapi import APIRouter
-from ..models import ErrorResponse
+
+from ..config import settings
 
 router = APIRouter()
 
@@ -24,6 +24,6 @@ async def readiness_check():
     return {
         "status": "ready",
         "checks": {
-            "openai_configured": bool(len(str(getattr(__import__('app.config', fromlist=['settings']), 'settings').openai_api_key)) > 0)
-        }
+            "openai_configured": bool(settings.openai_api_key),
+        },
     }

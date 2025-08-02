@@ -20,7 +20,7 @@ function App() {
 
   const stepLabels = ['Upload', 'Parse Data', 'AI Analysis', 'Follow-up'];
 
-  const handleFileUpload = (content: string, filename?: string) => {
+  const handleFileUpload = (content: string) => {
     setReportContent(content);
     setCurrentStep(2);
   };
@@ -87,9 +87,8 @@ function App() {
       <Header />
       
       {currentStep > 1 && (
-        <ProgressBar 
+        <ProgressBar
           currentStep={currentStep}
-          totalSteps={4}
           stepLabels={stepLabels}
         />
       )}

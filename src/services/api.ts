@@ -1,4 +1,6 @@
-const API_BASE_URL = 'http://127.0.0.1:8000/api/v1';
+// Base URL for API requests. During development, Vite's dev server
+// proxies requests starting with `/api` to the FastAPI backend.
+const API_BASE_URL = '/api/v1';
 
 export interface LabTest {
   name: string;

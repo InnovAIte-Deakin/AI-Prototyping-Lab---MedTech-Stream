@@ -1,4 +1,4 @@
-# reportx
+# ReportRx
 ## Overview
 ReportRx is a full‑stack application that helps users upload medical lab reports, parse them into structured data, and generate plain‑language interpretations with clear disclaimers.
 

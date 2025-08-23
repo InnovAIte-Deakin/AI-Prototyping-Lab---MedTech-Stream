@@ -1,6 +1,7 @@
 """
 OpenAI service for generating lab report interpretations.
 """
+import asyncio
 import logging
 from typing import List, Optional
 from openai import OpenAI
@@ -19,6 +20,7 @@ class OpenAIService:
         self.model = settings.openai_model
         self.max_tokens = settings.openai_max_tokens
         self.temperature = settings.openai_temperature
+        self.request_timeout = settings.openai_timeout
     
     def create_interpretation_prompt(self, tests: List[LabTest], patient_context: Optional[str] = None) -> str:
         """
@@ -116,33 +118,44 @@ Always end with a disclaimer about consulting healthcare professionals."""
         """
         try:
             prompt = self.create_interpretation_prompt(tests, patient_context)
-            
+
             logger.info(f"Sending interpretation request for {len(tests)} tests to OpenAI")
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a helpful medical AI assistant that explains lab results in simple, educational language. Always emphasize that your explanations are for educational purposes only and not a substitute for professional medical advice."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_tokens=self.max_tokens,
-                temperature=self.temperature
-            )
-            
+
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.client.chat.completions.create,
+                        model=self.model,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You are a helpful medical AI assistant that explains lab results in simple, educational language. Always emphasize that your explanations are for educational purposes only and not a substitute for professional medical advice.",
+                            },
+                            {
+                                "role": "user",
+                                "content": prompt,
+                            },
+                        ],
+                        max_tokens=self.max_tokens,
+                        temperature=self.temperature,
+                    ),
+                    timeout=self.request_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.error("OpenAI request timed out")
+                raise Exception("OpenAI request timed out")
+
             interpretation = response.choices[0].message.content
-            
+
             if not interpretation:
                 raise Exception("Empty response from OpenAI")
-            
+
             logger.info("Successfully generated interpretation")
             return interpretation.strip()
-            
+
+        except asyncio.CancelledError:
+            logger.warning("OpenAI request was cancelled")
+            raise
         except Exception as e:
             logger.error(f"OpenAI API error: {str(e)}")
             raise Exception(f"Failed to generate interpretation: {str(e)}")

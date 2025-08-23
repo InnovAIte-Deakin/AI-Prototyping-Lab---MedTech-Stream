@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4"
     openai_max_tokens: int = 2000
     openai_temperature: float = 0.3
+    openai_timeout: int = 60
     
     # Server Configuration
     host: str = "0.0.0.0"

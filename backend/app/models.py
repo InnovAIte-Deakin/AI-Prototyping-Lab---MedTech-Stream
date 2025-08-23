@@ -2,7 +2,7 @@
 Pydantic models for request/response validation.
 """
 from typing import List, Optional
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class LabTest(BaseModel):
@@ -12,19 +12,19 @@ class LabTest(BaseModel):
     unit: str = Field(..., description="Unit of measurement")
     reference_range: str = Field(..., description="Normal reference range")
     
-    @validator('name')
+    @field_validator('name')
     def validate_name(cls, v):
         if not v or not v.strip():
             raise ValueError('Test name cannot be empty')
         return v.strip()
-    
-    @validator('unit')
+
+    @field_validator('unit')
     def validate_unit(cls, v):
         if not v or not v.strip():
             raise ValueError('Unit cannot be empty')
         return v.strip()
-    
-    @validator('reference_range')
+
+    @field_validator('reference_range')
     def validate_reference_range(cls, v):
         if not v or not v.strip():
             raise ValueError('Reference range cannot be empty')
@@ -33,10 +33,10 @@ class LabTest(BaseModel):
 
 class InterpretReportRequest(BaseModel):
     """Request model for lab report interpretation."""
-    tests: List[LabTest] = Field(..., min_items=1, description="List of lab tests to interpret")
+    tests: List[LabTest] = Field(..., min_length=1, description="List of lab tests to interpret")
     patient_context: Optional[str] = Field(None, description="Additional patient context (age, gender, etc.)")
     
-    @validator('tests')
+    @field_validator('tests')
     def validate_tests(cls, v):
         if not v:
             raise ValueError('At least one test must be provided')

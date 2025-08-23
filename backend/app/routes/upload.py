@@ -86,6 +86,12 @@ async def upload_report(
         
     except HTTPException:
         raise
+    except RuntimeError as e:
+        logger.error(f"Upload processing failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
     except Exception as e:
         logger.error(f"Upload processing failed: {str(e)}")
         raise HTTPException(

@@ -2,7 +2,7 @@
 Pydantic models for request/response validation.
 """
 from typing import List, Optional
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class LabTest(BaseModel):
@@ -12,7 +12,7 @@ class LabTest(BaseModel):
     unit: str = Field(..., description="Unit of measurement")
     reference_range: str = Field(..., description="Normal reference range")
     
-    @validator('name')
+    @field_validator('name')
     def validate_name(cls, v):
         if not v or not v.strip():
             raise ValueError('Test name cannot be empty')

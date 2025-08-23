@@ -1,3 +1,5 @@
+import { logger } from "../utils/logger";
+
 // Base URL for API requests. During development, Vite's dev server
 // proxies requests starting with `/api` to the FastAPI backend.
 const API_BASE_URL = '/api/v1';
@@ -32,7 +34,7 @@ class ApiService {
   private async makeRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
     
-    console.log('Making request to:', url);
+    logger.debug('Making request to:', url);
     
     const response = await fetch(url, {
       mode: 'cors',
@@ -43,11 +45,11 @@ class ApiService {
       ...options,
     });
 
-    console.log('Response status:', response.status);
+    logger.debug('Response status:', response.status);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-      console.error('API Error:', errorData);
+      logger.error('API Error:', errorData);
       throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
     }
 
@@ -55,7 +57,7 @@ class ApiService {
   }
 
   async uploadFile(file: File): Promise<UploadResponse> {
-    console.log('Uploading file:', file.name);
+    logger.debug('Uploading file:', file.name);
     const formData = new FormData();
     formData.append('file', file);
 
@@ -65,11 +67,11 @@ class ApiService {
       body: formData,
     });
 
-    console.log('Upload response status:', response.status);
+    logger.debug('Upload response status:', response.status);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
-      console.error('Upload error:', errorData);
+      logger.error('Upload error:', errorData);
       throw new Error(errorData.error || `Upload failed: ${response.statusText}`);
     }
 
@@ -77,7 +79,7 @@ class ApiService {
   }
 
   async uploadText(textContent: string): Promise<UploadResponse> {
-    console.log('Uploading text content, length:', textContent.length);
+    logger.debug('Uploading text content, length:', textContent.length);
     const formData = new FormData();
     formData.append('text_content', textContent);
 
@@ -87,11 +89,11 @@ class ApiService {
       body: formData,
     });
 
-    console.log('Text upload response status:', response.status);
+    logger.debug('Text upload response status:', response.status);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
-      console.error('Text upload error:', errorData);
+      logger.error('Text upload error:', errorData);
       throw new Error(errorData.error || `Upload failed: ${response.statusText}`);
     }
 

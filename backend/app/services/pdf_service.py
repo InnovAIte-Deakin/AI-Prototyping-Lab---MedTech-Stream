@@ -6,7 +6,7 @@ from typing import Optional
 import io
 
 logger = logging.getLogger(__name__)
-
+# this should also go under a separate service and not here - refactoring needed. 
 try:
     import fitz  # PyMuPDF
     PDF_AVAILABLE = True

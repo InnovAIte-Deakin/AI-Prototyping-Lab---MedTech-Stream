@@ -97,15 +97,18 @@ class ReportParserService:
     
     def _normalize_text(self, text: str) -> str:
         """Normalize text for better pattern matching."""
-        # Convert to lowercase for pattern matching
+        # Convert to lowercase for case-insensitive matching
         text = text.lower()
-        
-        # Replace common separators
-        text = re.sub(r'[:\-–—]+', ':', text)
-        
-        # Normalize whitespace
+
+        # Normalise special dash characters to a simple hyphen for ranges
+        text = re.sub(r'[–—]', '-', text)
+
+        # Collapsing repeated colons used as separators
+        text = re.sub(r':+', ':', text)
+
+        # Normalise whitespace
         text = re.sub(r'\s+', ' ', text)
-        
+
         return text
     
     def _get_default_unit(self, test_name: str) -> str:
@@ -156,18 +159,24 @@ class ReportParserService:
             return 'units'
         
         # Remove extra characters and normalize
-        unit = re.sub(r'[^\w/%]', '', unit)
-        
+        unit = re.sub(r'[^\w/\%]', '', unit)
+
         # Common unit mappings
         unit_mappings = {
             'gdl': 'g/dL',
+            'g/dl': 'g/dL',
             'mgdl': 'mg/dL',
+            'mg/dl': 'mg/dL',
             'meql': 'mEq/L',
+            'meq/l': 'mEq/L',
             'ul': 'U/L',
+            'u/l': 'U/L',
             'kul': 'K/uL',
+            'k/ul': 'K/uL',
             'mul': 'M/uL',
+            'm/ul': 'M/uL',
         }
-        
+
         return unit_mappings.get(unit.lower(), unit)
     
     def _clean_reference_range(self, range_str: str) -> str:

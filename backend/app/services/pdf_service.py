@@ -2,16 +2,16 @@
 PDF processing service for extracting text from uploaded PDF files.
 """
 import logging
-from typing import Optional
-import io
 
 logger = logging.getLogger(__name__)
-# this should also go under a separate service and not here - refactoring needed. 
+# this should also go under a separate service and not here - refactoring needed.
 try:
     import fitz  # PyMuPDF
     PDF_AVAILABLE = True
-except ImportError:
+    _pdf_import_error = None
+except ImportError as e:
     PDF_AVAILABLE = False
+    _pdf_import_error = e
     logger.warning("PyMuPDF not available. PDF processing will be limited.")
 
 
@@ -36,9 +36,10 @@ class PDFService:
             Exception: If PDF processing fails
         """
         if not PDF_AVAILABLE:
-            # Fallback: return mock content for demo purposes
-            logger.warning("PDF processing not available, returning mock content")
-            return self._get_mock_pdf_content()
+            logger.error("PyMuPDF is required for PDF processing but is not installed.")
+            raise RuntimeError(
+                "PyMuPDF is required for PDF processing. Install the 'PyMuPDF' package."
+            ) from _pdf_import_error
         
         try:
             logger.info("Starting PDF text extraction")

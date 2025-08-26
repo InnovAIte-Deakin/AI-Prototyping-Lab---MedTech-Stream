@@ -24,12 +24,7 @@ async def upload_report(
     Accepts either a PDF file upload or plain text content.
     Returns the extracted text content for further processing.
     """
-    # Add CORS headers for preflight requests
-    headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "*",
-    }
+    # CORS is handled globally by CORSMiddleware. No need to stuff headers into JSON body.
     
     try:
         if not file and not text_content:
@@ -81,7 +76,6 @@ async def upload_report(
             "content": extracted_text,
             "content_length": len(extracted_text),
             "source": "file" if file else "text",
-            **headers
         }
         
     except HTTPException:

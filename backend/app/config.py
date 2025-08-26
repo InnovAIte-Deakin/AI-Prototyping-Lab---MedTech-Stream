@@ -11,7 +11,9 @@ class Settings(BaseSettings):
     
     # OpenAI Configuration
     openai_api_key: str
-    openai_model: str = "gpt-4"
+    # Default to GPT-5 to meet current integration target; override via OPENAI_MODEL
+    # if your account/model access differs.
+    openai_model: str = "gpt-5"
     openai_max_tokens: int = 2000
     openai_temperature: float = 0.3
     openai_timeout: int = 60

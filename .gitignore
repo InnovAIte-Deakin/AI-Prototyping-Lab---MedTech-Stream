@@ -12,6 +12,51 @@ dist
 dist-ssr
 *.local
 
+# Python / Backend
+venv/
+backend/venv/
+**/__pycache__/
+.pytest_cache/
+**/.pytest_cache/
+**/*.py[cod]
+**/*.pyo
+**/*.pyd
+**/.Python
+**/build/
+**/develop-eggs/
+**/dist/
+**/eggs/
+**/.eggs/
+**/lib/
+**/lib64/
+**/parts/
+**/sdist/
+**/var/
+**/wheels/
+**/pip-wheel-metadata/
+**/share/python-wheels/
+**/.venv/
+**/env/
+**/ENV/
+**/env.bak/
+**/venv.bak/
+**/.mypy_cache/
+**/.coverage
+**/coverage.xml
+**/htmlcov/
+**/.pytest_cache/
+**/.ruff_cache/
+
+# Env files
+.env
+**/.env
+
+# Runtime logs and pids
+*.pid
+**/*.pid
+*.log
+**/*.log
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

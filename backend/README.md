@@ -1,6 +1,6 @@
 # ReportRx Backend
 
-A Python FastAPI backend for the ReportRx lab report interpretation application. This service integrates with OpenAI's GPT-4 to provide educational interpretations of medical lab results.
+A Python FastAPI backend for the ReportRx lab report interpretation application. This service integrates with OpenAI's GPT models (defaults to GPT‑5 if available) to provide educational interpretations of medical lab results.
 
 ## Features
 
@@ -30,6 +30,7 @@ A Python FastAPI backend for the ReportRx lab report interpretation application.
    ```bash
    cp .env.example .env
    # Edit .env and add your OpenAI API key
+   # Optionally set OPENAI_MODEL (defaults to gpt-5)
    ```
 
 ## Configuration
@@ -39,6 +40,8 @@ Create a `.env` file in the backend directory with the following variables:
 ```env
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key_here
+# Optional: override default model (defaults to gpt-5)
+OPENAI_MODEL=gpt-5
 
 # Server Configuration
 HOST=0.0.0.0
@@ -68,7 +71,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - `GET /api/v1/health/ready` - Readiness check with dependency validation
 
 ### Lab Report Interpretation
-- `POST /api/v1/interpret-report` - Generate interpretation for lab results
+- `POST /api/v1/interpret-report` - Generate interpretation for lab results (uses `OPENAI_MODEL`)
 - `POST /api/v1/interpret-report/validate` - Validate lab data without interpretation
 
 ### API Documentation

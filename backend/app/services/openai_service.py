@@ -5,6 +5,7 @@ import asyncio
 import logging
 from typing import List, Optional
 from openai import OpenAI
+from openai import BadRequestError, NotFoundError, AuthenticationError, RateLimitError, APIError
 from ..models import LabTest
 from ..config import settings
 
@@ -144,6 +145,26 @@ Always end with a disclaimer about consulting healthcare professionals."""
             except asyncio.TimeoutError:
                 logger.error("OpenAI request timed out")
                 raise Exception("OpenAI request timed out")
+            except (NotFoundError, BadRequestError) as e:
+                # Provide a clearer message when the model does not exist or is not accessible
+                message = str(e)
+                if "model" in message.lower():
+                    friendly = (
+                        f"OpenAI model '{self.model}' is not available for your API key or does not exist. "
+                        "Set OPENAI_MODEL to a supported model (e.g., gpt-4o, gpt-4.1) or update access."
+                    )
+                    logger.error(friendly)
+                    raise Exception(friendly) from e
+                raise
+            except AuthenticationError as e:
+                logger.error("OpenAI authentication failed: check OPENAI_API_KEY")
+                raise Exception("OpenAI authentication failed: check OPENAI_API_KEY") from e
+            except RateLimitError as e:
+                logger.error("OpenAI rate limit exceeded")
+                raise Exception("OpenAI rate limit exceeded; please try again later") from e
+            except APIError as e:
+                logger.error(f"OpenAI API error: {e}")
+                raise Exception("OpenAI API error; please try again later") from e
 
             interpretation = response.choices[0].message.content
 

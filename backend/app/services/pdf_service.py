@@ -2,6 +2,7 @@
 PDF processing service for extracting text from uploaded PDF files.
 """
 import logging
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 # this should also go under a separate service and not here - refactoring needed.
@@ -37,8 +38,11 @@ class PDFService:
         """
         if not PDF_AVAILABLE:
             logger.error("PyMuPDF is required for PDF processing but is not installed.")
+            if settings.debug:
+                logger.warning("Debug mode: returning mock PDF content as fallback.")
+                return self._get_mock_pdf_content()
             raise RuntimeError(
-                "PyMuPDF is required for PDF processing. Install the 'PyMuPDF' package."
+                "PDF processing unavailable: install 'PyMuPDF' or enable DEBUG for mock fallback."
             ) from _pdf_import_error
         
         try:
@@ -66,8 +70,11 @@ class PDFService:
             
         except Exception as e:
             logger.error(f"PDF extraction failed: {str(e)}")
-            # Return mock content as fallback
-            return self._get_mock_pdf_content()
+            if settings.debug:
+                logger.warning("Debug mode: returning mock PDF content as fallback.")
+                return self._get_mock_pdf_content()
+            # Fail fast in non-debug environments
+            raise
     
     def _get_mock_pdf_content(self) -> str:
         """Return mock PDF content for demonstration purposes."""

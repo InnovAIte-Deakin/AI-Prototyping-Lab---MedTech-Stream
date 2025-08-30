@@ -41,7 +41,7 @@ ReportRx is a full‑stack application that helps users upload medical lab repor
 * routes/upload.py – supports PDF or text upload, invokes PDF/text parsers, and exposes a /parse endpoint for structured data extraction.
 
 # Services
-* openai_service.py – constructs prompts and calls OpenAI’s Chat Completions API (default model `gpt-5`, configurable via `OPENAI_MODEL`).
+* openai_service.py – constructs prompts and calls OpenAI’s Chat Completions API (default model `gpt-4o`, configurable via `OPENAI_MODEL`).
 * parser_service.py – regex-based extraction of common lab tests.
 * pdf_service.py – uses PyMuPDF (if installed) to pull text from PDFs, with a mock fallback.
 
@@ -73,7 +73,7 @@ openai_service.py shows how prompts are built from structured lab data—useful 
 * Examine apiService for patterns around fetch and error handling.
 
 # Dev Environment
-* Set up .env with OpenAI credentials (see backend/README.md). Optionally set `OPENAI_MODEL` (defaults to `gpt-5`). Run the backend with `python run.py` and the frontend with `npm run dev`.
+* Set up .env with OpenAI credentials (see backend/README.md). Optionally set `OPENAI_MODEL` (defaults to `gpt-4o`). Run the backend with `python run.py` and the frontend with `npm run dev`.
 
 # Testing & Validation
 * Consider adding unit tests (pytest for backend, Vitest/Jest for frontend) and end‑to‑end tests with Playwright or Cypress to ensure the workflow works end‑to‑end.
@@ -105,4 +105,3 @@ Outputs
 Notes
 - A valid OpenAI API key is required for the interpretation endpoint. The scripts will set a placeholder if no key is provided.
 - Default model is `gpt-4o` (override as needed). The older default `gpt-5` in some docs may not be available to all accounts.
-

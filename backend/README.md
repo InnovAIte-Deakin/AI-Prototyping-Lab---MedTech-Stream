@@ -1,11 +1,11 @@
 # ReportRx Backend
 
-A Python FastAPI backend for the ReportRx lab report interpretation application. This service integrates with OpenAI's GPT models (defaults to GPT‑5 if available) to provide educational interpretations of medical lab results.
+A Python FastAPI backend for the ReportRx lab report interpretation application. This service integrates with OpenAI's GPT models (defaults to gpt‑4o) to provide educational interpretations of medical lab results.
 
 ## Features
 
 - **FastAPI Framework**: Modern, fast web framework with automatic API documentation
-- **OpenAI Integration**: Uses GPT-4 to generate human-readable lab result interpretations
+- **OpenAI Integration**: Uses OpenAI Chat Completions (e.g., gpt-4o) to generate human-readable lab result interpretations
 - **CORS Support**: Configured for local frontend development
 - **Input Validation**: Comprehensive request/response validation using Pydantic
 - **Error Handling**: Graceful error handling with appropriate HTTP status codes
@@ -30,7 +30,7 @@ A Python FastAPI backend for the ReportRx lab report interpretation application.
    ```bash
    cp .env.example .env
    # Edit .env and add your OpenAI API key
-   # Optionally set OPENAI_MODEL (defaults to gpt-5)
+   # Optionally set OPENAI_MODEL (defaults to gpt-4o)
    ```
 
 ## Configuration
@@ -40,8 +40,8 @@ Create a `.env` file in the backend directory with the following variables:
 ```env
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key_here
-# Optional: override default model (defaults to gpt-5)
-OPENAI_MODEL=gpt-5
+# Optional: override default model (defaults to gpt-4o)
+OPENAI_MODEL=gpt-4o
 
 # Server Configuration
 HOST=0.0.0.0

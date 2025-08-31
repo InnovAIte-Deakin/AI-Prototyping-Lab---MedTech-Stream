@@ -51,13 +51,6 @@ class OpenAIService:
     ) -> str:
         """
         Create a structured prompt for OpenAI to interpret lab results.
-
-        Args:
-            tests: List of LabTest items to interpret.
-            patient_context: Optional free-text patient context.
-
-        Returns:
-            Formatted prompt string suitable for a user message.
         """
         prompt = (
             "You are a medical explainer for laypeople. Provide clear, educational "
@@ -103,22 +96,13 @@ class OpenAIService:
     def _parse_reference_range(self, ref: str) -> Optional[Tuple[float, float]]:
         """
         Parse a numeric reference range from a string.
-
-        Supports forms like:
-          - '12.0 - 15.5'
-          - '12.0–15.5' (en dash)
-          - '12-15'
-        Returns (low, high) if parsed, otherwise None.
+        Supports '12.0 - 15.5', '12.0–15.5', '12-15'. Returns (low, high) or None.
         """
         if not ref:
             return None
 
-        # Normalize unicode dashes and strip units/commas
         cleaned = ref.replace("–", "-").replace("—", "-").replace(",", " ")
-        # Find first 'a - b' numeric pattern
-        match = re.search(
-            r"(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)", cleaned
-        )
+        match = re.search(r"(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)", cleaned)
         if not match:
             return None
 
@@ -134,9 +118,6 @@ class OpenAIService:
     def _determine_test_status(self, test: LabTest) -> str:
         """
         Basic logic to determine if a test value is NORMAL, HIGH, or LOW.
-
-        This is intentionally simple; production code should consider unit
-        normalization, age/sex, and lab-specific reference intervals.
         """
         rng = self._parse_reference_range(test.reference_range or "")
         try:
@@ -154,21 +135,29 @@ class OpenAIService:
 
         return "NEEDS_REVIEW"
 
-    async def _complete_once(self, model: str, messages: List[Dict[str, str]]) -> str:
-        """
-        Perform a single completion call with timeout handling.
-        Retries once with fewer tokens if the finish_reason is 'length'.
-        """
+    @staticmethod
+    def _messages_to_input(messages: List[Dict[str, str]]) -> str:
+        """Flatten chat messages to a simple text input for the Responses API."""
+        parts: List[str] = []
+        for m in messages:
+            role = m.get("role", "user")
+            content = (m.get("content") or "").strip()
+            if not content:
+                continue
+            parts.append(f"{role}: {content}")
+        return "\n\n".join(parts).strip()
+
+    async def _complete_chat(self, model: str, messages: List[Dict[str, str]], max_tokens: int) -> str:
+        """Call Chat Completions API."""
         resp = await asyncio.wait_for(
             self.client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=self.temperature,
-                max_tokens=self.max_tokens,
+                max_tokens=max_tokens,
             ),
             timeout=self.request_timeout,
         )
-
         choice = resp.choices[0]
         text = (choice.message.content or "").strip()
 
@@ -179,7 +168,7 @@ class OpenAIService:
                     model=model,
                     messages=messages,
                     temperature=self.temperature,
-                    max_tokens=max(_MIN_SHORT_RETRY_TOKENS, int(self.max_tokens * 0.75)),
+                    max_tokens=max(_MIN_SHORT_RETRY_TOKENS, int(max_tokens * 0.75)),
                 ),
                 timeout=self.request_timeout,
             )
@@ -187,30 +176,64 @@ class OpenAIService:
 
         return text
 
-    async def _complete_with_fallback(
-        self, messages: List[Dict[str, str]]
-    ) -> str:
+    async def _complete_responses(self, model: str, messages: List[Dict[str, str]], token_param: str) -> str:
+        """
+        Call Responses API with either 'max_completion_tokens' or 'max_output_tokens'.
+        token_param must be one of those strings.
+        """
+        kwargs = {
+            "model": model,
+            "input": self._messages_to_input(messages),
+            "temperature": self.temperature,
+        }
+        if token_param == "max_completion_tokens":
+            kwargs["max_completion_tokens"] = self.max_tokens
+        elif token_param == "max_output_tokens":
+            kwargs["max_output_tokens"] = self.max_tokens
+        else:
+            raise ValueError("Invalid token_param")
+
+        resp = await asyncio.wait_for(self.client.responses.create(**kwargs), timeout=self.request_timeout)
+        return (resp.output_text or "").strip()
+
+    async def _complete_once(self, model: str, messages: List[Dict[str, str]]) -> str:
+        """
+        Perform a single completion attempt with automatic API/parameter adaptation:
+        - Try Chat Completions (max_tokens)
+        - If server rejects max_tokens, retry with Responses using max_completion_tokens
+        - If that fails, retry with Responses using max_output_tokens
+        """
+        try:
+            return await self._complete_chat(model, messages, self.max_tokens)
+        except BadRequestError as e:
+            msg = str(e)
+            logger.debug("Chat Completions bad request for %s: %s", model, msg)
+            if "max_tokens" in msg and "max_completion_tokens" in msg:
+                try:
+                    return await self._complete_responses(model, messages, token_param="max_completion_tokens")
+                except BadRequestError as e2:
+                    logger.debug("Responses (max_completion_tokens) bad request for %s: %s", model, e2)
+                    return await self._complete_responses(model, messages, token_param="max_output_tokens")
+            raise
+
+    async def _complete_with_fallback(self, messages: List[Dict[str, str]]) -> str:
         """
         Try the primary model followed by configured fallbacks.
         Returns the first successful text or raises an Exception with a summary.
         """
         errors: List[str] = []
-        models: List[str] = [self.model, *self.fallback_models]
-
-        for m in models:
+        for m in [self.model, *self.fallback_models]:
             try:
                 return await self._complete_once(m, messages)
             except (NotFoundError, BadRequestError) as e:
-                # Model missing/inaccessible or bad request: try the next model
                 logger.error("Model '%s' failed: %s", m, e)
                 errors.append(f"{m}: {type(e).__name__}")
                 continue
             except (AuthenticationError, RateLimitError, APIError, asyncio.TimeoutError) as e:
-                # Transient or account issues: log and try next model
                 logger.error("OpenAI error on '%s': %s", m, e)
                 errors.append(f"{m}: {type(e).__name__}")
                 continue
-            except Exception as e:  # safeguard
+            except Exception as e:
                 logger.error("Unexpected OpenAI error on '%s': %s", m, e)
                 errors.append(f"{m}: {type(e).__name__}")
                 continue
@@ -225,9 +248,7 @@ class OpenAIService:
         tests: List[LabTest],
         patient_context: Optional[str] = None,
     ) -> str:
-        """
-        Generate a patient-friendly interpretation for the supplied lab tests.
-        """
+        """Generate a patient-friendly interpretation for the supplied lab tests."""
         try:
             prompt = self.create_interpretation_prompt(tests, patient_context)
             logger.info("Sending interpretation request for %d tests to OpenAI", len(tests))
@@ -260,21 +281,23 @@ class OpenAIService:
 
     async def ping(self) -> bool:
         """
-        Minimal readiness probe for the current primary model.
-        Returns True if the client responds to a trivial prompt.
+        Minimal readiness probe for the current model.
+        Tries Chat Completions first, then Responses with the new token params.
         """
+        messages: List[Dict[str, str]] = [{"role": "user", "content": "Reply with ok"}]
         try:
-            resp = await asyncio.wait_for(
-                self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[{"role": "user", "content": "Reply with ok"}],
-                    temperature=0,
-                    max_tokens=2,
-                ),
-                timeout=max(5, int(self.request_timeout / 3)),
-            )
-            txt = (resp.choices[0].message.content or "").strip().lower()
-            return txt.startswith("ok")
+            try:
+                txt = await self._complete_chat(self.model, messages, max_tokens=2)
+            except BadRequestError as e:
+                msg = str(e)
+                if "max_tokens" in msg and "max_completion_tokens" in msg:
+                    try:
+                        txt = await self._complete_responses(self.model, messages, token_param="max_completion_tokens")
+                    except BadRequestError:
+                        txt = await self._complete_responses(self.model, messages, token_param="max_output_tokens")
+                else:
+                    raise
+            return (txt or "").strip().lower().startswith("ok")
         except Exception as e:
             logger.error("OpenAI ping failed: %s", e)
             return False

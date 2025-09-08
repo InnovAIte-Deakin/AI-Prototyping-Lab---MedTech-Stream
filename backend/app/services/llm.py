@@ -61,8 +61,8 @@ def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
         "summary (<=120 words), per_test (array of {test_name, explanation}), "
         "flags (array of {test_name, severity, note}), next_steps (array of 4-6 strings), "
         "disclaimer (short). The first item of next_steps must be: "
-        "\"Please schedule a visit with your doctor to review these results "
-        "and your overall health.\" "
+        '"Please schedule a visit with your doctor to review these results '
+        'and your overall health." '
         "Keep total length around 200-300 words. Educational only. "
         "No diagnosis or treatment. Return JSON only with double quotes."
     )

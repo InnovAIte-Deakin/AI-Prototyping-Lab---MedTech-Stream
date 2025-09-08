@@ -63,5 +63,4 @@ def test_interpret_repair_on_malformed(monkeypatch):
     data = resp.json()
     validate_interpretation_payload(data)
 
-
     # No extra context behavior required in the simple version

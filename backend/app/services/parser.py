@@ -7,16 +7,16 @@ from dataclasses import dataclass
 NUM = r"\d+(?:\.\d+)?"
 HYPHEN = r"[-–]"
 
-RANGE_X_Y = re.compile(fr"\b(?P<low>{NUM})\s*{HYPHEN}\s*(?P<high>{NUM})\b")
+RANGE_X_Y = re.compile(rf"\b(?P<low>{NUM})\s*{HYPHEN}\s*(?P<high>{NUM})\b")
 # Threshold ranges like "≤ 200" or "<=200" may be preceded by spaces or symbols,
 # so avoid a leading word boundary and ensure we stop at whitespace/end.
-RANGE_LE = re.compile(fr"(?:≤|<=)\s*(?P<le>{NUM})(?!\S)")
-RANGE_GE = re.compile(fr"(?:≥|>=)\s*(?P<ge>{NUM})(?!\S)")
+RANGE_LE = re.compile(rf"(?:≤|<=)\s*(?P<le>{NUM})(?!\S)")
+RANGE_GE = re.compile(rf"(?:≥|>=)\s*(?P<ge>{NUM})(?!\S)")
 # Some PDF extractions (e.g., certain fonts) convert '≤' into a middle dot '·'.
 # Treat '· N' as a conservative proxy for '≤ N'.
-RANGE_ALT_LE = re.compile(fr"[·•]\s*(?P<le>{NUM})(?!\S)")
+RANGE_ALT_LE = re.compile(rf"[·•]\s*(?P<le>{NUM})(?!\S)")
 REF_RANGE = re.compile(
-    fr"reference\s*(?:range|interval)[:\s]+(?P<low>{NUM})\s*{HYPHEN}\s*(?P<high>{NUM})",
+    rf"reference\s*(?:range|interval)[:\s]+(?P<low>{NUM})\s*{HYPHEN}\s*(?P<high>{NUM})",
     re.IGNORECASE,
 )
 
@@ -25,7 +25,7 @@ UNIT_TOKEN = (
     r"%|mg/dL|g/dL|mmol/L|ng/mL|pg/mL|IU/L|U/L|10\^\d+/[a-zA-ZμuL]+|"
     r"10\^\d+/?L|[a-zA-Zμ%][\wμ/^%]*"
 )
-VALUE_WITH_UNIT = re.compile(fr"\b(?P<val>{NUM})\s*(?P<unit>(?:{UNIT_TOKEN}))?\b")
+VALUE_WITH_UNIT = re.compile(rf"\b(?P<val>{NUM})\s*(?P<unit>(?:{UNIT_TOKEN}))?\b")
 
 POS_NEG = re.compile(r"\b(positive|negative|reactive|non[- ]reactive)\b", re.IGNORECASE)
 

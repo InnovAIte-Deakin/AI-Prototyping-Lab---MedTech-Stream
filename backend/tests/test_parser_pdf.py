@@ -30,4 +30,3 @@ def test_parse_pdf_smoke():
     ldl = next((r for r in data["rows"] if r["test_name"].lower().startswith("ldl")), None)
     assert ldl is not None
     assert ldl["flag"] == "high"
-

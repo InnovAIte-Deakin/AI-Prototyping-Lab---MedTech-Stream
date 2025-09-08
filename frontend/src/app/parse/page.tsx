@@ -106,7 +106,7 @@ export default function ParsePage() {
           Or paste text:
           <TextArea value={text} onChange={(e) => setText(e.target.value)} />
         </label>
-        <Button type="submit" disabled={loading}>
+        <Button className="btn-primary" type="submit" disabled={loading}>
           {loading ? 'Parsing…' : 'Parse'}
         </Button>
       </form>
@@ -161,7 +161,7 @@ export default function ParsePage() {
             </Table>
           </div>
           <div>
-            <Button onClick={onExplain} disabled={explaining}>
+            <Button className="btn-primary" onClick={onExplain} disabled={explaining}>
               {explaining ? 'Explaining…' : 'Explain'}
             </Button>
           </div>

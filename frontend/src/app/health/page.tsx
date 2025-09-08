@@ -1,23 +1,39 @@
-async function getHealth(): Promise<{ status: string; ok: boolean; error?: string }> {
-  const base = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-  try {
-    const res = await fetch(`${base}/api/v1/health`, { cache: 'no-store' });
-    if (!res.ok) return { status: 'error', ok: false };
-    const json = (await res.json()) as { status: string };
-    return { status: json.status, ok: true };
-  } catch (err: unknown) {
-    return { status: 'error', ok: false, error: (err as Error).message };
-  }
-}
+"use client";
+import { useEffect, useState } from 'react';
 
-export default async function HealthPage() {
-  const health = await getHealth();
+type Health = { status: string; ok: boolean; error?: string };
+
+export default function HealthPage() {
+  const [health, setHealth] = useState<Health>({ status: 'unknown', ok: false });
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+  useEffect(() => {
+    let canceled = false;
+    async function run() {
+      try {
+        const res = await fetch(`${backend}/api/v1/health`, { cache: 'no-store' });
+        if (!res.ok) {
+          if (!canceled) setHealth({ status: 'error', ok: false });
+          return;
+        }
+        const json = (await res.json()) as { status: string };
+        if (!canceled) setHealth({ status: json.status, ok: true });
+      } catch (err: unknown) {
+        if (!canceled) setHealth({ status: 'error', ok: false, error: (err as Error).message });
+      }
+    }
+    run();
+    return () => {
+      canceled = true;
+    };
+  }, [backend]);
+
   return (
     <div className="stack">
       <h1>Health</h1>
       <div className="card">
         <p>
-          Backend URL: <code>{process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}</code>
+          Backend URL: <code>{backend}</code>
         </p>
         <p>
           Status: <strong>{health.ok ? health.status : 'unreachable'}</strong>
@@ -27,4 +43,3 @@ export default async function HealthPage() {
     </div>
   );
 }
-

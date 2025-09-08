@@ -10,8 +10,13 @@ NUM = r"\d+(?:\.\d+)?"
 HYPHEN = r"[-–]"
 
 RANGE_X_Y = re.compile(fr"\b(?P<low>{NUM})\s*{HYPHEN}\s*(?P<high>{NUM})\b")
-RANGE_LE = re.compile(fr"\b(?:≤|<=)\s*(?P<le>{NUM})\b")
-RANGE_GE = re.compile(fr"\b(?:≥|>=)\s*(?P<ge>{NUM})\b")
+# Threshold ranges like "≤ 200" or "<=200" may be preceded by spaces or symbols,
+# so avoid a leading word boundary and ensure we stop at whitespace/end.
+RANGE_LE = re.compile(fr"(?:≤|<=)\s*(?P<le>{NUM})(?!\S)")
+RANGE_GE = re.compile(fr"(?:≥|>=)\s*(?P<ge>{NUM})(?!\S)")
+# Some PDF extractions (e.g., certain fonts) convert '≤' into a middle dot '·'.
+# Treat '· N' as a conservative proxy for '≤ N'.
+RANGE_ALT_LE = re.compile(fr"[·•]\s*(?P<le>{NUM})(?!\S)")
 REF_RANGE = re.compile(
     fr"reference\s*(?:range|interval)[:\s]+(?P<low>{NUM})\s*{HYPHEN}\s*(?P<high>{NUM})",
     re.IGNORECASE,
@@ -68,6 +73,10 @@ def _extract_range(segment: str) -> Tuple[Optional[str], Optional[Tuple[float, f
         high = float(m.group("high"))
         return f"{low}-{high}", (low, high), None, None
     m = RANGE_LE.search(segment)
+    if m:
+        le = float(m.group("le"))
+        return f"≤ {le}", None, le, None
+    m = RANGE_ALT_LE.search(segment)
     if m:
         le = float(m.group("le"))
         return f"≤ {le}", None, le, None
@@ -143,22 +152,23 @@ def parse_text(text: str) -> Tuple[List[ParsedRow], List[str]]:
         range_str, range_tuple, le, ge = _extract_range(line)
         reference_range = range_str
 
-        # Value + unit
-        vm = VALUE_WITH_UNIT.search(line)
-        val_is_numeric = False
-        if vm:
-            try:
-                value = float(vm.group("val"))
-                val_is_numeric = True
-            except Exception:
-                value = vm.group("val")
-            unit = vm.group("unit") or None
-
-        # Positive/Negative fallback if no number match
-        if value is None:
-            pm = POS_NEG.search(line)
-            if pm:
-                value = pm.group(1).capitalize()
+        # Positive/Negative detection takes precedence over numeric extraction
+        pm = POS_NEG.search(line)
+        if pm:
+            value = pm.group(1).capitalize()
+            # If we detected a qualitative result, ignore numeric tokens in the name split
+            first_num = None
+        else:
+            # Value + unit
+            vm = VALUE_WITH_UNIT.search(line)
+            val_is_numeric = False
+            if vm:
+                try:
+                    value = float(vm.group("val"))
+                    val_is_numeric = True
+                except Exception:
+                    value = vm.group("val")
+                unit = vm.group("unit") or None
 
         if first_num:
             # Test name is the left part before first number
@@ -185,4 +195,3 @@ def parse_text(text: str) -> Tuple[List[ParsedRow], List[str]]:
             unparsed.append(line)
 
     return rows, unparsed
-

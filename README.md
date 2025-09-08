@@ -11,7 +11,7 @@ ReportRx is an educational health explanations app. MVP stores no data and logs 
 3. Visit:
    - Frontend: http://localhost:3000
    - Health page: http://localhost:3000/health (calls backend)
-   - Parser: http://localhost:3000/parse (PDF upload or paste text)
+   - Parser: http://localhost:3000/parse (PDF/Image upload or paste text)
 
 ## Features (MVP)
 
@@ -25,7 +25,7 @@ ReportRx is an educational health explanations app. MVP stores no data and logs 
 - FRONTEND_URL: `http://localhost:3000` (CORS origin)
 - NEXT_PUBLIC_BACKEND_URL: `http://localhost:8000`
 - OPENAI_API_KEY: Optional. If unset or network blocked, backend uses deterministic fallback JSON.
- - Upload limits: up to 5 files per request, 500MB per file (subject to infra limits).
+- Upload limits: up to 5 files per request, 500MB per file (subject to infra limits).
 - ALLOWED_HOSTS: Comma-separated allowed hosts for backend (default: `localhost,127.0.0.1`; tests allow `testserver`).
 
 ## Test/Run Instructions
@@ -38,6 +38,19 @@ ReportRx is an educational health explanations app. MVP stores no data and logs 
 - OCR: Scanned PDFs and images (PNG/JPEG) are supported via Tesseract OCR when available. Docker and CI include Tesseract. OCR accuracy depends on image quality.
 - Network restrictions: if the backend cannot reach the LLM, it falls back to a safe, deterministic JSON interpretation.
 - Stateless: no DB; all parsing is ephemeral; do not upload PHI to shared environments.
+
+## Observability
+
+- Request ID: every response includes `X-Request-ID` (propagates incoming value or generates one). The same ID is logged alongside method, path, status, and duration for easier correlation across services and clients.
+
+## Testing
+
+- Backend: fast, deterministic unit tests for parser and interpretation, plus an OCR smoke test that runs when Tesseract is available.
+- Frontend: basic unit tests and an integration test that exercises the parse → interpret flow with mocked fetch.
+
+## License
+
+This repository is licensed under the MIT License (see `LICENSE`).
 
 ## Notes
 

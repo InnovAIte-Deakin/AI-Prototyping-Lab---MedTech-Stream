@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,16 +33,27 @@ class PHIScrubbedLoggingMiddleware:
         path = scope.get("path")
         start = time.perf_counter()
         status_code_holder = {"status": None}
+        request_id_holder = {"rid": None}
 
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
                 status_code_holder["status"] = message.get("status", 0)
+                # Try to read request id from headers written by RequestIDMiddleware
+                headers = message.get("headers") or []
+                for k, v in headers:
+                    if k.decode().lower() == "x-request-id":
+                        request_id_holder["rid"] = v.decode()
             await send(message)
 
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
             duration_ms = int((time.perf_counter() - start) * 1000)
+            # If RequestIDMiddleware hasn't written yet, try to derive from scope
+            if not request_id_holder["rid"]:
+                for k, v in scope.get("headers", []):
+                    if k.decode().lower() == "x-request-id":
+                        request_id_holder["rid"] = v.decode()
             # Intentionally avoid logging headers, bodies, or files
             self.logger.info(
                 {
@@ -50,6 +62,7 @@ class PHIScrubbedLoggingMiddleware:
                     "path": path,
                     "status": status_code_holder["status"],
                     "duration_ms": duration_ms,
+                    "request_id": request_id_holder["rid"],
                 }
             )
 
@@ -74,6 +87,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """Attach a request ID to each response and propagate incoming X-Request-ID.
+
+    - If the client supplies X-Request-ID, echo it back.
+    - Otherwise, generate a UUID4 and set X-Request-ID.
+    The ID is included in logs by PHIScrubbedLoggingMiddleware.
+    """
+
+    async def dispatch(self, request, call_next):
+        incoming = request.headers.get("x-request-id")
+        rid = incoming or uuid.uuid4().hex
+        response = await call_next(request)
+        response.headers.setdefault("X-Request-ID", rid)
+        return response
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="ReportRx API", version="0.1.0")
 
@@ -89,6 +118,8 @@ def create_app() -> FastAPI:
     )
 
     # PHI-scrubbed logging middleware
+    # Request ID before logging so logs can capture the ID
+    app.add_middleware(RequestIDMiddleware)
     app.add_middleware(PHIScrubbedLoggingMiddleware)
 
     # Security hardening

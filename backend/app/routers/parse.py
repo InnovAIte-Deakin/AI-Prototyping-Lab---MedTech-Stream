@@ -4,7 +4,7 @@ import io
 from typing import Any
 
 import fitz  # PyMuPDF
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel
 
 from app.services.parser import parse_text
@@ -21,6 +21,10 @@ async def parse_endpoint(
     request: Request,
     file: UploadFile | None = File(default=None),
 ) -> dict[str, Any]:
+    # Basic safety limits
+    MAX_PDF_BYTES = 5 * 1024 * 1024  # 5 MB
+    MAX_PDF_PAGES = 5
+
     content_type = request.headers.get("content-type", "").lower()
 
     text_content: str | None = None
@@ -32,12 +36,30 @@ async def parse_endpoint(
                 status_code=400,
                 detail="Unsupported file type. Please upload a PDF.",
             )
+        # Enforce size limit using Content-Length if present
+        try:
+            length = int(request.headers.get("content-length", "0"))
+        except Exception:
+            length = 0
+        if length and length > MAX_PDF_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="PDF too large (limit 5MB)",
+            )
+
         data = await file.read()
+        if len(data) > MAX_PDF_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="PDF too large (limit 5MB)",
+            )
         # Use PyMuPDF to extract text from memory bytes
         try:
             with fitz.open(stream=io.BytesIO(data), filetype="pdf") as doc:
                 parts: list[str] = []
-                for page in doc:
+                for i, page in enumerate(doc):
+                    if i >= MAX_PDF_PAGES:
+                        break
                     parts.append(page.get_text("text"))
                 text_content = "\n".join(parts)
         except Exception as e:

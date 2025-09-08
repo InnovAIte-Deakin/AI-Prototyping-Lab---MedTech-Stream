@@ -10,9 +10,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
   && rm -rf /var/lib/apt/lists/*
 
-# Install runtime deps first for caching
+# Install runtime deps from pyproject for consistency/caching
+COPY pyproject.toml ./
+RUN python - <<'PY'
+import tomllib
+from pathlib import Path
+data = tomllib.loads(Path('pyproject.toml').read_text())
+deps = data.get('project', {}).get('dependencies', [])
+Path('requirements.txt').write_text('\n'.join(deps) + '\n')
+print('Generated requirements.txt with', len(deps), 'dependencies')
+PY
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir fastapi uvicorn[standard] python-multipart "pydantic>=2.7.0" pymupdf httpx
+    && pip install --no-cache-dir -r requirements.txt
 
 # Add non-root user
 RUN useradd -ms /bin/bash appuser

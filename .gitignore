@@ -26,4 +26,3 @@ coverage/
 .vscode/
 *.log
 *.tsbuildinfo
-frontend/package-lock.json

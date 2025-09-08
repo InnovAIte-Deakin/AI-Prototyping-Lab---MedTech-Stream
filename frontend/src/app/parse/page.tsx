@@ -116,8 +116,16 @@ export default function ParsePage() {
       {rows.length > 0 && (
         <div className="stack">
           <h2>Results</h2>
-          <div className="card">
+          <div className="card table-container">
             <Table>
+              <colgroup>
+                <col style={{ width: '28%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '28%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '10%' }} />
+              </colgroup>
               <THead>
                 <TR>
                   <TH>Test</TH>

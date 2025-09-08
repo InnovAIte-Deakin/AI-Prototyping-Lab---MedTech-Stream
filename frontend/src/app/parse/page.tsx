@@ -92,24 +92,31 @@ export default function ParsePage() {
   return (
     <div className="stack">
       <h1>Parse Lab Report</h1>
-      <form onSubmit={onSubmit} className="stack">
-        <label>
-          PDF(s) or image(s) (optional, up to 5 files, 500MB each):
-          <Input
-            type="file"
-            multiple
-            accept="application/pdf,image/png,image/jpeg"
-            onChange={(e) => setFiles(Array.from(e.target.files || []).slice(0, 5))}
-          />
-        </label>
-        <label>
-          Or paste text:
-          <TextArea value={text} onChange={(e) => setText(e.target.value)} />
-        </label>
-        <Button className="btn-primary" type="submit" disabled={loading}>
-          {loading ? 'Parsing…' : 'Parse'}
-        </Button>
-      </form>
+      <div className="card">
+        <form onSubmit={onSubmit} className="stack">
+          <div className="stack">
+            <label>
+              <strong>Upload files</strong> <span className="muted">(PDF/PNG/JPEG, up to 5 files, 500MB each)</span>
+              <Input
+                type="file"
+                multiple
+                accept="application/pdf,image/png,image/jpeg"
+                onChange={(e) => setFiles(Array.from(e.target.files || []).slice(0, 5))}
+              />
+            </label>
+            <label>
+              <strong>Or paste text</strong>
+              <TextArea value={text} onChange={(e) => setText(e.target.value)} rows={6} placeholder="Paste report text here..." />
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
+            <Button variant="primary" type="submit" disabled={loading}>
+              {loading ? 'Parsing…' : 'Parse'}
+            </Button>
+            <Button variant="outline" type="button" onClick={() => { setText(''); setFiles([]); setRows([]); setUnparsed([]); setInterpretation(null); }}>Clear</Button>
+          </div>
+        </form>
+      </div>
 
       {error ? <div className="alert alert-error"><strong>Could not parse.</strong> {error}</div> : null}
 
@@ -169,7 +176,7 @@ export default function ParsePage() {
             </Table>
           </div>
           <div>
-            <Button className="btn-primary" onClick={onExplain} disabled={explaining}>
+            <Button variant="primary" onClick={onExplain} disabled={explaining}>
               {explaining ? 'Explaining…' : 'Explain'}
             </Button>
           </div>

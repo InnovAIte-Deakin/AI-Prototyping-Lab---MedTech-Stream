@@ -5,25 +5,16 @@ import { Button } from '@/components/ui/Button';
 export default function HomePage() {
   return (
     <div className="stack">
-      <h1>ReportRx</h1>
-      <p className="muted">MVP preview. No personal data stored; backend logs metadata only.</p>
-
-      <section className="section">
-        <div className="stack">
-          <p>
-            Explore the <a href="/health">health</a> page to verify backend connectivity, or try the
-            <a href="/parse"> parse</a> page to parse a lab report.
-          </p>
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <Button className="btn-outline" onClick={() => (window.location.href = '/health')}>Check Backend Health</Button>
-            <Button className="btn-primary" onClick={() => (window.location.href = '/parse')}>Parse a Report</Button>
-          </div>
+      <section className="hero">
+        <h1 className="hero-title">Understand your lab results with confidence</h1>
+        <p className="hero-sub">ReportRx explains lab reports in clear language. No storage, no accounts — just paste or upload and get an educational summary you can discuss with your clinician.</p>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+          <Button variant="primary" size="lg" onClick={() => (window.location.href = '/parse')}>Parse a Report</Button>
+          <Button variant="outline" size="lg" onClick={() => (window.location.href = '/health')}>Check Backend Health</Button>
         </div>
       </section>
 
-      <div className="card">
-        <Disclaimer />
-      </div>
+      <Disclaimer />
     </div>
   );
 }

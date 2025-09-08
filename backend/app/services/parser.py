@@ -51,6 +51,16 @@ NOISE = re.compile(
     re.IGNORECASE,
 )
 
+# Common metadata fields we want to skip entirely if they appear as the 'test name'.
+# Keep patterns specific to avoid excluding genuine assays like "Prothrombin Time".
+META_NAME = re.compile(
+    r"^(report\s*date|referring\s*doctor|doctor\b|physician\b|collection\s*time|collected\s*time|"
+    r"reported\s*time|accession\s*no\.?|sample\s*(?:id|no\.?|type)|specimen\s*(?:id|type)|"
+    r"patient\s*(?:name|id|mrn|uhid)?\b|age\b|sex\b|gender\b|lab\s*(?:no\.?|id)|barcode\b|"
+    r"receipt\s*date|receipt\s*no\.?|clinic\b|department\b|ward\b|hospital\b)",
+    re.IGNORECASE,
+)
+
 BRACKETS = re.compile(r"\[[^\]]*\]")
 FOOTNOTE_MARK = re.compile(r"\*+")
 WHITESPACE = re.compile(r"\s+")
@@ -216,6 +226,11 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
             # No number: use part before colon as name if present
             if ":" in line:
                 name = line.split(":", 1)[0].strip()
+
+        # Drop lines that are clearly metadata headers/fields
+        if name and META_NAME.search(name):
+            # treat as noise rather than an unparsed error line
+            continue
 
         # Explicit flag markers like 'H', 'L', '↑', '↓' appearing after the value
         explicit_flag: str | None = None

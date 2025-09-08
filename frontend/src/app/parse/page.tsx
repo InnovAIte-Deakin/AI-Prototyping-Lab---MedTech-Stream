@@ -92,8 +92,8 @@ export default function ParsePage() {
       <h1>Parse Lab Report</h1>
       <form onSubmit={onSubmit} className="stack">
         <label>
-          PDF file (optional):
-          <Input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          PDF or image (optional):
+          <Input type="file" accept="application/pdf,image/png,image/jpeg" onChange={(e) => setFile(e.target.files?.[0] || null)} />
         </label>
         <label>
           Or paste text:

@@ -54,6 +54,7 @@ NOISE = re.compile(
 BRACKETS = re.compile(r"\[[^\]]*\]")
 FOOTNOTE_MARK = re.compile(r"\*+")
 WHITESPACE = re.compile(r"\s+")
+PIPE = re.compile(r"\|")
 
 
 @dataclass
@@ -70,6 +71,7 @@ def _clean_line(line: str) -> str:
     # Remove bracketed notes and footnote markers; collapse spaces
     line = BRACKETS.sub(" ", line)
     line = FOOTNOTE_MARK.sub("", line)
+    line = PIPE.sub(" ", line)
     line = line.strip()
     line = WHITESPACE.sub(" ", line)
     return line

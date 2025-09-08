@@ -15,7 +15,7 @@ ReportRx is an educational health explanations app. MVP stores no data and logs 
 
 ## Features (MVP)
 
-- PDF/Text parsing (in-memory) → structured rows with heuristics for ranges/units and flagging.
+- PDF/Text/Image parsing (in-memory) → structured rows with heuristics for ranges/units and flagging.
 - LLM interpretation to JSON with strict schema, one repair attempt, and robust fallback.
 - Frontend flow: upload/paste → Parse → edit table → Explain → see summary, per_test, flags, next_steps, disclaimer.
 - Risevest-inspired theme (colors, rounded buttons, cards, sticky tables) with accessible defaults (≥16px, focus rings, keyboard friendly).
@@ -34,7 +34,7 @@ ReportRx is an educational health explanations app. MVP stores no data and logs 
 
 ## Limitations
 
-- No OCR: scanned images are not supported; PDFs must contain extractable text.
+- OCR: Scanned PDFs and images (PNG/JPEG) are supported via Tesseract OCR when available. Docker and CI include Tesseract. OCR accuracy depends on image quality.
 - Network restrictions: if the backend cannot reach the LLM, it falls back to a safe, deterministic JSON interpretation.
 - Stateless: no DB; all parsing is ephemeral; do not upload PHI to shared environments.
 
@@ -43,6 +43,7 @@ ReportRx is an educational health explanations app. MVP stores no data and logs 
 - No persistence: backend writes nothing to disk; no volumes for uploads.
 - Logging: backend logs method, path, status, and duration only (no bodies/files).
 - Env: never commit secrets. `.env` is ignored; see `.env.example` for required variables.
+ - OCR: set `ENABLE_OCR=1` (default) and optionally `TESSERACT_CONFIG` and language packs; backend tries text layer first, then falls back to OCR.
 
 ## Local tooling (optional)
 

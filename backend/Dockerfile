@@ -8,6 +8,7 @@ WORKDIR /app
 # System deps (minimal)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    tesseract-ocr \
   && rm -rf /var/lib/apt/lists/*
 
 # Install runtime deps from pyproject for consistency/caching

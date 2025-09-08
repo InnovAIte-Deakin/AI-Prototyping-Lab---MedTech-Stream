@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel
 
 from app.services.parser import parse_text
+from app.services.ocr import extract_text_from_pdf_bytes, extract_text_from_image_bytes
 
 router = APIRouter()
 
@@ -30,11 +31,14 @@ async def parse_endpoint(
     text_content: str | None = None
 
     if file is not None:
-        # Multipart PDF path
-        if "pdf" not in (file.content_type or "application/octet-stream"):
+        # Multipart file path (PDF or image)
+        ctype = (file.content_type or "application/octet-stream").lower()
+        is_pdf = "pdf" in ctype
+        is_image = ctype.startswith("image/") and any(x in ctype for x in ["png", "jpeg", "jpg"])
+        if not (is_pdf or is_image):
             raise HTTPException(
                 status_code=400,
-                detail="Unsupported file type. Please upload a PDF.",
+                detail="Unsupported file type. Please upload a PDF or an image (PNG/JPEG).",
             )
         # Enforce size limit using Content-Length if present
         try:
@@ -44,26 +48,22 @@ async def parse_endpoint(
         if length and length > MAX_PDF_BYTES:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="PDF too large (limit 5MB)",
+                detail="File too large (limit 5MB)",
             )
 
         data = await file.read()
         if len(data) > MAX_PDF_BYTES:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="PDF too large (limit 5MB)",
+                detail="File too large (limit 5MB)",
             )
-        # Use PyMuPDF to extract text from memory bytes
         try:
-            with fitz.open(stream=io.BytesIO(data), filetype="pdf") as doc:
-                parts: list[str] = []
-                for i, page in enumerate(doc):
-                    if i >= MAX_PDF_PAGES:
-                        break
-                    parts.append(page.get_text("text"))
-                text_content = "\n".join(parts)
+            if is_pdf:
+                text_content = extract_text_from_pdf_bytes(data, max_pages=MAX_PDF_PAGES, ocr_lang="eng")
+            else:
+                text_content = extract_text_from_image_bytes(data, lang="eng")
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to read PDF: {e}")
+            raise HTTPException(status_code=400, detail=f"Failed to read file: {e}")
     else:
         # JSON path
         if "application/json" not in content_type:

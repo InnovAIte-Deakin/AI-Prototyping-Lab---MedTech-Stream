@@ -1,13 +1,14 @@
 import logging
 import os
 import time
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import Response
 
 from .routers.health import router as health_router
-from .routers.parse import router as parse_router
 from .routers.interpret import router as interpret_router
+from .routers.parse import router as parse_router
 
 
 def get_frontend_origin() -> str:

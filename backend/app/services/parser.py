@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
-
 
 # Precompiled regexes for performance
 NUM = r"\d+(?:\.\d+)?"
@@ -23,7 +21,10 @@ REF_RANGE = re.compile(
 )
 
 # Units: basic common and flexible token near value
-UNIT_TOKEN = r"%|mg/dL|g/dL|mmol/L|ng/mL|pg/mL|IU/L|U/L|10\^\d+/[a-zA-ZμuL]+|10\^\d+/?L|[a-zA-Zμ%][\wμ/^%]*"
+UNIT_TOKEN = (
+    r"%|mg/dL|g/dL|mmol/L|ng/mL|pg/mL|IU/L|U/L|10\^\d+/[a-zA-ZμuL]+|"
+    r"10\^\d+/?L|[a-zA-Zμ%][\wμ/^%]*"
+)
 VALUE_WITH_UNIT = re.compile(fr"\b(?P<val>{NUM})\s*(?P<unit>(?:{UNIT_TOKEN}))?\b")
 
 POS_NEG = re.compile(r"\b(positive|negative|reactive|non[- ]reactive)\b", re.IGNORECASE)
@@ -44,10 +45,10 @@ WHITESPACE = re.compile(r"\s+")
 @dataclass
 class ParsedRow:
     test_name: str
-    value: Union[float, str]
-    unit: Optional[str]
-    reference_range: Optional[str]
-    flag: Optional[str]
+    value: float | str
+    unit: str | None
+    reference_range: str | None
+    flag: str | None
     confidence: float
 
 
@@ -60,7 +61,9 @@ def _clean_line(line: str) -> str:
     return line
 
 
-def _extract_range(segment: str) -> Tuple[Optional[str], Optional[Tuple[float, float]], Optional[float], Optional[float]]:
+def _extract_range(
+    segment: str,
+) -> tuple[str | None, tuple[float, float] | None, float | None, float | None]:
     # Returns (range_str, range_tuple, le, ge)
     m = REF_RANGE.search(segment)
     if m:
@@ -87,7 +90,12 @@ def _extract_range(segment: str) -> Tuple[Optional[str], Optional[Tuple[float, f
     return None, None, None, None
 
 
-def _compute_flag(value: Union[float, str], range_tuple: Optional[Tuple[float, float]], le: Optional[float], ge: Optional[float]) -> Optional[str]:
+def _compute_flag(
+    value: float | str,
+    range_tuple: tuple[float, float] | None,
+    le: float | None,
+    ge: float | None,
+) -> str | None:
     # Non-numeric interpretations
     if isinstance(value, str):
         val = value.lower()
@@ -129,9 +137,9 @@ def _confidence(row: ParsedRow) -> float:
     return min(1.0, present / total)
 
 
-def parse_text(text: str) -> Tuple[List[ParsedRow], List[str]]:
-    rows: List[ParsedRow] = []
-    unparsed: List[str] = []
+def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
+    rows: list[ParsedRow] = []
+    unparsed: list[str] = []
 
     # Normalize newlines; split into lines
     for raw_line in text.splitlines():
@@ -143,10 +151,10 @@ def parse_text(text: str) -> Tuple[List[ParsedRow], List[str]]:
 
         # Find first numeric group; if none, check for Positive/Negative rows with colon
         first_num = FIRST_NUMBER_POS.search(line)
-        name: Optional[str] = None
-        value: Union[float, str, None] = None
-        unit: Optional[str] = None
-        reference_range: Optional[str] = None
+        name: str | None = None
+        value: float | str | None = None
+        unit: str | None = None
+        reference_range: str | None = None
 
         # Range detection anywhere on line
         range_str, range_tuple, le, ge = _extract_range(line)
@@ -161,11 +169,9 @@ def parse_text(text: str) -> Tuple[List[ParsedRow], List[str]]:
         else:
             # Value + unit
             vm = VALUE_WITH_UNIT.search(line)
-            val_is_numeric = False
             if vm:
                 try:
                     value = float(vm.group("val"))
-                    val_is_numeric = True
                 except Exception:
                     value = vm.group("val")
                 unit = vm.group("unit") or None

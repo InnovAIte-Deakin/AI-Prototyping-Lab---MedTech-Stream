@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
@@ -12,9 +12,9 @@ from pydantic import BaseModel, Field, ValidationError
 class ParsedRowIn(BaseModel):
     test_name: str
     value: float | str
-    unit: Optional[str] = None
-    reference_range: Optional[str] = None
-    flag: Optional[str] = Field(default=None, pattern=r"^(low|high|normal|abnormal)$")
+    unit: str | None = None
+    reference_range: str | None = None
+    flag: str | None = Field(default=None, pattern=r"^(low|high|normal|abnormal)$")
     confidence: float
 
 
@@ -31,9 +31,9 @@ class FlagItem(BaseModel):
 
 class InterpretationOut(BaseModel):
     summary: str
-    per_test: List[PerTestItem]
-    flags: List[FlagItem]
-    next_steps: List[str]
+    per_test: list[PerTestItem]
+    flags: list[FlagItem]
+    next_steps: list[str]
     disclaimer: str
 
 
@@ -43,7 +43,7 @@ SYS_PROMPT = (
 )
 
 
-def _build_user_prompt(rows: List[ParsedRowIn]) -> str:
+def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
     # Trim to essential fields and rows to keep payload small
     MAX_ROWS = 30
     trimmed = [
@@ -60,21 +60,29 @@ def _build_user_prompt(rows: List[ParsedRowIn]) -> str:
         "Given the following parsed lab rows, produce a JSON object with keys: "
         "summary (<=120 words), per_test (array of {test_name, explanation}), "
         "flags (array of {test_name, severity, note}), next_steps (array of 4-6 strings), "
-        "disclaimer (short). The first item of next_steps must be: \"Please schedule a visit with your doctor to review these results and your overall health.\" "
-        "Keep total length around 200-300 words. Educational only. No diagnosis or treatment. "
-        "Return JSON only with double quotes."
+        "disclaimer (short). The first item of next_steps must be: "
+        "\"Please schedule a visit with your doctor to review these results "
+        "and your overall health.\" "
+        "Keep total length around 200-300 words. Educational only. "
+        "No diagnosis or treatment. Return JSON only with double quotes."
     )
     return instructions + "\n\nROWS:\n" + json.dumps(trimmed, ensure_ascii=False)
 
 
-def _fallback_interpretation(rows: List[ParsedRowIn]) -> InterpretationOut:
-    flagged: List[FlagItem] = []
+def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
+    flagged: list[FlagItem] = []
     for r in rows:
         if r.flag in {"low", "high", "abnormal"}:
             sev = "high" if r.flag == "high" else ("low" if r.flag == "low" else "moderate")
-            flagged.append(FlagItem(test_name=r.test_name, severity=sev, note=f"Marked as {r.flag} by the lab parser."))
+            flagged.append(
+                FlagItem(
+                    test_name=r.test_name,
+                    severity=sev,
+                    note=f"Marked as {r.flag} by the lab parser.",
+                )
+            )
 
-    summary_parts: List[str] = []
+    summary_parts: list[str] = []
     total = len(rows)
     highs = sum(1 for r in rows if r.flag == "high")
     lows = sum(1 for r in rows if r.flag == "low")
@@ -86,9 +94,12 @@ def _fallback_interpretation(rows: List[ParsedRowIn]) -> InterpretationOut:
         summary_parts.append(f"{lows} below reference range.")
     if abns:
         summary_parts.append(f"{abns} marked as abnormal.")
-    summary = " ".join(summary_parts) or "Your results have been summarized for discussion with your clinician."
+    summary = (
+        " ".join(summary_parts)
+        or "Your results have been summarized for discussion with your clinician."
+    )
 
-    per_test: List[PerTestItem] = []
+    per_test: list[PerTestItem] = []
     for r in rows[:10]:  # keep it concise
         val = r.value
         unit = f" {r.unit}" if r.unit else ""
@@ -97,7 +108,10 @@ def _fallback_interpretation(rows: List[ParsedRowIn]) -> InterpretationOut:
         per_test.append(
             PerTestItem(
                 test_name=r.test_name,
-                explanation=f"Reported value: {val}{unit}{rr}.{fl} This information is educational and not a diagnosis.",
+                explanation=(
+                    f"Reported value: {val}{unit}{rr}.{fl} "
+                    "This information is educational and not a diagnosis."
+                ),
             )
         )
 
@@ -110,7 +124,8 @@ def _fallback_interpretation(rows: List[ParsedRowIn]) -> InterpretationOut:
     ]
 
     disclaimer = (
-        "Educational information only. Not a diagnosis or treatment recommendation. Always consult a qualified clinician."
+        "Educational information only. Not a diagnosis or treatment recommendation. "
+        "Always consult a qualified clinician."
     )
 
     return InterpretationOut(
@@ -145,9 +160,9 @@ async def _call_openai_chat(prompt: str, timeout_s: float) -> str:
         return data["choices"][0]["message"]["content"]
 
 
-async def interpret_rows(rows: List[ParsedRowIn]) -> Tuple[InterpretationOut, Dict[str, Any]]:
+async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, dict[str, Any]]:
     start = time.perf_counter()
-    meta: Dict[str, Any] = {"llm": "none", "attempts": 0}
+    meta: dict[str, Any] = {"llm": "none", "attempts": 0}
     try:
         prompt = _build_user_prompt(rows)
         # First attempt
@@ -163,7 +178,8 @@ async def interpret_rows(rows: List[ParsedRowIn]) -> Tuple[InterpretationOut, Di
             # One repair attempt: ask the model to return only valid JSON
             meta["attempts"] = 2
             repair_prompt = (
-                "Return the same content as strict valid JSON only. Do not include any prose or code fences."
+                "Return the same content as strict valid JSON only. "
+                "Do not include any prose or code fences."
             )
             raw2 = await _call_openai_chat(prompt + "\n\n" + repair_prompt, timeout_s=4.5)
             obj2 = json.loads(raw2)
@@ -180,4 +196,3 @@ async def interpret_rows(rows: List[ParsedRowIn]) -> Tuple[InterpretationOut, Di
     # Fallback path with deterministic JSON
     fb = _fallback_interpretation(rows)
     return fb, meta
-

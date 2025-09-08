@@ -1,7 +1,5 @@
-import json
-from typing import Any, Dict
+from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -28,7 +26,7 @@ def sample_rows():
     ]
 
 
-def validate_interpretation_payload(data: Dict[str, Any]) -> None:
+def validate_interpretation_payload(data: dict[str, Any]) -> None:
     assert "interpretation" in data
     interp = data["interpretation"]
     assert isinstance(interp["summary"], str) and len(interp["summary"]) > 0

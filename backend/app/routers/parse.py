@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import io
-from typing import Any, Dict, List
+from typing import Any
 
 import fitz  # PyMuPDF
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from app.services.parser import parse_text
-
 
 router = APIRouter()
 
@@ -18,7 +17,10 @@ class ParseRequest(BaseModel):
 
 
 @router.post("/parse")
-async def parse_endpoint(request: Request, file: UploadFile | None = File(default=None)) -> Dict[str, Any]:
+async def parse_endpoint(
+    request: Request,
+    file: UploadFile | None = File(default=None),
+) -> dict[str, Any]:
     content_type = request.headers.get("content-type", "").lower()
 
     text_content: str | None = None
@@ -26,12 +28,15 @@ async def parse_endpoint(request: Request, file: UploadFile | None = File(defaul
     if file is not None:
         # Multipart PDF path
         if "pdf" not in (file.content_type or "application/octet-stream"):
-            raise HTTPException(status_code=400, detail="Unsupported file type. Please upload a PDF.")
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported file type. Please upload a PDF.",
+            )
         data = await file.read()
         # Use PyMuPDF to extract text from memory bytes
         try:
             with fitz.open(stream=io.BytesIO(data), filetype="pdf") as doc:
-                parts: List[str] = []
+                parts: list[str] = []
                 for page in doc:
                     parts.append(page.get_text("text"))
                 text_content = "\n".join(parts)
@@ -40,7 +45,10 @@ async def parse_endpoint(request: Request, file: UploadFile | None = File(defaul
     else:
         # JSON path
         if "application/json" not in content_type:
-            raise HTTPException(status_code=400, detail="Send a PDF file or JSON {\"text\": \"...\"}.")
+            raise HTTPException(
+                status_code=400,
+                detail='Send a PDF file or JSON {"text": "..."}.',
+            )
         try:
             payload = await request.json()
         except Exception:
@@ -65,4 +73,3 @@ async def parse_endpoint(request: Request, file: UploadFile | None = File(defaul
         ],
         "unparsed_lines": unparsed,
     }
-

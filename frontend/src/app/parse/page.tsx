@@ -18,7 +18,7 @@ type Row = {
 
 export default function ParsePage() {
   const [text, setText] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [unparsed, setUnparsed] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -41,9 +41,11 @@ export default function ParsePage() {
     setLoading(true);
     try {
       let res: Response;
-      if (file) {
+      if (files.length > 0) {
         const fd = new FormData();
-        fd.append('file', file);
+        for (const f of files.slice(0, 5)) {
+          fd.append('files', f);
+        }
         res = await fetch(`${backend}/api/v1/parse`, { method: 'POST', body: fd });
       } else {
         res = await fetch(`${backend}/api/v1/parse`, {
@@ -92,8 +94,13 @@ export default function ParsePage() {
       <h1>Parse Lab Report</h1>
       <form onSubmit={onSubmit} className="stack">
         <label>
-          PDF or image (optional):
-          <Input type="file" accept="application/pdf,image/png,image/jpeg" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          PDF(s) or image(s) (optional, up to 5 files, 500MB each):
+          <Input
+            type="file"
+            multiple
+            accept="application/pdf,image/png,image/jpeg"
+            onChange={(e) => setFiles(Array.from(e.target.files || []).slice(0, 5))}
+          />
         </label>
         <label>
           Or paste text:

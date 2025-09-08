@@ -25,6 +25,7 @@ ReportRx is an educational health explanations app. MVP stores no data and logs 
 - FRONTEND_URL: `http://localhost:3000` (CORS origin)
 - NEXT_PUBLIC_BACKEND_URL: `http://localhost:8000`
 - OPENAI_API_KEY: Optional. If unset or network blocked, backend uses deterministic fallback JSON.
+ - Upload limits: up to 5 files per request, 500MB per file (subject to infra limits).
 - ALLOWED_HOSTS: Comma-separated allowed hosts for backend (default: `localhost,127.0.0.1`; tests allow `testserver`).
 
 ## Test/Run Instructions

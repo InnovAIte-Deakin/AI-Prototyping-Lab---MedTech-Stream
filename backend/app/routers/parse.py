@@ -21,49 +21,73 @@ class ParseRequest(BaseModel):
 async def parse_endpoint(
     request: Request,
     file: UploadFile | None = File(default=None),
+    files: list[UploadFile] | None = File(default=None),
 ) -> dict[str, Any]:
-    # Basic safety limits
-    MAX_PDF_BYTES = 5 * 1024 * 1024  # 5 MB
-    MAX_PDF_PAGES = 5
+    # Safety limits
+    MAX_FILE_BYTES = 500 * 1024 * 1024  # 500 MB per file
+    MAX_PDF_PAGES = 5  # keep conservative for runtime cost
+    MAX_FILES = 5
 
     content_type = request.headers.get("content-type", "").lower()
 
     text_content: str | None = None
 
+    # Select file inputs (support legacy single-file field and new multi-file field)
+    upload_list: list[UploadFile] = []
+    if files:
+        upload_list.extend([f for f in files if f is not None])
     if file is not None:
+        upload_list.append(file)
+
+    if upload_list:
         # Multipart file path (PDF or image)
-        ctype = (file.content_type or "application/octet-stream").lower()
-        is_pdf = "pdf" in ctype
-        is_image = ctype.startswith("image/") and any(x in ctype for x in ["png", "jpeg", "jpg"])
-        if not (is_pdf or is_image):
-            raise HTTPException(
-                status_code=400,
-                detail="Unsupported file type. Please upload a PDF or an image (PNG/JPEG).",
-            )
-        # Enforce size limit using Content-Length if present
-        try:
-            length = int(request.headers.get("content-length", "0"))
-        except Exception:
-            length = 0
-        if length and length > MAX_PDF_BYTES:
+        if len(upload_list) > MAX_FILES:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="File too large (limit 5MB)",
+                detail=f"Too many files (max {MAX_FILES}).",
             )
 
-        data = await file.read()
-        if len(data) > MAX_PDF_BYTES:
+        # Enforce total request size if Content-Length present
+        try:
+            total_len = int(request.headers.get("content-length", "0"))
+        except Exception:
+            total_len = 0
+        max_total = MAX_FILE_BYTES * MAX_FILES
+        if total_len and total_len > max_total:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="File too large (limit 5MB)",
+                detail=f"Payload too large (max {MAX_FILES} files, {MAX_FILE_BYTES // (1024*1024)}MB each).",
             )
-        try:
-            if is_pdf:
-                text_content = extract_text_from_pdf_bytes(data, max_pages=MAX_PDF_PAGES, ocr_lang="eng")
-            else:
-                text_content = extract_text_from_image_bytes(data, lang="eng")
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to read file: {e}")
+
+        parts_text: list[str] = []
+        for f in upload_list:
+            ctype = (f.content_type or "application/octet-stream").lower()
+            is_pdf = "pdf" in ctype
+            is_image = ctype.startswith("image/") and any(x in ctype for x in ["png", "jpeg", "jpg"]) \
+                or any(f.filename.lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg"]) if f.filename else False
+
+            if not (is_pdf or is_image):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported file type for {f.filename or 'upload'}. Use PDF or image (PNG/JPEG).",
+                )
+
+            data = await f.read()
+            if len(data) > MAX_FILE_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"{f.filename or 'file'} exceeds {MAX_FILE_BYTES // (1024*1024)}MB limit.",
+                )
+            try:
+                if is_pdf:
+                    t = extract_text_from_pdf_bytes(data, max_pages=MAX_PDF_PAGES, ocr_lang="eng")
+                else:
+                    t = extract_text_from_image_bytes(data, lang="eng")
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to read file {f.filename or ''}: {e}")
+            if t := (t or "").strip():
+                parts_text.append(t)
+        text_content = "\n".join(parts_text)
     else:
         # JSON path
         if "application/json" not in content_type:

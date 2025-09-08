@@ -178,8 +178,8 @@ export default function ParsePage() {
 
       {unparsed.length > 0 && (
         <div className="stack">
-          <h3>Unparsed Lines</h3>
-          <div className="card">
+          <details className="card">
+            <summary className="muted">Unparsed lines ({unparsed.length})</summary>
             <ul>
               {unparsed.map((l, i) => (
                 <li key={i} className="muted">
@@ -187,7 +187,7 @@ export default function ParsePage() {
                 </li>
               ))}
             </ul>
-          </div>
+          </details>
         </div>
       )}
 

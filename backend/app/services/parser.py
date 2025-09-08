@@ -47,7 +47,13 @@ FIRST_NUMBER_POS = re.compile(NUM)
 
 # Simple header/footer noise filters
 NOISE = re.compile(
-    r"^(page\s*\d+|confidential|laboratory report|patient:|dob:|collected:|reported:)",
+    r"^(?:"
+    r"page\s*\d+|confidential|laboratory\s*report|"
+    r"patient:|dob:|collected:|collection\s*time:?|reported:|report\s*summary|"
+    r"results\b|comprehensive\s*laboratory\s*report|test\s*result\s*units|reference\s*range\s*flag|"
+    r"metabolic\s*panel|lipid\s*profile|complete\s*blood\s*count|cbc\b|biochemistry\b|hematology\b|"
+    r"\u2022\s|[-\u00B7\u2022]\s"
+    r")",
     re.IGNORECASE,
 )
 

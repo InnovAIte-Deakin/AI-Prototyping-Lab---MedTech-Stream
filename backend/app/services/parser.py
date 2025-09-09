@@ -310,6 +310,22 @@ def _confidence(row: ParsedRow) -> float:
     return max(0.0, min(1.0, score))
 
 
+def _split_columns_raw(raw: str) -> list[str]:
+    # Split on pipes first to preserve column boundaries, then on 3+ spaces
+    if "|" in raw:
+        parts = [p for p in raw.split("|") if p and p.strip()]
+    else:
+        parts = [raw]
+    out: list[str] = []
+    for p in parts:
+        # If multiple columns separated by large gaps
+        if re.search(r"\s{3,}", p):
+            out.extend([s for s in re.split(r"\s{3,}", p) if s and s.strip()])
+        else:
+            out.append(p)
+    return out
+
+
 def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
     rows: list[ParsedRow] = []
     unparsed: list[str] = []
@@ -317,7 +333,10 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
     # Normalize newlines; split into lines
     pending_name: str | None = None
     for raw_line in text.splitlines():
-        line = _clean_line(raw_line)
+        # Break tables into column cells before cleaning to keep associations
+        segments = _split_columns_raw(raw_line) or [raw_line]
+        for segment in segments:
+            line = _clean_line(segment)
         if not line:
             continue
         if NOISE.search(line):
@@ -326,7 +345,7 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
         # Basic multi-line handling: if previous line looked like a name and this line has value, combine
         has_number = bool(FIRST_NUMBER_POS.search(line)) or bool(POS_NEG.search(line))
         if not has_number:
-            # Line without numbers: may be a name/header; stash and continue
+            # Line without numbers: may be a name/header; stash and continue to next segment
             if not META_NAME.search(line):
                 pending_name = line
             continue

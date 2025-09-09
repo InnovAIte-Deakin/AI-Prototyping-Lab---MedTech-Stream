@@ -32,6 +32,8 @@ export default function ParsePage() {
     next_steps: string[];
     disclaimer: string;
   }>(null);
+  const [extractedText, setExtractedText] = useState<string>('');
+  const [doctorView, setDoctorView] = useState<boolean>(false);
 
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -55,9 +57,10 @@ export default function ParsePage() {
         });
       }
       if (!res.ok) throw new Error(`Parse failed: ${res.status}`);
-      const data = (await res.json()) as { rows: Row[]; unparsed_lines: string[] };
+      const data = (await res.json()) as { rows: Row[]; unparsed_lines: string[]; extracted_text?: string };
       setRows(data.rows);
       setUnparsed(data.unparsed_lines);
+      setExtractedText(data.extracted_text || '');
     } catch (err: any) {
       setError(err.message || String(err));
     } finally {
@@ -146,7 +149,14 @@ export default function ParsePage() {
               <TBody>
                 {rows.map((r, i) => (
                   <TR key={i}>
-                    <TD>{r.test_name}</TD>
+                    <TD>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
+                        <span>{r.test_name}</span>
+                        {r.flag && r.flag !== 'normal' ? (
+                          <span className={`badge-flag ${r.flag}`}>{r.flag.toUpperCase()}</span>
+                        ) : null}
+                      </div>
+                    </TD>
                     <TD>
                       <Input
                         value={String(r.value)}
@@ -155,11 +165,7 @@ export default function ParsePage() {
                       />
                     </TD>
                     <TD>
-                      <Input
-                        value={r.unit ?? ''}
-                        onChange={(e) => updateRow(i, { unit: e.target.value })}
-                        aria-label="unit"
-                      />
+                      <Input value={r.unit ?? ''} onChange={(e) => updateRow(i, { unit: e.target.value })} aria-label="unit" />
                     </TD>
                     <TD>
                       <Input
@@ -175,10 +181,12 @@ export default function ParsePage() {
               </TBody>
             </Table>
           </div>
-          <div>
+          <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
             <Button variant="primary" onClick={onExplain} disabled={explaining}>
               {explaining ? 'Explaining…' : 'Explain'}
             </Button>
+            <Button variant="outline" onClick={() => window.print()} className="no-print">Print</Button>
+            <Button variant="outline" onClick={() => setDoctorView((v) => !v)}>{doctorView ? 'Hide Doctor View' : 'Show Doctor View'}</Button>
           </div>
         </div>
       )}
@@ -195,6 +203,45 @@ export default function ParsePage() {
               ))}
             </ul>
           </details>
+        </div>
+      )}
+
+      {extractedText && (
+        <div className="stack">
+          <details className="card">
+            <summary className="muted">Extracted text (debug)</summary>
+            <pre style={{ whiteSpace: 'pre-wrap' }}>{extractedText}</pre>
+          </details>
+        </div>
+      )}
+
+      {doctorView && rows.length > 0 && (
+        <div className="stack">
+          <h2>Doctor View</h2>
+          <div className="card doctor-summary">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Test</th>
+                  <th>Value</th>
+                  <th>Unit</th>
+                  <th>Reference</th>
+                  <th>Flag</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i}>
+                    <td>{r.test_name}</td>
+                    <td>{String(r.value)}</td>
+                    <td>{r.unit}</td>
+                    <td>{r.reference_range}</td>
+                    <td>{r.flag}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

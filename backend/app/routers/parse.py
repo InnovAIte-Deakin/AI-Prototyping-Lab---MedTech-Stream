@@ -118,4 +118,5 @@ async def parse_endpoint(
             for r in rows
         ],
         "unparsed_lines": unparsed,
+        "extracted_text": text_content or "",
     }

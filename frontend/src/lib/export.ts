@@ -1,6 +1,6 @@
 import type { ParsedRow } from "@/types/ui";
 
-const q = (s: string) => '"' + s.replaceAll('"', '""') + '"';
+const q = (s: string) => '"' + s.replace(/"/g, '""') + '"';
 
 export function rowsToCSV(rows: ParsedRow[]): string {
   const header = ['Test','Value','Unit','ReferenceRange','Flag','Confidence','Page'];
@@ -24,4 +24,3 @@ export function download(filename: string, content: string, mime='text/plain'){
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-

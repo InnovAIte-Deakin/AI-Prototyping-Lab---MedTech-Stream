@@ -4,7 +4,8 @@ import re
 from dataclasses import dataclass
 
 # Precompiled regexes for performance
-NUM = r"\d+(?:\.\d+)?"
+# Support optional thousands separators in numbers (e.g., 1,234.5)
+NUM = r"\d+(?:,\d{3})*(?:\.\d+)?"
 HYPHEN = r"[-–]"
 
 RANGE_X_Y = re.compile(rf"\b(?P<low>{NUM})\s*{HYPHEN}\s*(?P<high>{NUM})\b")
@@ -43,7 +44,8 @@ VALUE_WITH_UNIT = re.compile(
 POS_NEG = re.compile(r"\b(positive|negative|reactive|non[- ]reactive)\b", re.IGNORECASE)
 END_FLAG_TAIL = re.compile(r"(?i)(?:[\[(]?\s*)(?P<flag>High|Low|H|L|↑|↓)(?:\s*[\])])?\s*$")
 
-FIRST_NUMBER_POS = re.compile(NUM)
+# Avoid matching numbers that are part of an alphanumeric token (e.g., the '12' in 'B12')
+FIRST_NUMBER_POS = re.compile(rf"(?<![A-Za-z]){NUM}")
 
 # Simple header/footer noise filters
 NOISE = re.compile(
@@ -99,37 +101,40 @@ def _extract_range(
     # Returns (range_str, range_tuple, le, ge)
     m = REF_RANGE.search(segment) or REF_ANY.search(segment)
     if m:
-        low = float(m.group("low"))
-        high = float(m.group("high"))
+        low = float(m.group("low").replace(",", ""))
+        high = float(m.group("high").replace(",", ""))
         return f"{low}-{high}", (low, high), None, None
     m = PAREN_X_Y.search(segment)
     if m:
-        low = float(m.group("low"))
-        high = float(m.group("high"))
+        low = float(m.group("low").replace(",", ""))
+        high = float(m.group("high").replace(",", ""))
         return f"{low}-{high}", (low, high), None, None
     m = RANGE_X_Y.search(segment)
     if m:
-        low = float(m.group("low"))
-        high = float(m.group("high"))
+        low = float(m.group("low").replace(",", ""))
+        high = float(m.group("high").replace(",", ""))
         return f"{low}-{high}", (low, high), None, None
     m = RANGE_TO.search(segment)
     if m:
-        low = float(m.group("low"))
-        high = float(m.group("high"))
+        low = float(m.group("low").replace(",", ""))
+        high = float(m.group("high").replace(",", ""))
         return f"{low}-{high}", (low, high), None, None
     m = RANGE_LE.search(segment)
     if m:
-        le = float(m.group("le"))
+        le = float(m.group("le").replace(",", ""))
         return f"≤ {le}", None, le, None
     m = RANGE_ALT_LE.search(segment)
     if m:
-        le = float(m.group("le"))
+        le = float(m.group("le").replace(",", ""))
         return f"≤ {le}", None, le, None
     m = RANGE_GE.search(segment)
     if m:
-        ge = float(m.group("ge"))
+        ge = float(m.group("ge").replace(",", ""))
         return f"≥ {ge}", None, None, ge
     return None, None, None, None
+
+
+_COMP_VAL = re.compile(r"^(?P<comp><|>|≤|≥|<=|>=)\s*(?P<val>\d+(?:,\d{3})*(?:\.\d+)?)$")
 
 
 def _compute_flag(
@@ -140,6 +145,40 @@ def _compute_flag(
 ) -> str | None:
     # Non-numeric interpretations
     if isinstance(value, str):
+        # Comparator values like "<5" or "≥ 3.5"
+        m = _COMP_VAL.match(value.strip())
+        if m:
+            comp = m.group("comp")
+            try:
+                v_bound = float(m.group("val").replace(",", ""))
+            except Exception:
+                v_bound = None
+            if v_bound is not None:
+                # With a range, decide only if conclusively out of bounds
+                if range_tuple:
+                    low, high = range_tuple
+                    if comp in {"<", "<="} and v_bound <= low:
+                        return "low"
+                    if comp in {">", ">=", "≥"} and v_bound >= high:
+                        return "high"
+                    # Otherwise, inconclusive
+                    return None
+                # With threshold ranges, classify if comparator clearly violates threshold
+                if le is not None:
+                    # e.g., result "< 5" with rule "≤ 200" is normal; 
+                    # result "> 210" with rule "≤ 200" is high
+                    if comp in {"<", "<=", "≤"}:
+                        return "normal" if v_bound <= le else None
+                    if comp in {">", ">=", "≥"}:
+                        return "high" if v_bound > le else None
+                if ge is not None:
+                    if comp in {">", ">=", "≥"}:
+                        return "normal" if v_bound >= ge else None
+                    if comp in {"<", "<=", "≤"}:
+                        return "low" if v_bound < ge else None
+                return None
+
+        # Pos/Neg style
         val = value.lower()
         if val in {"positive", "reactive"}:
             return "abnormal"
@@ -147,6 +186,7 @@ def _compute_flag(
             return "normal"
         return None
 
+    # Numeric comparisons
     # Numeric comparisons
     v = float(value)
     if range_tuple:

@@ -8,6 +8,11 @@ import fitz  # PyMuPDF
 from PIL import Image
 
 
+def _ocr_enabled() -> bool:
+    """Check if OCR is enabled via env flag (default: enabled)."""
+    return os.getenv("ENABLE_OCR", "1").strip() not in {"0", "false", "False"}
+
+
 def _ocr_available() -> bool:
     # pytesseract import is lazy to allow running without OCR installed
     try:
@@ -29,7 +34,7 @@ def _do_ocr_image(img: Image.Image, lang: Optional[str] = None) -> str:
 
 
 def extract_text_from_image_bytes(data: bytes, lang: Optional[str] = None) -> str:
-    if not _ocr_available():
+    if not (_ocr_enabled() and _ocr_available()):
         return ""
     try:
         img = Image.open(io.BytesIO(data))
@@ -60,8 +65,8 @@ def extract_text_from_pdf_bytes(
             if combined:
                 return combined
 
-            # Second pass: OCR if available
-            if not _ocr_available():
+            # Second pass: OCR if available and enabled
+            if not (_ocr_enabled() and _ocr_available()):
                 return ""
             text_parts.clear()
             for i, page in enumerate(doc):
@@ -74,4 +79,3 @@ def extract_text_from_pdf_bytes(
             return "\n".join(text_parts)
     except Exception:
         return ""
-

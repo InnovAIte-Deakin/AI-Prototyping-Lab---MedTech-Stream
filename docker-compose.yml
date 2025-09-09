@@ -23,6 +23,9 @@ services:
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_API_BASE=${OPENAI_API_BASE:-https://api.openai.com/v1}
     ports:
       - "8000:8000"
 

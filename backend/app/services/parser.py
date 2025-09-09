@@ -4,8 +4,9 @@ import re
 from dataclasses import dataclass
 
 # Precompiled regexes for performance
-# Support optional thousands separators in numbers (e.g., 1,234.5)
-NUM = r"\d+(?:,\d{3})*(?:\.\d+)?"
+# Number pattern supporting either plain digits, or thousands groups, with optional decimal using '.' or ','.
+# Examples: "13.2", "1,234.5", "5,4", "1,234", "210"
+NUM = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:[\.,]\d+)?"
 HYPHEN = r"[-–]"
 
 RANGE_X_Y = re.compile(rf"\b(?P<low>{NUM})\s*{HYPHEN}\s*(?P<high>{NUM})\b")
@@ -47,6 +48,89 @@ END_FLAG_TAIL = re.compile(r"(?i)(?:[\[(]?\s*)(?P<flag>High|Low|H|L|↑|↓)(?:\
 # Avoid matching numbers that are part of an alphanumeric token (e.g., the '12' in 'B12')
 FIRST_NUMBER_POS = re.compile(rf"(?<![A-Za-z]){NUM}")
 
+
+def _normalize_number_str(s: str) -> str:
+    s = s.strip()
+    if "," in s and "." in s:
+        # Treat commas as thousands separators when both present
+        return s.replace(",", "")
+    if "," in s and "." not in s:
+        # If matches thousands grouping (e.g., 1,234 or 12,345,678), remove commas
+        if re.fullmatch(r"\d{1,3}(?:,\d{3})+", s):
+            return s.replace(",", "")
+        # Else assume decimal comma
+        return s.replace(",", ".")
+    return s
+
+
+def _to_float(s: str) -> float:
+    return float(_normalize_number_str(s))
+
+
+def _normalize_unit(unit: str | None) -> str | None:
+    if not unit:
+        return None
+    u = unit.replace("µ", "μ")
+    lu = u.lower()
+    mapping = {
+        "mg/dl": "mg/dL",
+        "g/dl": "g/dL",
+        "ng/ml": "ng/mL",
+        "pg/ml": "pg/mL",
+        "miu/l": "mIU/L",
+        "iu/l": "IU/L",
+        "u/l": "U/L",
+        "uiu/ml": "μIU/mL",
+        "μiu/ml": "μIU/mL",
+        "µiu/ml": "μIU/mL",
+        "x10^9/l": "x10^9/L",
+        "x10^3/μl": "x10^3/μL",
+        "x10^3/ul": "x10^3/μL",
+        "10^3/μl": "10^3/μL",
+        "10^3/ul": "10^3/μL",
+        "mmol/l": "mmol/L",
+        "%": "%",
+    }
+    if lu in mapping:
+        return mapping[lu]
+    # No change for plain scientific units beginning with '10^'
+    # Ensure uppercase L and normalized micro symbol
+    u = u.replace("/l", "/L")
+    return u
+
+
+def _canonicalize_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    base = re.sub(r"[^A-Za-z0-9\s]+", " ", name).strip().lower()
+    base = re.sub(r"\s+", " ", base)
+    mapping = {
+        "hba1c": "Hemoglobin A1c",
+        "hemoglobin a1c": "Hemoglobin A1c",
+        "alt": "ALT",
+        "sgpt": "ALT",
+        "ast": "AST",
+        "sgot": "AST",
+        "hdl": "HDL Cholesterol",
+        "ldl": "LDL Cholesterol",
+        "tsh": "TSH",
+        "wbc": "WBC",
+        "rbc": "RBC",
+        "hbsag": "Hep B Surface Antigen",
+        "crp": "CRP",
+        "vitamin b12": "Vitamin B12",
+        "haemoglobin": "Hemoglobin",
+        "hemoglobin": "Hemoglobin",
+        "vitamin d": "Vitamin D",
+        "25 oh vitamin d": "Vitamin D (25-OH)",
+    }
+    if base in mapping:
+        return mapping[base]
+    for k, v in mapping.items():
+        if base.startswith(k):
+            return v
+    return name
+
 # Simple header/footer noise filters
 NOISE = re.compile(
     r"^(?:"
@@ -54,6 +138,7 @@ NOISE = re.compile(
     r"patient:|dob:|collected:|collection\s*time:?|reported:|report\s*summary|"
     r"results\b|comprehensive\s*laboratory\s*report|test\s*result\s*units|reference\s*range\s*flag|"
     r"metabolic\s*panel|lipid\s*profile|complete\s*blood\s*count|cbc\b|biochemistry\b|hematology\b|"
+    r"method:?|analy[sz]er:?|specimen:?|clinical\s*correlation|watermark|do\s*not\s*copy|for\s*information|"
     r"\u2022\s|[-\u00B7\u2022]\s"
     r")",
     re.IGNORECASE,
@@ -65,7 +150,8 @@ META_NAME = re.compile(
     r"^(report\s*date|referring\s*doctor|doctor\b|physician\b|collection\s*time|collected\s*time|"
     r"reported\s*time|accession\s*no\.?|sample\s*(?:id|no\.?|type)|specimen\s*(?:id|type)|"
     r"patient\s*(?:name|id|mrn|uhid)?\b|age\b|sex\b|gender\b|lab\s*(?:no\.?|id)|barcode\b|"
-    r"receipt\s*date|receipt\s*no\.?|clinic\b|department\b|ward\b|hospital\b)",
+    r"receipt\s*date|receipt\s*no\.?|clinic\b|department\b|ward\b|hospital\b|"
+    r"method\b|analy[sz]er\b|specimen\b|comment\b|narrative\b)",
     re.IGNORECASE,
 )
 
@@ -101,40 +187,40 @@ def _extract_range(
     # Returns (range_str, range_tuple, le, ge)
     m = REF_RANGE.search(segment) or REF_ANY.search(segment)
     if m:
-        low = float(m.group("low").replace(",", ""))
-        high = float(m.group("high").replace(",", ""))
+        low = _to_float(m.group("low"))
+        high = _to_float(m.group("high"))
         return f"{low}-{high}", (low, high), None, None
     m = PAREN_X_Y.search(segment)
     if m:
-        low = float(m.group("low").replace(",", ""))
-        high = float(m.group("high").replace(",", ""))
+        low = _to_float(m.group("low"))
+        high = _to_float(m.group("high"))
         return f"{low}-{high}", (low, high), None, None
     m = RANGE_X_Y.search(segment)
     if m:
-        low = float(m.group("low").replace(",", ""))
-        high = float(m.group("high").replace(",", ""))
+        low = _to_float(m.group("low"))
+        high = _to_float(m.group("high"))
         return f"{low}-{high}", (low, high), None, None
     m = RANGE_TO.search(segment)
     if m:
-        low = float(m.group("low").replace(",", ""))
-        high = float(m.group("high").replace(",", ""))
+        low = _to_float(m.group("low"))
+        high = _to_float(m.group("high"))
         return f"{low}-{high}", (low, high), None, None
     m = RANGE_LE.search(segment)
     if m:
-        le = float(m.group("le").replace(",", ""))
+        le = _to_float(m.group("le"))
         return f"≤ {le}", None, le, None
     m = RANGE_ALT_LE.search(segment)
     if m:
-        le = float(m.group("le").replace(",", ""))
+        le = _to_float(m.group("le"))
         return f"≤ {le}", None, le, None
     m = RANGE_GE.search(segment)
     if m:
-        ge = float(m.group("ge").replace(",", ""))
+        ge = _to_float(m.group("ge"))
         return f"≥ {ge}", None, None, ge
     return None, None, None, None
 
 
-_COMP_VAL = re.compile(r"^(?P<comp><|>|≤|≥|<=|>=)\s*(?P<val>\d+(?:,\d{3})*(?:\.\d+)?)$")
+_COMP_VAL = re.compile(rf"^(?P<comp><|>|≤|≥|<=|>=)\s*(?P<val>{NUM})$")
 
 
 def _compute_flag(
@@ -150,19 +236,24 @@ def _compute_flag(
         if m:
             comp = m.group("comp")
             try:
-                v_bound = float(m.group("val").replace(",", ""))
+                v_bound = _to_float(m.group("val"))
             except Exception:
                 v_bound = None
             if v_bound is not None:
-                # With a range, decide only if conclusively out of bounds
+                # With a range, decide when conclusively out or clearly under the upper bound for '<'
                 if range_tuple:
                     low, high = range_tuple
-                    if comp in {"<", "<="} and v_bound <= low:
-                        return "low"
-                    if comp in {">", ">=", "≥"} and v_bound >= high:
-                        return "high"
-                    # Otherwise, inconclusive
-                    return None
+                    if comp in {"<", "<=", "≤"}:
+                        if v_bound < low:
+                            return "low"
+                        if v_bound <= high:
+                            return "normal"
+                        return None
+                    if comp in {">", ">=", "≥"}:
+                        if v_bound > high:
+                            return "high"
+                        # Otherwise not decisive against lower bound
+                        return None
                 # With threshold ranges, classify if comparator clearly violates threshold
                 if le is not None:
                     # e.g., result "< 5" with rule "≤ 200" is normal; 
@@ -204,19 +295,19 @@ def _compute_flag(
 
 
 def _confidence(row: ParsedRow) -> float:
-    present = 0
-    total = 5  # test_name, value, unit, reference_range, flag
+    # Weighted confidence: value+unit carry more weight than free-text range or flag
+    score = 0.0
     if row.test_name:
-        present += 1
+        score += 0.2
     if row.value is not None:
-        present += 1
+        score += 0.4
     if row.unit:
-        present += 1
+        score += 0.2
     if row.reference_range:
-        present += 1
+        score += 0.15
     if row.flag:
-        present += 1
-    return min(1.0, present / total)
+        score += 0.05
+    return max(0.0, min(1.0, score))
 
 
 def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
@@ -224,12 +315,24 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
     unparsed: list[str] = []
 
     # Normalize newlines; split into lines
+    pending_name: str | None = None
     for raw_line in text.splitlines():
         line = _clean_line(raw_line)
         if not line:
             continue
         if NOISE.search(line):
             continue
+
+        # Basic multi-line handling: if previous line looked like a name and this line has value, combine
+        has_number = bool(FIRST_NUMBER_POS.search(line)) or bool(POS_NEG.search(line))
+        if not has_number:
+            # Line without numbers: may be a name/header; stash and continue
+            if not META_NAME.search(line):
+                pending_name = line
+            continue
+        if pending_name:
+            line = f"{pending_name} {line}"
+            pending_name = None
 
         # Find first numeric group; if none, check for Positive/Negative rows with colon
         first_num_match = FIRST_NUMBER_POS.search(line)
@@ -254,14 +357,15 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
             if vm:
                 try:
                     comp = (vm.group("comp") or "").strip()
-                    # If a comparator is present (e.g., '<5'), preserve as string for safety
+                    # Normalize number string (decimal/comma) before casting
+                    raw_val = vm.group("val")
                     if comp:
-                        value = f"{comp}{vm.group('val')}"
+                        value = f"{comp}{raw_val}"
                     else:
-                        value = float(vm.group("val"))
+                        value = _to_float(raw_val)
                 except Exception:
                     value = vm.group("val")
-                unit = vm.group("unit") or None
+                unit = _normalize_unit(vm.group("unit") or None)
                 # For name-splitting, prefer the start of the numeric value we captured
                 split_pos = vm.start("val")
 
@@ -295,6 +399,9 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
                     explicit_flag = "high"
                 elif tok in {"l", "low", "↓"}:
                     explicit_flag = "low"
+
+        # Canonicalize the test name for consistency
+        name = _canonicalize_name(name)
 
         if name and value is not None:
             flag = _compute_flag(value, range_tuple, le, ge)

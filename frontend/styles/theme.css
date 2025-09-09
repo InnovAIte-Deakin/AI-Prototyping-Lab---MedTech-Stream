@@ -96,3 +96,10 @@ footer.footer { color: var(--muted-ink); font-size: 14px; border-top:1px solid v
   .no-print { display:none !important; }
   .doctor-summary { border:none; box-shadow:none; }
 }
+
+/* Unparsed lines: keep list compact and readable */
+.unparsed-list li {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -187,7 +187,7 @@ export default function ParsePage() {
         <div className="stack">
           <details className="card">
             <summary className="muted">Unparsed lines ({unparsed.length})</summary>
-            <ul>
+            <ul className="unparsed-list">
               {unparsed.map((l, i) => (
                 <li key={i} className="muted">
                   {l}

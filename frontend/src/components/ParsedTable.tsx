@@ -27,8 +27,10 @@ export function ParsedTable(){
               <TH>Value</TH>
               <TH>Unit</TH>
               <TH>Reference</TH>
+              <TH>Comp</TH>
               <TH>Flag</TH>
               <TH>Conf</TH>
+              <TH>Pg</TH>
             </TR>
           </THead>
           <TBody>
@@ -38,8 +40,10 @@ export function ParsedTable(){
                 <TD>{String(r.value)}</TD>
                 <TD>{r.unit ?? ''}</TD>
                 <TD>{r.reference_range ?? ''}</TD>
-                <TD>{r.flag ?? ''}</TD>
-                <TD>{(r.confidence ?? 0).toFixed(2)}</TD>
+                <TD>{(r as any).comparator ?? ''}</TD>
+                <TD>{r.flag ? <span className={`badge-flag ${r.flag}`}>{String(r.flag).toUpperCase()}</span> : ''}</TD>
+                <TD style={{ textAlign: 'right' }}>{(r.confidence ?? 0).toFixed(2)}</TD>
+                <TD>{(r as any).page ?? ''}</TD>
               </TR>
             ))}
           </TBody>
@@ -48,4 +52,3 @@ export function ParsedTable(){
     </div>
   );
 }
-

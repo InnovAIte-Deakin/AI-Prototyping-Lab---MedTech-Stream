@@ -105,18 +105,31 @@ async def parse_endpoint(
 
     rows, unparsed = parse_text(text_content or "")
     # Convert dataclasses to dicts
+    payload_rows = []
+    for i, r in enumerate(rows, start=1):
+        d = {
+            "id": f"r{i}",
+            "test_name": r.test_name,
+            "test_name_raw": r.test_name_raw,
+            "value": r.value,
+            "value_text": r.value_text or (str(r.value) if r.value is not None else None),
+            "value_num": r.value_num,
+            "unit": r.unit,
+            "unit_raw": r.unit_raw,
+            "reference_range": r.reference_range,
+            "comparator": r.comparator,
+            "flag": r.flag,
+            "confidence": r.confidence,
+            "page": r.page,
+            "bbox": r.bbox,
+            "raw_line": r.raw_line,
+        }
+        payload_rows.append(d)
+
     return {
-        "rows": [
-            {
-                "test_name": r.test_name,
-                "value": r.value,
-                "unit": r.unit,
-                "reference_range": r.reference_range,
-                "flag": r.flag,
-                "confidence": r.confidence,
-            }
-            for r in rows
-        ],
+        "rows": payload_rows,
         "unparsed_lines": unparsed,
+        "unparsed": [{"page": None, "text": s} for s in unparsed],
+        "meta": {},
         "extracted_text": text_content or "",
     }

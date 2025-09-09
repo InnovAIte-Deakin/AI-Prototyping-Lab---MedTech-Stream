@@ -9,18 +9,21 @@ export function HealthGate({ children }: { children: React.ReactNode }){
 
   useEffect(() => {
     let active = true;
-    checkHealth(backend).then(h => {
+    const t0 = performance.now();
+    (async () => {
+      const h = await checkHealth(backend);
+      const rtt = Math.round(performance.now() - t0);
       if (!active) return;
-      if (h.ok) { setReady(true); setMsg(`Backend OK: ${h.backendUrl}`); }
+      if (h.ok) { setReady(true); setMsg(`Backend OK: ${h.backendUrl} • ${rtt}ms`); }
       else { setReady(false); setMsg(`Backend unreachable: ${h.backendUrl}`); }
-    });
+    })();
     return () => { active = false; };
   }, [backend]);
 
   if (!ready) {
     return (
       <div className="h-screen grid place-items-center">
-        <div className="card" style={{ maxWidth: 520 }}>
+        <div className="card" role="alert" aria-live="polite" style={{ maxWidth: 520 }}>
           <strong>{msg}</strong>
           <p className="muted" style={{ marginTop: '.5rem' }}>Set NEXT_PUBLIC_BACKEND_URL if different.</p>
         </div>
@@ -29,4 +32,3 @@ export function HealthGate({ children }: { children: React.ReactNode }){
   }
   return <>{children}</>;
 }
-

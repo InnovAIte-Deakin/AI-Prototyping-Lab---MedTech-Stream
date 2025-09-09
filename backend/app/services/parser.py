@@ -169,6 +169,15 @@ class ParsedRow:
     reference_range: str | None
     flag: str | None
     confidence: float
+    # Optional enriched fields for UI traceability/canonicalization
+    test_name_raw: str | None = None
+    unit_raw: str | None = None
+    comparator: str | None = None
+    value_text: str | None = None
+    value_num: float | None = None
+    page: int | None = None
+    bbox: tuple[float, float, float, float] | None = None
+    raw_line: str | None = None
 
 
 def _clean_line(line: str) -> str:
@@ -420,12 +429,24 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
                     explicit_flag = "low"
 
         # Canonicalize the test name for consistency
+        name_raw = name
         name = _canonicalize_name(name)
 
         if name and value is not None:
             flag = _compute_flag(value, range_tuple, le, ge)
             if explicit_flag:
                 flag = explicit_flag
+            # Compute enriched fields
+            comp_str = comp if 'comp' in locals() else None
+            value_text = (
+                f"{comp_str}{raw_val}" if comp_str and 'raw_val' in locals() else (str(value))
+            )
+            value_num = None
+            try:
+                if not comp_str and isinstance(value, (int, float)):
+                    value_num = float(value)
+            except Exception:
+                value_num = None
             row = ParsedRow(
                 test_name=name,
                 value=value,
@@ -433,6 +454,14 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
                 reference_range=reference_range,
                 flag=flag,
                 confidence=0.0,  # fill below
+                test_name_raw=name_raw,
+                unit_raw=(vm.group("unit") if 'vm' in locals() and vm else None),
+                comparator=comp_str,
+                value_text=value_text,
+                value_num=value_num,
+                page=None,
+                bbox=None,
+                raw_line=line,
             )
             row.confidence = _confidence(row)
             rows.append(row)

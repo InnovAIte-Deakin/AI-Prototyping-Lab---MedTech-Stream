@@ -1,23 +1,19 @@
-# Build and run a production Next.js image
-FROM node:20-alpine AS base
+FROM node:20-alpine AS deps
 WORKDIR /app
+COPY package*.json ./
+RUN npm ci || npm i
 
-# Build args for injecting public env at build time
+FROM node:20-alpine AS builder
+WORKDIR /app
 ARG NEXT_PUBLIC_BACKEND_URL
 ENV NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
-
-# Install dependencies first for better caching
-COPY package.json package-lock.json* .npmrc* ./
-RUN npm install --no-audit --no-fund
-
-# Copy source and build
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-EXPOSE 3000
+FROM node:20-alpine AS runner
+WORKDIR /app
 ENV NODE_ENV=production
-
-# Run as non-root
-USER node
-
-CMD ["npm", "run", "start"]
+COPY --from=builder /app ./
+EXPOSE 3000
+CMD ["npm","run","start","--","-p","3000","-H","0.0.0.0"]

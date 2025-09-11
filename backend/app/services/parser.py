@@ -48,6 +48,14 @@ END_FLAG_TAIL = re.compile(r"(?i)(?:[\[(]?\s*)(?P<flag>High|Low|H|L|↑|↓)(?:\
 # Avoid matching numbers that are part of an alphanumeric token (e.g., the '12' in 'B12')
 FIRST_NUMBER_POS = re.compile(rf"(?<![A-Za-z]){NUM}")
 
+# Additional filters for obvious non-data lines
+SECTION_HEADER = re.compile(
+    r"^(?:comprehensive\s+metabolic\s+panel|complete\s+blood\s+count|lipid\s+panel|thyroid\s+function|vitamins|edge[-\s]*case.*parsing)\s*\(?$",
+    re.IGNORECASE,
+)
+ONLY_COMPARATOR = re.compile(rf"^\(?\s*(?:≤|>=|≥|<=|<|>)\s*{NUM}\s*\)?\s*$")
+BARE_PAREN = re.compile(r"^\(\s*\)?$")
+
 
 def _normalize_number_str(s: str) -> str:
     s = s.strip()
@@ -147,7 +155,7 @@ NOISE = re.compile(
 # Common metadata fields we want to skip entirely if they appear as the 'test name'.
 # Keep patterns specific to avoid excluding genuine assays like "Prothrombin Time".
 META_NAME = re.compile(
-    r"^(report\s*date|referring\s*doctor|doctor\b|physician\b|collection\s*time|collected\s*time|"
+    r"^(report\s*id|mrn|location|report\s*date|referring\s*doctor|doctor\b|physician\b|collection\s*time|collected\s*time|"
     r"reported\s*time|accession\s*no\.?|sample\s*(?:id|no\.?|type)|specimen\s*(?:id|type)|"
     r"patient\s*(?:name|id|mrn|uhid)?\b|age\b|sex\b|gender\b|lab\s*(?:no\.?|id)|barcode\b|"
     r"receipt\s*date|receipt\s*no\.?|clinic\b|department\b|ward\b|hospital\b|"
@@ -346,10 +354,17 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
         segments = _split_columns_raw(raw_line) or [raw_line]
         for segment in segments:
             line = _clean_line(segment)
-        if not line:
-            continue
-        if NOISE.search(line):
-            continue
+            if not line:
+                continue
+            if NOISE.search(line):
+                continue
+            # skip obvious non-data lines
+            if SECTION_HEADER.match(line):
+                pending_name = None
+                continue
+            if BARE_PAREN.match(line) or ONLY_COMPARATOR.match(line):
+                unparsed.append(line)
+                continue
 
         # Basic multi-line handling: if previous line looked like a name and this line has value, combine
         has_number = bool(FIRST_NUMBER_POS.search(line)) or bool(POS_NEG.search(line))

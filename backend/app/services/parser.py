@@ -55,6 +55,7 @@ SECTION_HEADER = re.compile(
 )
 ONLY_COMPARATOR = re.compile(rf"^\(?\s*(?:≤|>=|≥|<=|<|>)\s*{NUM}\s*\)?\s*$")
 BARE_PAREN = re.compile(r"^\(\s*\)?$")
+JUNK_NAME = re.compile(r"^[\s()\[\]{}·•≤≥]+$")
 
 
 def _normalize_number_str(s: str) -> str:
@@ -147,6 +148,7 @@ NOISE = re.compile(
     r"results\b|comprehensive\s*laboratory\s*report|test\s*result\s*units|reference\s*range\s*flag|"
     r"metabolic\s*panel|lipid\s*profile|complete\s*blood\s*count|cbc\b|biochemistry\b|hematology\b|"
     r"method:?|analy[sz]er:?|specimen:?|clinical\s*correlation|watermark|do\s*not\s*copy|for\s*information|"
+    r"note:|end\s*of\s*report|"
     r"\u2022\s|[-\u00B7\u2022]\s"
     r")",
     re.IGNORECASE,
@@ -160,6 +162,13 @@ META_NAME = re.compile(
     r"patient\s*(?:name|id|mrn|uhid)?\b|age\b|sex\b|gender\b|lab\s*(?:no\.?|id)|barcode\b|"
     r"receipt\s*date|receipt\s*no\.?|clinic\b|department\b|ward\b|hospital\b|"
     r"method\b|analy[sz]er\b|specimen\b|comment\b|narrative\b)",
+    re.IGNORECASE,
+)
+
+# Broader metadata tokens that may appear anywhere in a header-like field
+ANY_META_TOKEN = re.compile(
+    r"\b(mrn|patient\s*(?:name|id|mrn|uhid)|report\s*id|accession\s*(?:no\.?|number)|"
+    r"location|clinic|department|ward|hospital|laboratory\s*(?:id|number)?|lab\s*(?:no\.?|id)|barcode|dob)\b",
     re.IGNORECASE,
 )
 
@@ -419,14 +428,36 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
             if split_pos is not None:
                 # Test name is the left part before first number
                 name = line[: split_pos].strip(" -:\t")
+                # Drop junk-only prefixes like '(' or '≤' that arise from PDF splits
+                if name and JUNK_NAME.fullmatch(name):
+                    name = None
             else:
                 # No number: use part before colon as name if present
                 if ":" in line:
                     name = line.split(":", 1)[0].strip()
 
             # Drop lines that are clearly metadata headers/fields
-            if name and META_NAME.search(name):
+            if name and (META_NAME.search(name) or ANY_META_TOKEN.search(name)):
                 # treat as noise rather than an unparsed error line
+                continue
+
+            # If the segment starts with junk-only prefix (e.g., '(') and carries only a range,
+            # attach that range to the previous parsed row when possible, instead of creating a new row.
+            if name is None:
+                # Ignore any accidentally captured numeric value for junk-name segments
+                value = None
+                if reference_range and rows:
+                    last = rows[-1]
+                    if last.reference_range is None:
+                        last.reference_range = reference_range
+                        # Recompute flag for the last row with the new range constraints
+                        new_flag = _compute_flag(last.value, range_tuple, le, ge)
+                        if new_flag:
+                            last.flag = new_flag
+                        last.confidence = _confidence(last)
+                        continue
+                # Otherwise treat as unparsed noise for visibility
+                unparsed.append(line)
                 continue
 
             # Explicit flag markers like 'H', 'L', '↑', '↓' appearing after the value

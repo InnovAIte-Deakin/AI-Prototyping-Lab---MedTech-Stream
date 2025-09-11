@@ -21,8 +21,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </a>
             <nav aria-label="Primary">
               <ul style={{ display: 'flex', gap: '0.75rem', listStyle: 'none', margin: 0, padding: 0 }}>
-                <li><a href="/" className="btn btn-outline">Home</a></li>
-                <li><a href="/parse" className="btn btn-primary">Parse</a></li>
+                <li><a href="/" className="btn btn-primary">Home</a></li>
                 <li><a href="/health" className="btn btn-outline">Health</a></li>
                 <li><ThemeToggle /></li>
               </ul>

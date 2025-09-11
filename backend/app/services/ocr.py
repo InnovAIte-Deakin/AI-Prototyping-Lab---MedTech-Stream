@@ -49,33 +49,53 @@ def extract_text_from_pdf_bytes(
     ocr_lang: Optional[str] = None,
 ) -> str:
     """
-    Extract text from a PDF. Use text layer first; if empty, fall back to OCR per page.
+    Extract text from a PDF.
+
+    Strategy:
+    - Prefer text layer for each page when it has sufficient alphabetic content.
+    - If a page's text layer looks number-heavy (alphabetic-to-numeric char ratio < 0.4),
+      and OCR is enabled/available, run OCR for that page and prefer the OCR text.
+    - If a page has no text layer at all, fall back to OCR for that page (when enabled).
     """
     text_parts: list[str] = []
+
+    def _alpha_num_ratio(s: str) -> float:
+        letters = sum(1 for ch in s if ch.isalpha())
+        digits = sum(1 for ch in s if ch.isdigit())
+        if digits == 0:
+            # If there are no digits, treat as sufficiently alphabetic
+            return float("inf") if letters > 0 else 0.0
+        return letters / digits
     try:
         with fitz.open(stream=io.BytesIO(data), filetype="pdf") as doc:
-            # First pass: text layer
+            use_ocr = _ocr_enabled() and _ocr_available()
             for i, page in enumerate(doc):
                 if i >= max_pages:
                     break
-                t = page.get_text("text") or ""
-                if t.strip():
-                    text_parts.append(t)
-            combined = "\n".join(text_parts).strip()
-            if combined:
-                return combined
+                t = (page.get_text("text") or "").strip()
+                if not t:
+                    if use_ocr:
+                        pix = page.get_pixmap(dpi=200)
+                        img = Image.open(io.BytesIO(pix.tobytes("png")))
+                        t_ocr = _do_ocr_image(img, lang=ocr_lang)
+                        text_parts.append(t_ocr)
+                    # else, append nothing for this page
+                    continue
 
-            # Second pass: OCR if available and enabled
-            if not (_ocr_enabled() and _ocr_available()):
-                return ""
-            text_parts.clear()
-            for i, page in enumerate(doc):
-                if i >= max_pages:
-                    break
-                # Render to image at higher DPI for better OCR
-                pix = page.get_pixmap(dpi=200)
-                img = Image.open(io.BytesIO(pix.tobytes("png")))
-                text_parts.append(_do_ocr_image(img, lang=ocr_lang))
+                # Heuristic: if text layer is number-heavy, prefer OCR
+                if use_ocr and _alpha_num_ratio(t) < 0.4:
+                    try:
+                        pix = page.get_pixmap(dpi=200)
+                        img = Image.open(io.BytesIO(pix.tobytes("png")))
+                        t_ocr = (_do_ocr_image(img, lang=ocr_lang) or "").strip()
+                        if t_ocr:
+                            text_parts.append(t_ocr)
+                            continue
+                    except Exception:
+                        # If OCR fails for this page, fall back to text layer
+                        pass
+
+                text_parts.append(t)
             return "\n".join(text_parts)
     except Exception:
         return ""

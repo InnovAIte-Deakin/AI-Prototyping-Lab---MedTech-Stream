@@ -42,7 +42,7 @@ VALUE_WITH_UNIT = re.compile(
     rf"(?<![A-Za-z0-9])(?P<comp><|>|≤|≥|<=|>=)?\s*(?P<val>{NUM})\s*(?P<unit>(?:{UNIT_TOKEN}))?\b"
 )
 
-POS_NEG = re.compile(r"\b(positive|negative|reactive|non[- ]reactive)\b", re.IGNORECASE)
+POS_NEG = re.compile(r"\b(positive|negative|reactive|non[- ]?reactive)\b", re.IGNORECASE)
 END_FLAG_TAIL = re.compile(r"(?i)(?:[\[(]?\s*)(?P<flag>High|Low|H|L|↑|↓)(?:\s*[\])])?\s*$")
 
 # Avoid matching numbers that are part of an alphanumeric token (e.g., the '12' in 'B12')
@@ -290,7 +290,7 @@ def _compute_flag(
         val = value.lower()
         if val in {"positive", "reactive"}:
             return "abnormal"
-        if val in {"negative", "non-reactive", "non reactive"}:
+        if val in {"negative", "non-reactive", "non reactive", "nonreactive"}:
             return "normal"
         return None
 
@@ -366,122 +366,119 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
                 unparsed.append(line)
                 continue
 
-        # Basic multi-line handling: if previous line looked like a name and this line has value, combine
-        has_number = bool(FIRST_NUMBER_POS.search(line)) or bool(POS_NEG.search(line))
-        if not has_number:
-            # Line without numbers: may be a name/header; stash and continue to next segment
-            if not META_NAME.search(line):
-                pending_name = line
-            continue
-        if pending_name:
-            line = f"{pending_name} {line}"
-            pending_name = None
+            # Basic multi-line handling: if previous line looked like a name and this line has value, combine
+            has_number = bool(FIRST_NUMBER_POS.search(line)) or bool(POS_NEG.search(line))
+            if not has_number:
+                # Line without numbers: may be a name/header; stash and continue to next segment
+                if not META_NAME.search(line):
+                    pending_name = line
+                continue
+            if pending_name:
+                line = f"{pending_name} {line}"
+                pending_name = None
 
-        # Find first numeric group; if none, check for Positive/Negative rows with colon
-        first_num_match = FIRST_NUMBER_POS.search(line)
-        split_pos: int | None = first_num_match.start() if first_num_match else None
-        name: str | None = None
-        value: float | str | None = None
-        unit: str | None = None
-        reference_range: str | None = None
+            # Find first numeric group; if none, check for Positive/Negative rows with colon
+            first_num_match = FIRST_NUMBER_POS.search(line)
+            split_pos: int | None = first_num_match.start() if first_num_match else None
+            name: str | None = None
+            value: float | str | None = None
+            unit: str | None = None
+            reference_range: str | None = None
 
-        # Range detection anywhere on line
-        range_str, range_tuple, le, ge = _extract_range(line)
-        reference_range = range_str
+            # Range detection anywhere on line
+            range_str, range_tuple, le, ge = _extract_range(line)
+            reference_range = range_str
 
-        # Positive/Negative detection takes precedence over numeric extraction
-        pm = POS_NEG.search(line)
-        if pm:
-            value = pm.group(1).capitalize()
-            split_pos = None  # ignore numeric tokens in the name split
-        else:
-            # Value + unit
-            vm = VALUE_WITH_UNIT.search(line)
-            if vm:
-                try:
-                    comp = (vm.group("comp") or "").strip()
-                    # Normalize number string (decimal/comma) before casting
-                    raw_val = vm.group("val")
-                    if comp:
-                        value = f"{comp}{raw_val}"
-                    else:
-                        value = _to_float(raw_val)
-                except Exception:
-                    value = vm.group("val")
-                unit = _normalize_unit(vm.group("unit") or None)
-                # For name-splitting, prefer the start of the numeric value we captured
-                split_pos = vm.start("val")
+            # Positive/Negative detection takes precedence over numeric extraction
+            # Reset per-line extraction state to avoid leaking from previous segments
+            vm = None
+            comp: str | None = None
+            raw_val: str | None = None
+            pm = POS_NEG.search(line)
+            if pm:
+                value = pm.group(1).capitalize()
+                split_pos = None  # ignore numeric tokens in the name split
+            else:
+                # Value + unit
+                vm = VALUE_WITH_UNIT.search(line)
+                if vm:
+                    try:
+                        comp = (vm.group("comp") or None)
+                        # Normalize number string (decimal/comma) before casting
+                        raw_val = vm.group("val")
+                        if comp:
+                            value = f"{comp}{raw_val}"
+                        else:
+                            value = _to_float(raw_val)
+                    except Exception:
+                        value = vm.group("val")
+                    unit = _normalize_unit(vm.group("unit") or None)
+                    # For name-splitting, prefer the start of the numeric value we captured
+                    split_pos = vm.start("val")
 
-        if split_pos is not None:
-            # Test name is the left part before first number
-            name = line[: split_pos].strip(" -:\t")
-        else:
-            # No number: use part before colon as name if present
-            if ":" in line:
-                name = line.split(":", 1)[0].strip()
+            if split_pos is not None:
+                # Test name is the left part before first number
+                name = line[: split_pos].strip(" -:\t")
+            else:
+                # No number: use part before colon as name if present
+                if ":" in line:
+                    name = line.split(":", 1)[0].strip()
 
-        # Drop lines that are clearly metadata headers/fields
-        if name and META_NAME.search(name):
-            # treat as noise rather than an unparsed error line
-            continue
+            # Drop lines that are clearly metadata headers/fields
+            if name and META_NAME.search(name):
+                # treat as noise rather than an unparsed error line
+                continue
 
-        # Explicit flag markers like 'H', 'L', '↑', '↓' appearing after the value
-        explicit_flag: str | None = None
-        # Only search in the tail after the numeric value/unit to avoid matching unit '/L'
-        tail = ""
-        try:
-            if 'vm' in locals() and vm:
-                tail = line[vm.end():]
-        except Exception:
-            tail = ""
-        if tail:
-            mflag = END_FLAG_TAIL.search(tail)
-            if mflag:
-                tok = mflag.group("flag").lower()
-                if tok in {"h", "high", "↑"}:
-                    explicit_flag = "high"
-                elif tok in {"l", "low", "↓"}:
-                    explicit_flag = "low"
+            # Explicit flag markers like 'H', 'L', '↑', '↓' appearing after the value
+            explicit_flag: str | None = None
+            # Only search in the tail after the numeric value/unit to avoid matching unit '/L'
+            tail = line[vm.end():] if vm else ""
+            if tail:
+                mflag = END_FLAG_TAIL.search(tail)
+                if mflag:
+                    tok = mflag.group("flag").lower()
+                    if tok in {"h", "high", "↑"}:
+                        explicit_flag = "high"
+                    elif tok in {"l", "low", "↓"}:
+                        explicit_flag = "low"
 
-        # Canonicalize the test name for consistency
-        name_raw = name
-        name = _canonicalize_name(name)
+            # Canonicalize the test name for consistency
+            name_raw = name
+            name = _canonicalize_name(name)
 
-        if name and value is not None:
-            flag = _compute_flag(value, range_tuple, le, ge)
-            if explicit_flag:
-                flag = explicit_flag
-            # Compute enriched fields
-            comp_str = comp if 'comp' in locals() else None
-            value_text = (
-                f"{comp_str}{raw_val}" if comp_str and 'raw_val' in locals() else (str(value))
-            )
-            value_num = None
-            try:
-                if not comp_str and isinstance(value, (int, float)):
-                    value_num = float(value)
-            except Exception:
+            if name and value is not None:
+                flag = _compute_flag(value, range_tuple, le, ge)
+                if explicit_flag:
+                    flag = explicit_flag
+                # Compute enriched fields
+                comp_str = comp if comp else None
+                value_text = f"{comp_str}{raw_val}" if (comp_str and raw_val is not None) else str(value)
                 value_num = None
-            row = ParsedRow(
-                test_name=name,
-                value=value,
-                unit=unit,
-                reference_range=reference_range,
-                flag=flag,
-                confidence=0.0,  # fill below
-                test_name_raw=name_raw,
-                unit_raw=(vm.group("unit") if 'vm' in locals() and vm else None),
-                comparator=comp_str,
-                value_text=value_text,
-                value_num=value_num,
-                page=None,
-                bbox=None,
-                raw_line=line,
-            )
-            row.confidence = _confidence(row)
-            rows.append(row)
-        else:
-            # Keep unparsed lines for debugging/feedback to user
-            unparsed.append(line)
+                try:
+                    if not comp_str and isinstance(value, (int, float)):
+                        value_num = float(value)
+                except Exception:
+                    value_num = None
+                row = ParsedRow(
+                    test_name=name,
+                    value=value,
+                    unit=unit,
+                    reference_range=reference_range,
+                    flag=flag,
+                    confidence=0.0,  # fill below
+                    test_name_raw=name_raw,
+                    unit_raw=(vm.group("unit") if vm and vm.group("unit") else None),
+                    comparator=comp_str,
+                    value_text=value_text,
+                    value_num=value_num,
+                    page=None,
+                    bbox=None,
+                    raw_line=line,
+                )
+                row.confidence = _confidence(row)
+                rows.append(row)
+            else:
+                # Keep unparsed lines for debugging/feedback to user
+                unparsed.append(line)
 
     return rows, unparsed

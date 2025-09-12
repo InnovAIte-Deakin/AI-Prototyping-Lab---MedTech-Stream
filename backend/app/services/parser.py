@@ -13,6 +13,9 @@ RANGE_X_Y = re.compile(rf"\b(?P<low>{NUM})\s*{HYPHEN}\s*(?P<high>{NUM})\b")
 # Support "to" as a range separator and ranges in parentheses
 RANGE_TO = re.compile(rf"\b(?P<low>{NUM})\s*(?:to)\s*(?P<high>{NUM})\b", re.IGNORECASE)
 PAREN_X_Y = re.compile(rf"\((?P<low>{NUM})\s*{HYPHEN}\s*(?P<high>{NUM})\)")
+# Parenthesized threshold forms like "(≤ 200)" or "(≥ 3.5)"
+PAREN_LE = re.compile(rf"\(\s*(?:≤|<=)\s*(?P<le>{NUM})\s*\)")
+PAREN_GE = re.compile(rf"\(\s*(?:≥|>=)\s*(?P<ge>{NUM})\s*\)")
 # Threshold ranges like "≤ 200" or "<=200" may be preceded by spaces or symbols,
 # so avoid a leading word boundary and ensure we stop at whitespace/end.
 RANGE_LE = re.compile(rf"(?:≤|<=)\s*(?P<le>{NUM})(?!\S)")
@@ -34,7 +37,7 @@ REF_ANY = re.compile(
 # Units: basic common and flexible token near value
 UNIT_TOKEN = (
     r"%|mg/dL|g/dL|mmol/L|ng/mL|pg/mL|mIU/L|IU/L|U/L|x?10\^\d+/[a-zA-ZμuL]+|"
-    r"10\^\d+/?L|[a-zA-Zμµ%][\wμµ/^%]*"
+    r"10\^\d+/?L|[a-zA-Zμµ%][\wμµ/^%².-]*"
 )
 # Require that numeric value is not part of a word (e.g., avoid catching the '12' in 'B12')
 # Also allow optional comparator directly before the value (e.g., '<5', '≥ 3.5').
@@ -221,6 +224,14 @@ def _extract_range(
         low = _to_float(m.group("low"))
         high = _to_float(m.group("high"))
         return f"{low}-{high}", (low, high), None, None
+    m = PAREN_LE.search(segment)
+    if m:
+        le = _to_float(m.group("le"))
+        return f"≤ {le}", None, le, None
+    m = PAREN_GE.search(segment)
+    if m:
+        ge = _to_float(m.group("ge"))
+        return f"≥ {ge}", None, None, ge
     m = RANGE_X_Y.search(segment)
     if m:
         low = _to_float(m.group("low"))
@@ -358,6 +369,9 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
 
     # Normalize newlines; split into lines
     pending_name: str | None = None
+    # If a bracket-only range appears before its value row due to PDF read order,
+    # remember it and attach to the next parsed row lacking a range.
+    pending_range: tuple[str | None, tuple[float, float] | None, float | None, float | None] | None = None
     for raw_line in text.splitlines():
         # Break tables into column cells before cleaning to keep associations
         segments = _split_columns_raw(raw_line) or [raw_line]
@@ -371,7 +385,7 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
             if SECTION_HEADER.match(line):
                 pending_name = None
                 continue
-            if BARE_PAREN.match(line) or ONLY_COMPARATOR.match(line):
+            if BARE_PAREN.match(line):
                 unparsed.append(line)
                 continue
 
@@ -456,6 +470,10 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
                             last.flag = new_flag
                         last.confidence = _confidence(last)
                         continue
+                # If no row to attach to yet, store for next row
+                if reference_range and not rows:
+                    pending_range = (reference_range, range_tuple, le, ge)
+                    continue
                 # Otherwise treat as unparsed noise for visibility
                 unparsed.append(line)
                 continue
@@ -506,6 +524,15 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
                     bbox=None,
                     raw_line=line,
                 )
+                # If there is a pending range (from a prior bracket segment) and this row lacks a range, attach it
+                if pending_range and not row.reference_range:
+                    pr_str, pr_tuple, pr_le, pr_ge = pending_range
+                    row.reference_range = pr_str
+                    # Re-evaluate flag with attached range
+                    flag2 = _compute_flag(row.value, pr_tuple, pr_le, pr_ge)
+                    if flag2:
+                        row.flag = flag2
+                    pending_range = None
                 row.confidence = _confidence(row)
                 rows.append(row)
             else:

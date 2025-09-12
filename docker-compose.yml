@@ -1,6 +1,24 @@
 version: "3.9"
 
 services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,testserver,backend,frontend}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_API_BASE: ${OPENAI_API_BASE:-https://api.openai.com/v1}
+      ENABLE_OCR: ${ENABLE_OCR:-1}
+    command: uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
@@ -8,26 +26,32 @@ services:
       args:
         NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8000}
     environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8000}
+      NODE_ENV: production
+      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8000}
+    command: sh -c "npm run start -- -p 3000 -H 0.0.0.0"
     ports:
       - "3000:3000"
     depends_on:
       - backend
+    restart: unless-stopped
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    environment:
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONUNBUFFERED=1
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
-      - OPENAI_API_BASE=${OPENAI_API_BASE:-https://api.openai.com/v1}
-    ports:
-      - "8000:8000"
+  announce:
+    image: alpine:3.20
+    depends_on:
+      - backend
+      - frontend
+    command: >
+      sh -c '
+        for i in $(seq 1 120); do
+          wget -q -O- --header="Host: localhost" http://backend:8000/api/v1/health >/dev/null 2>&1 &&
+          wget -q -O- http://frontend:3000 >/dev/null 2>&1 && break;
+          sleep 1;
+        done;
+        echo;
+        echo "Frontend: http://localhost:3000";
+        echo "Backend:  http://localhost:8000/api/v1/health";
+        tail -f /dev/null
+      '
 
 networks:
   default:

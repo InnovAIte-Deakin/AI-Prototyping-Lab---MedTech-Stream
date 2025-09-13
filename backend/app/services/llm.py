@@ -65,7 +65,7 @@ def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
         "disclaimer (short). The first item of next_steps must be: "
         '"Please schedule a visit with your doctor to review these results '
         'and your overall health." '
-        "Keep total length around 200-300 words. Educational only. "
+        "Please add enough information for every attribute so any user using this software can atleast have a deep understanding of what the issue is, expand."
         "No diagnosis or treatment. Return JSON only with double quotes."
     )
     # Extra style guidance for more helpful outputs without changing API shape

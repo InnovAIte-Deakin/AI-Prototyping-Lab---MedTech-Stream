@@ -1,6 +1,7 @@
 import './globals.css';
 import '../../styles/theme.css';
 import '../../styles/header.css';
+import '../../styles/parse.css';
 import type { ReactNode } from 'react';
 import Header from '@/components/Header';
 

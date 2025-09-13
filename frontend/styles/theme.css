@@ -2,15 +2,9 @@
   /* Brand */
   --brand:#0898A0; --brand-600:#077B82; --brand-100:#E6F6F7;
   --accent:#7C3AED; --accent-600:#6D28D9;
-
-  /* Neutrals */
   --ink:#0B1220; --muted-ink:#475569;
   --ui-bg:#FFFFFF; --ui-muted:#F5F7FA; --ui-elev:#FFFFFF; --border:#E6EDF0;
-
-  /* Status */
   --success:#0E9F6E; --warning:#C27803; --danger:#C7383A; --info:#0EA5E9;
-
-  /* Focus & Shadows */
   --focus:#0898A0;
   --shadow-sm:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.04);
   --shadow-md:0 8px 24px rgba(2,6,23,.08);
@@ -26,7 +20,6 @@
   --shadow-md:0 10px 30px rgba(0,0,0,.45);
 }
 
-/* Dark theme with class (for compatibility) */
 html.dark,
 body.dark {
   --ui-bg:#0D2235; --ui-muted:#0F2741; --ui-elev:#0F2C4A;
@@ -37,7 +30,6 @@ body.dark {
   --shadow-md:0 10px 30px rgba(0,0,0,.45);
 }
 
-/* System preference (lowest priority) */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     --ui-bg:#0D2235; --ui-muted:#0F2741; --ui-elev:#0F2C4A;
@@ -49,7 +41,6 @@ body.dark {
   }
 }
 
-/* Typography (Inter as base; headings can use Tomato Grotesk if available) */
 html { font-size:16px; }
 body {
   font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -61,7 +52,6 @@ body {
 h1,h2,h3 { font-weight:800; letter-spacing:-0.01em; }
 h1 { font-size:2.5rem; } h2 { font-size:2rem; } h3 { font-size:1.5rem; }
 
-/* Header + layout */
 .header {
   background: linear-gradient(180deg, rgba(8,152,160,.12), transparent);
   backdrop-filter:saturate(140%) blur(6px);
@@ -100,7 +90,6 @@ footer.footer {
 .btn-sm { --padY:.5rem; --padX:.75rem; font-size:14px; }
 .btn-lg { --padY:1rem; --padX:1.25rem; font-size:18px; }
 
-/* Inputs */
 .input,.textarea,.select {
   background:var(--ui-elev);
   color:var(--ink);
@@ -118,7 +107,6 @@ footer.footer {
   box-shadow:0 0 0 3px var(--brand-100);
 }
 
-/* Cards */
 .card {
   background:var(--ui-elev);
   border:1px solid var(--border);
@@ -127,7 +115,6 @@ footer.footer {
   padding:1rem;
 }
 
-/* Tables */
 .table { width:100%; border-collapse:separate; border-spacing:0; font-size:14px; table-layout:fixed; min-width:900px; }
 .table thead th { position:sticky; top:0; background:var(--ui-bg); text-align:left; padding:.75rem; border-bottom:1px solid var(--border); z-index:1; }
 .table tbody td { padding:.75rem; border-bottom:1px solid var(--border); }
@@ -138,7 +125,6 @@ footer.footer {
 .table-container { overflow-x:auto; }
 .table th, .table td { overflow:hidden; text-overflow:ellipsis; }
 
-/* Hero */
 .hero {
   background: linear-gradient(180deg, rgba(8,152,160,.15), rgba(124,58,237,.12));
   padding: 2rem;
@@ -148,23 +134,19 @@ footer.footer {
 .hero-title { font-size: 2.2rem; margin: 0 0 .5rem; color: var(--ink); }
 .hero-sub { color: var(--muted-ink); max-width: 60ch; }
 
-/* Alerts */
 .alert { border-radius:12px; padding:.875rem 1rem; display:flex; gap:.75rem; align-items:flex-start; }
 .alert-error { background:#FDEDEE; color:#7F1D1D; border:1px solid #F8D5D7; }
 .alert-info { background:#ECFEFF; color:#0C4A6E; border:1px solid #BAF2F7; }
 
-/* Skip link */
 .skip-link { position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden; }
 .skip-link:focus { position:static; width:auto; height:auto; padding:.5rem 1rem; background:var(--brand); color:#fff; border-radius:8px; }
 
-/* Print for doctor */
 @media print {
   body { background:#fff; color:#000; }
   .no-print { display:none !important; }
   .doctor-summary { border:none; box-shadow:none; }
 }
 
-/* Unparsed lines: keep list compact and readable */
 .unparsed-list li {
   white-space: nowrap;
   overflow: hidden;

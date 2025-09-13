@@ -38,8 +38,10 @@ class InterpretationOut(BaseModel):
 
 
 SYS_PROMPT = (
-    "You are a careful clinical educator. You explain lab results in clear, plain English. "
-    "You must not diagnose or prescribe. Output strictly and only valid JSON; no prose."
+    "You are a careful clinical educator. You explain lab results in clear, plain English "
+    "that is friendly, neutral, and non‑alarming. You never diagnose or prescribe. Focus on "
+    "what a result means relative to its reference range and what a patient might discuss "
+    "with their clinician. Output strictly and only valid JSON; no prose."
 )
 
 
@@ -63,8 +65,16 @@ def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
         "disclaimer (short). The first item of next_steps must be: "
         '"Please schedule a visit with your doctor to review these results '
         'and your overall health." '
-        "Keep total length around 200-300 words. Educational only. "
+        "Please add enough information for every attribute so any user using this software can atleast have a deep understanding of what the issue is, expand."
         "No diagnosis or treatment. Return JSON only with double quotes."
+    )
+    # Extra style guidance for more helpful outputs without changing API shape
+    instructions += (
+        " Use patient‑friendly tone; avoid alarmist language; do not mention parsing or AI. "
+        "In per_test.explanation, write 1–2 clear sentences explaining what the test reflects "
+        "and whether the value is within, above, or below the provided reference; use the exact "
+        "values given and do not invent ranges. For flags items, use severity values like 'high', "
+        "'low', or 'abnormal' and human notes such as 'Higher than reference range'."
     )
     return instructions + "\n\nROWS:\n" + json.dumps(trimmed, ensure_ascii=False)
 
@@ -73,14 +83,13 @@ def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
     flagged: list[FlagItem] = []
     for r in rows:
         if r.flag in {"low", "high", "abnormal"}:
-            sev = "high" if r.flag == "high" else ("low" if r.flag == "low" else "moderate")
-            flagged.append(
-                FlagItem(
-                    test_name=r.test_name,
-                    severity=sev,
-                    note=f"Marked as {r.flag} by the lab parser.",
-                )
+            sev = "high" if r.flag == "high" else ("low" if r.flag == "low" else "abnormal")
+            note = (
+                "Higher than reference range" if r.flag == "high"
+                else "Lower than reference range" if r.flag == "low"
+                else "Result reported as abnormal"
             )
+            flagged.append(FlagItem(test_name=r.test_name, severity=sev, note=note))
 
     summary_parts: list[str] = []
     total = len(rows)
@@ -104,16 +113,21 @@ def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
         val = r.value
         unit = f" {r.unit}" if r.unit else ""
         rr = f" (ref: {r.reference_range})" if r.reference_range else ""
-        fl = f" — {r.flag} relative to reference" if r.flag else ""
-        per_test.append(
-            PerTestItem(
-                test_name=r.test_name,
-                explanation=(
-                    f"Reported value: {val}{unit}{rr}.{fl} "
-                    "This information is educational and not a diagnosis."
-                ),
-            )
+        if r.flag == "high":
+            interp = "This is higher than the reference range."
+        elif r.flag == "low":
+            interp = "This is lower than the reference range."
+        elif r.flag == "abnormal":
+            interp = "This result is reported as abnormal (e.g., positive/reactive)."
+        elif r.flag == "normal":
+            interp = "This is within the reference range."
+        else:
+            interp = "This result is provided for discussion with your clinician."
+        explanation = (
+            f"Reported value: {val}{unit}{rr}. {interp} "
+            "Discuss with your clinician in the context of symptoms, history, and medications."
         )
+        per_test.append(PerTestItem(test_name=r.test_name, explanation=explanation))
 
     next_steps = [
         "Please schedule a visit with your doctor to review these results and your overall health.",
@@ -141,7 +155,8 @@ async def _call_openai_chat(prompt: str, timeout_s: float) -> str:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY not configured")
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    # Use a single, fixed model as requested
+    model = "gpt-5-high"
     url = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1/chat/completions")
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {

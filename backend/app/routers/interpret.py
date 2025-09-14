@@ -22,7 +22,19 @@ async def interpret_endpoint(payload: InterpretRequest) -> dict[str, Any]:
 
     result, meta = await interpret_rows(rows)
     # Never include PHI; meta only contains timings and opaque info
+    public_meta_keys = [
+        "duration_ms",
+        "llm",
+        "attempts",
+        "ok",
+        "model",
+        "endpoint",
+        "status",
+        "usage",
+        "finish_reason",
+        "error",
+    ]
     return {
         "interpretation": result.model_dump(),
-        "meta": {k: meta[k] for k in ["duration_ms", "llm", "attempts", "ok"] if k in meta},
+        "meta": {k: meta[k] for k in public_meta_keys if k in meta},
     }

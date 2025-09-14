@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any
+from typing import Any, Tuple, Dict
 
 import httpx
+import logging
 from pydantic import BaseModel, Field, ValidationError
 
 
@@ -62,11 +63,10 @@ def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
         "Given the following parsed lab rows, produce a JSON object with keys: "
         "summary (<=120 words), per_test (array of {test_name, explanation}), "
         "flags (array of {test_name, severity, note}), next_steps (array of 4-6 strings), "
-        "disclaimer (short). The first item of next_steps must be: "
-        '"Please schedule a visit with your doctor to review these results '
-        'and your overall health." '
-        "Please add enough information for every attribute so any user using this software can atleast have a deep understanding of what the issue is, expand."
-        "No diagnosis or treatment. Return JSON only with double quotes."
+        "disclaimer (short). Make next_steps fluid and tailored to the results: prioritize items for any "
+        "flagged tests; if everything is within range, provide brief general wellness follow-ups. Avoid "
+        "repeating the same generic advice on every line. Order per_test with flagged tests first (high → abnormal → low → normal). "
+        "No diagnosis or prescriptions. Return JSON only with double quotes."
     )
     # Extra style guidance for more helpful outputs without changing API shape
     instructions += (
@@ -80,8 +80,13 @@ def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
 
 
 def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
+    def sort_key(r: ParsedRowIn) -> tuple[int, str]:
+        order = {"high": 0, "abnormal": 1, "low": 2, "normal": 3, None: 3}
+        return (order.get(r.flag, 3), (r.test_name or "").lower())
+
+    rows_sorted = sorted(rows, key=sort_key)
     flagged: list[FlagItem] = []
-    for r in rows:
+    for r in rows_sorted:
         if r.flag in {"low", "high", "abnormal"}:
             sev = "high" if r.flag == "high" else ("low" if r.flag == "low" else "abnormal")
             note = (
@@ -109,33 +114,68 @@ def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
     )
 
     per_test: list[PerTestItem] = []
-    for r in rows[:10]:  # keep it concise
+    for r in rows_sorted[:10]:  # keep it concise and ordered by severity
         val = r.value
         unit = f" {r.unit}" if r.unit else ""
         rr = f" (ref: {r.reference_range})" if r.reference_range else ""
         if r.flag == "high":
-            interp = "This is higher than the reference range."
+            interp = "Above the reference range."
         elif r.flag == "low":
-            interp = "This is lower than the reference range."
+            interp = "Below the reference range."
         elif r.flag == "abnormal":
             interp = "This result is reported as abnormal (e.g., positive/reactive)."
         elif r.flag == "normal":
-            interp = "This is within the reference range."
+            interp = "Within the reference range."
         else:
             interp = "This result is provided for discussion with your clinician."
-        explanation = (
-            f"Reported value: {val}{unit}{rr}. {interp} "
-            "Discuss with your clinician in the context of symptoms, history, and medications."
-        )
+        # Keep normal rows brief; avoid repeating generic advice on every line
+        if r.flag == "normal":
+            explanation = f"Reported value: {val}{unit}{rr}. {interp}"
+        else:
+            explanation = (
+                f"Reported value: {val}{unit}{rr}. {interp} "
+                "Review alongside symptoms, history, and current medications."
+            )
         per_test.append(PerTestItem(test_name=r.test_name, explanation=explanation))
 
-    next_steps = [
-        "Please schedule a visit with your doctor to review these results and your overall health.",
-        "Ask which results are most important for your situation and why.",
-        "Discuss any symptoms, medications, and recent changes in your lifestyle.",
-        "Clarify the recommended follow-up tests or monitoring intervals.",
-        "Request guidance on nutrition, exercise, or other supportive habits.",
-    ]
+    # Dynamic next steps: tailor to flags if present, otherwise provide general guidance
+    highs = [r.test_name for r in rows_sorted if r.flag == "high"]
+    lows = [r.test_name for r in rows_sorted if r.flag == "low"]
+    abns = [r.test_name for r in rows_sorted if r.flag == "abnormal"]
+
+    def _join(names: list[str]) -> str:
+        if not names:
+            return ""
+        unique = []
+        seen = set()
+        for n in names:
+            if n not in seen:
+                unique.append(n)
+                seen.add(n)
+        if len(unique) <= 3:
+            return ", ".join(unique)
+        return ", ".join(unique[:3]) + ", etc."
+
+    steps: list[str] = []
+    if highs or lows or abns:
+        flagged_list = _join(highs + lows + abns)
+        steps.append(f"Schedule a visit to review flagged results: {flagged_list}.")
+        if highs:
+            steps.append(f"Discuss factors that can raise {_join(highs)} and whether lifestyle changes or retesting are needed.")
+        if lows:
+            steps.append(f"Discuss causes of low {_join(lows)} (e.g., nutrition, absorption) and whether supplements or retesting are appropriate.")
+        if abns:
+            steps.append(f"Clarify what an abnormal/positive result for {_join(abns)} means and what confirmatory tests are recommended.")
+        steps.append("Ask about recommended follow-up tests and timelines.")
+        steps.append("Share any symptoms, medications, or recent changes that could affect results.")
+    else:
+        steps.append("Review these results with your clinician at your next visit.")
+        steps.append("Ask which values are most important for you and how to maintain them.")
+        steps.append("Share symptoms, medications, and recent changes that could affect labs.")
+        steps.append("Ask if any routine monitoring is recommended and how often.")
+        steps.append("Request guidance on nutrition, exercise, sleep, and other supportive habits.")
+
+    next_steps = steps[:6]
 
     disclaimer = (
         "Educational information only. Not a diagnosis or treatment recommendation. "
@@ -151,15 +191,15 @@ def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
     )
 
 
-async def _call_openai_chat(prompt: str, timeout_s: float) -> str:
+async def _call_openai_chat(prompt: str, timeout_s: float) -> Tuple[str, Dict[str, Any]]:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY not configured")
-    # Use a single, fixed model as requested
-    model = "gpt-5-high"
-    url = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1/chat/completions")
+        raise RuntimeError("missing_api_key")
+    model = os.getenv("OPENAI_MODEL", "gpt-5")
+    base = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1").rstrip("/")
+    url = f"{base}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {
+    payload: dict[str, Any] = {
         "model": model,
         "messages": [
             {"role": "system", "content": SYS_PROMPT},
@@ -168,26 +208,102 @@ async def _call_openai_chat(prompt: str, timeout_s: float) -> str:
         "temperature": 0.2,
         "response_format": {"type": "json_object"},
     }
+    # Some models (e.g., GPT‑5) expect max_completion_tokens rather than max_tokens
+    if model.startswith("gpt-5"):
+        payload["max_completion_tokens"] = 700
+        # Optional: hint reasoning effort if supported (env overrides; default high)
+        effort = os.getenv("OPENAI_REASONING_EFFORT", "high")
+        payload["reasoning"] = {"effort": effort}
     async with httpx.AsyncClient(timeout=timeout_s) as client:
         r = await client.post(url, headers=headers, json=payload)
         r.raise_for_status()
         data = r.json()
-        return data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"]["content"]
+        usage = data.get("usage") or {}
+        finish_reason = None
+        try:
+            finish_reason = data["choices"][0].get("finish_reason")
+        except Exception:
+            pass
+        return content, {"usage": usage, "finish_reason": finish_reason, "status": r.status_code}
+
+
+async def _call_openai_responses(prompt: str, timeout_s: float) -> Tuple[str, Dict[str, Any]]:
+    """Call the Responses API (recommended for GPT‑5) with strict JSON output.
+
+    Returns the textual JSON content emitted by the model.
+    """
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("missing_api_key")
+    model = os.getenv("OPENAI_MODEL", "gpt-5")
+    base = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1").rstrip("/")
+    url = f"{base}/responses"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": model,
+        "input": [
+            {"role": "system", "content": SYS_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        # Strict JSON output
+        "text": {"format": {"type": "json_object"}},
+        # Reasoning knob supported by GPT‑5
+        "reasoning": {"effort": os.getenv("OPENAI_REASONING_EFFORT", "high")},
+        # Ensure enough budget for actual text, not just internal reasoning
+        "max_output_tokens": int(os.getenv("OPENAI_MAX_OUTPUT_TOKENS", "700")),
+        "temperature": 0.2,
+    }
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        r = await client.post(url, headers=headers, json=payload)
+        r.raise_for_status()
+        data = r.json()
+    content = data.get("output_text")
+    if content:
+        return content
+    # Fallback: try to assemble content from alternative shapes
+    if "choices" in data:
+        try:
+            return data["choices"][0]["message"]["content"]
+        except Exception:
+            pass
+    if "output" in data:
+        try:
+            return json.dumps(data["output"], ensure_ascii=False)
+        except Exception:
+            pass
+    # Try to pull usage in Responses API shape
+    usage = data.get("usage") or {}
+    return json.dumps(data, ensure_ascii=False), {"usage": usage, "status": r.status_code}
 
 
 async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, dict[str, Any]]:
     start = time.perf_counter()
+    logger = logging.getLogger("reportrx.backend")
     meta: dict[str, Any] = {"llm": "none", "attempts": 0}
+    # Record model/base used for observability (no PHI)
+    meta["model"] = os.getenv("OPENAI_MODEL", "gpt-5")
+    meta["endpoint"] = "unknown"
     try:
         prompt = _build_user_prompt(rows)
-        # First attempt
+        # Choose endpoint: use Responses API for GPT‑5, else Chat Completions
+        use_responses = meta["model"].startswith("gpt-5") or os.getenv("OPENAI_USE_RESPONSES", "1") in {"1","true","True"}
         meta["llm"] = "openai"
         meta["attempts"] = 1
-        raw = await _call_openai_chat(prompt, timeout_s=4.5)
+        meta["endpoint"] = "responses" if use_responses else "chat.completions"
+        raw, call = await (_call_openai_responses(prompt, timeout_s=5.5) if use_responses else _call_openai_chat(prompt, timeout_s=4.5))
         try:
             obj = json.loads(raw)
             parsed = InterpretationOut.model_validate(obj)
             meta["ok"] = True
+            if call:
+                if "usage" in call:
+                    meta["usage"] = call["usage"]
+                if "finish_reason" in call and call["finish_reason"]:
+                    meta["finish_reason"] = call["finish_reason"]
+                if "status" in call:
+                    meta["status"] = call["status"]
+            logger.info({"event": "llm_call", "endpoint": meta.get("endpoint"), "model": meta.get("model"), "ok": True, "attempts": meta.get("attempts"), "usage": meta.get("usage", {})})
             return parsed, meta
         except (json.JSONDecodeError, ValidationError):
             # One repair attempt: ask the model to return only valid JSON
@@ -196,18 +312,40 @@ async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, di
                 "Return the same content as strict valid JSON only. "
                 "Do not include any prose or code fences."
             )
-            raw2 = await _call_openai_chat(prompt + "\n\n" + repair_prompt, timeout_s=4.5)
+            raw2, call2 = await (_call_openai_responses(prompt + "\n\n" + repair_prompt, timeout_s=5.5) if use_responses else _call_openai_chat(prompt + "\n\n" + repair_prompt, timeout_s=4.5))
             obj2 = json.loads(raw2)
             parsed2 = InterpretationOut.model_validate(obj2)
             meta["ok"] = True
+            if call2:
+                if "usage" in call2:
+                    meta["usage"] = call2["usage"]
+                if "finish_reason" in call2 and call2["finish_reason"]:
+                    meta["finish_reason"] = call2["finish_reason"]
+                if "status" in call2:
+                    meta["status"] = call2["status"]
+            logger.info({"event": "llm_call", "endpoint": meta.get("endpoint"), "model": meta.get("model"), "ok": True, "attempts": meta.get("attempts"), "usage": meta.get("usage", {})})
             return parsed2, meta
-    except Exception:
-        # Fall back silently
+    except httpx.HTTPStatusError as e:
         meta["ok"] = False
+        meta["error"] = f"http_error:{e.response.status_code}"
+    except httpx.RequestError as e:
+        # network/timeout errors
+        meta["ok"] = False
+        etype = type(e).__name__.lower()
+        meta["error"] = f"request_error:{etype}"
+    except RuntimeError as e:
+        meta["ok"] = False
+        msg = str(e) or "runtime_error"
+        meta["error"] = msg
+    except Exception:
+        # Fall back silently with generic error
+        meta["ok"] = False
+        meta["error"] = "unknown_error"
 
     finally:
         meta["duration_ms"] = int((time.perf_counter() - start) * 1000)
 
     # Fallback path with deterministic JSON
     fb = _fallback_interpretation(rows)
+    logger.info({"event": "llm_call", "endpoint": meta.get("endpoint"), "model": meta.get("model"), "ok": False, "attempts": meta.get("attempts"), "error": meta.get("error")})
     return fb, meta

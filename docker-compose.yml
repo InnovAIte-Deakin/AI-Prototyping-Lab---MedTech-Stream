@@ -11,8 +11,10 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-high}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5}
       OPENAI_API_BASE: ${OPENAI_API_BASE:-https://api.openai.com/v1}
+      OPENAI_REASONING_EFFORT: ${OPENAI_REASONING_EFFORT:-high}
+      OPENAI_MAX_OUTPUT_TOKENS: ${OPENAI_MAX_OUTPUT_TOKENS:-700}
       ENABLE_OCR: ${ENABLE_OCR:-1}
     command: uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
     ports:

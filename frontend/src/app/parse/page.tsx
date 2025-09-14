@@ -400,7 +400,7 @@ export default function ParsePage() {
           )}
           {meta && (
             <pre className="card no-print" style={{ fontSize: 12, color: 'var(--muted-ink)', background: 'var(--ui-muted)' }}>
-{`LLM: ${meta.endpoint || 'unknown'} • ok: ${String(meta.ok)} • model: ${meta.model || ''}`}
+{`LLM: ${meta.endpoint || 'unknown'} • ok: ${String(meta.ok)} • model: ${meta.model || ''}${meta.error ? ` • error: ${typeof meta.error === 'string' ? meta.error : (meta.error.message || JSON.stringify(meta.error))}` : ''}`}
             </pre>
           )}
         </div>

@@ -192,7 +192,7 @@ async def _call_openai_chat(prompt: str, timeout_s: float) -> Tuple[str, Dict[st
     if not api_key:
         raise RuntimeError("missing_api_key")
     model = os.getenv("OPENAI_MODEL", "gpt-5")
-    base = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1").rstrip("/")
+    base = (os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "https://api.openai.com/v1").rstrip("/")
     url = f"{base}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload: dict[str, Any] = {
@@ -234,16 +234,27 @@ async def _call_openai_responses(prompt: str, timeout_s: float) -> Tuple[str, Di
     if not api_key:
         raise RuntimeError("missing_api_key")
     model = os.getenv("OPENAI_MODEL", "gpt-5")
-    base = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1").rstrip("/")
+    base = (os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "https://api.openai.com/v1").rstrip("/")
     url = f"{base}/responses"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {
         "model": model,
+        # Messages-like structure for Responses API
         "input": [
-            {"role": "system", "content": SYS_PROMPT},
-            {"role": "user", "content": prompt},
+            {
+                "role": "system",
+                "content": [
+                    {"type": "text", "text": SYS_PROMPT},
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                ],
+            },
         ],
-        # Strict JSON output
+        # Strict JSON mode for Responses lives under text
         "text": {"format": {"type": "json_object"}},
         # Reasoning knob supported by GPT‑5
         "reasoning": {"effort": os.getenv("OPENAI_REASONING_EFFORT", "high")},
@@ -255,23 +266,28 @@ async def _call_openai_responses(prompt: str, timeout_s: float) -> Tuple[str, Di
         r = await client.post(url, headers=headers, json=payload)
         r.raise_for_status()
         data = r.json()
+        status_code = r.status_code
+    # Primary output shape for Responses API
     content = data.get("output_text")
-    if content:
-        return content
-    # Fallback: try to assemble content from alternative shapes
-    if "choices" in data:
-        try:
-            return data["choices"][0]["message"]["content"]
-        except Exception:
-            pass
-    if "output" in data:
-        try:
-            return json.dumps(data["output"], ensure_ascii=False)
-        except Exception:
-            pass
-    # Try to pull usage in Responses API shape
     usage = data.get("usage") or {}
-    return json.dumps(data, ensure_ascii=False), {"usage": usage, "status": r.status_code}
+    if isinstance(content, str) and content.strip():
+        return content, {"usage": usage, "status": status_code}
+    # Fallback: try to assemble content from alternative shapes
+    if isinstance(data, dict) and "choices" in data:
+        try:
+            c = data["choices"][0]["message"]["content"]
+            return c, {"usage": data.get("usage") or {}, "status": status_code}
+        except Exception:
+            pass
+    if isinstance(data, dict) and "output" in data:
+        try:
+            s = json.dumps(data["output"], ensure_ascii=False)
+            return s, {"usage": data.get("usage") or {}, "status": status_code}
+        except Exception:
+            pass
+    # Last resort: return raw JSON text for debugging
+    raw = json.dumps(data, ensure_ascii=False)
+    return raw, {"usage": usage, "status": status_code}
 
 
 async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, dict[str, Any]]:
@@ -323,21 +339,57 @@ async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, di
             logger.info({"event": "llm_call", "endpoint": meta.get("endpoint"), "model": meta.get("model"), "ok": True, "attempts": meta.get("attempts"), "usage": meta.get("usage", {})})
             return parsed2, meta
     except httpx.HTTPStatusError as e:
+        # HTTP errors from OpenAI (includes JSON body with details when available)
         meta["ok"] = False
-        meta["error"] = f"http_error:{e.response.status_code}"
+        status = None
+        code = None
+        message = None
+        try:
+            if e.response is not None:
+                status = getattr(e.response, "status_code", None)
+                meta["status"] = status
+                # Try to parse OpenAI-style error payload
+                try:
+                    body = e.response.json()
+                    err = body.get("error") if isinstance(body, dict) else None
+                    if isinstance(err, dict):
+                        message = err.get("message") or message
+                        code = err.get("code") or err.get("type") or code
+                    # Fallback to raw text if no structured error
+                    if not message:
+                        message = json.dumps(body)
+                except Exception:
+                    # Not JSON; use text body if present
+                    try:
+                        message = e.response.text or None
+                    except Exception:
+                        pass
+        except Exception:
+            # Ignore secondary failures during error extraction
+            pass
+        if not message:
+            message = str(e) or "http_error"
+        meta["error"] = {"status": status, "code": code, "message": message}
     except httpx.RequestError as e:
-        # network/timeout errors
+        # Network/timeout/connection errors
         meta["ok"] = False
-        etype = type(e).__name__.lower()
-        meta["error"] = f"request_error:{etype}"
+        status = None
+        code = type(e).__name__
+        message = str(e) or "request_error"
+        meta["error"] = {"status": status, "code": code, "message": message}
     except RuntimeError as e:
         meta["ok"] = False
-        msg = str(e) or "runtime_error"
-        meta["error"] = msg
-    except Exception:
-        # Fall back silently with generic error
+        status = None
+        code = "runtime_error"
+        message = str(e) or code
+        meta["error"] = {"status": status, "code": code, "message": message}
+    except Exception as e:
+        # Unexpected application error path
         meta["ok"] = False
-        meta["error"] = "unknown_error"
+        status = None
+        code = type(e).__name__
+        message = str(e) or "unknown_error"
+        meta["error"] = {"status": status, "code": code, "message": message}
 
     finally:
         meta["duration_ms"] = int((time.perf_counter() - start) * 1000)

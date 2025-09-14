@@ -30,7 +30,7 @@ ReportRx is an educational health explanations app. MVP stores no data and logs 
 
 ## Test/Run Instructions
 
-- Backend tests: `cd backend && make test`
+- Backend tests: `cp .env.example .env`
 - Run services: `docker compose up --build`
 
 ## Limitations

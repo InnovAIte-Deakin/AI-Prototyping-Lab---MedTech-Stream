@@ -61,12 +61,14 @@ def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
     ]
     instructions = (
         "Given the following parsed lab rows, produce a JSON object with keys: "
-        "summary (<=120 words), per_test (array of {test_name, explanation}), "
-        "flags (array of {test_name, severity, note}), next_steps (array of 4-6 strings), "
-        "disclaimer (short). Make next_steps fluid and tailored to the results: prioritize items for any "
-        "flagged tests; if everything is within range, provide brief general wellness follow-ups. Avoid "
-        "repeating the same generic advice on every line. Order per_test with flagged tests first (high → abnormal → low → normal). "
-        "No diagnosis or prescriptions. Return JSON only with double quotes."
+        "summary, per_test (array of {test_name, explanation}), flags (array of {test_name, severity, note}), "
+        "next_steps (array of 4-6 strings), disclaimer (short). "
+        "Important: Format summary as a compact list of rows on one or more lines using ONLY this pattern: "
+        "'<Test Name> <Value><Unit> [<Reference>] <FLAG?>'. "
+        "Rules: (1) Put flagged tests first (HIGH → ABNORMAL → LOW → normal), then others. (2) Use the provided reference exactly; "
+        "show ranges as '[low–high]' and thresholds as '[≤ N]' or '[≥ N]'. (3) Show FLAG only when not normal, in UPPERCASE (HIGH/LOW/ABNORMAL). "
+        "(4) For comparator values like '<5', keep the comparator in the value. (5) Do NOT add extra commentary in summary. "
+        "Make next_steps fluid and tailored; avoid repeating generic advice per line. Return JSON only with double quotes."
     )
     # Extra style guidance for more helpful outputs without changing API shape
     instructions += (
@@ -96,22 +98,18 @@ def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
             )
             flagged.append(FlagItem(test_name=r.test_name, severity=sev, note=note))
 
-    summary_parts: list[str] = []
-    total = len(rows)
-    highs = sum(1 for r in rows if r.flag == "high")
-    lows = sum(1 for r in rows if r.flag == "low")
-    abns = sum(1 for r in rows if r.flag == "abnormal")
-    summary_parts.append(f"Parsed {total} tests.")
-    if highs:
-        summary_parts.append(f"{highs} above reference range.")
-    if lows:
-        summary_parts.append(f"{lows} below reference range.")
-    if abns:
-        summary_parts.append(f"{abns} marked as abnormal.")
-    summary = (
-        " ".join(summary_parts)
-        or "Your results have been summarized for discussion with your clinician."
-    )
+    # Compact summary listing: '<Test> <Value><Unit> [<Reference>] <FLAG?>'
+    def _fmt(r: ParsedRowIn) -> str:
+        val = str(r.value)
+        unit = f" {r.unit}" if r.unit else ""
+        ref = f" [{r.reference_range}]" if r.reference_range else ""
+        flag = (r.flag or "").upper() if r.flag in {"high", "low", "abnormal"} else ""
+        flag_str = f" {flag}" if flag else ""
+        return f"{r.test_name} {val}{unit}{ref}{flag_str}".strip()
+
+    lines = [_fmt(r) for r in rows_sorted]
+    # Keep up to 40 rows in summary to stay readable
+    summary = "\n".join(lines[:40])
 
     per_test: list[PerTestItem] = []
     for r in rows_sorted[:10]:  # keep it concise and ordered by severity

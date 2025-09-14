@@ -312,7 +312,7 @@ export default function ParsePage() {
             <summary className="info-summary">
               <span className="info-icon">⚠️</span>
               <span className="info-title">Unparsed Lines ({unparsed.length})</span>
-              <span className="info-description">Lines that couldn't be automatically processed</span>
+              <span className="info-description">Lines that couldn&#39;t be automatically processed</span>
             </summary>
             <div className="info-content">
               <ul className="unparsed-list">

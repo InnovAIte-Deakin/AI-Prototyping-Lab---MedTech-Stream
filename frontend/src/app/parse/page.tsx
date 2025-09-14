@@ -25,6 +25,7 @@ export default function ParsePage() {
   const [error, setError] = useState<string | null>(null);
   const [explaining, setExplaining] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
+  const [meta, setMeta] = useState<any>(null);
   const [interpretation, setInterpretation] = useState<null | {
     summary: string;
     per_test: { test_name: string; explanation: string }[];
@@ -97,8 +98,9 @@ export default function ParsePage() {
         body: JSON.stringify({ rows }),
       });
       if (!res.ok) throw new Error(`Interpret failed: ${res.status}`);
-      const data = (await res.json()) as { interpretation: any };
+      const data = (await res.json()) as { interpretation: any, meta?: any };
       setInterpretation(data.interpretation);
+      setMeta((data as any).meta || null);
     } catch (err: any) {
       setExplainError(err.message || String(err));
     } finally {
@@ -376,6 +378,31 @@ export default function ParsePage() {
           <div className="card">
             <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{interpretation.summary}</p>
           </div>
+          {Array.isArray(interpretation.per_test) && interpretation.per_test.length > 0 && (
+            <div className="card">
+              <h3>Per‑test explanations</h3>
+              <ul>
+                {interpretation.per_test.map((t: any, i: number) => (
+                  <li key={i}><strong>{t.test_name}:</strong> {t.explanation}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {Array.isArray(interpretation.next_steps) && interpretation.next_steps.length > 0 && (
+            <div className="card">
+              <h3>Next steps</h3>
+              <ol>
+                {interpretation.next_steps.map((s: string, i: number) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {meta && (
+            <pre className="card no-print" style={{ fontSize: 12, color: 'var(--muted-ink)', background: 'var(--ui-muted)' }}>
+{`LLM: ${meta.endpoint || 'unknown'} • ok: ${String(meta.ok)} • model: ${meta.model || ''}`}
+            </pre>
+          )}
         </div>
       )}
       <Disclaimer />

@@ -59,18 +59,17 @@ def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
     ]
     instructions = (
         "Given the parsed lab rows, produce a JSON object with keys: "
-        "summary (one concise paragraph in prose, not bullet points), per_test, flags, next_steps, disclaimer. "
-        "Focus your effort on 'summary' and write it as a fluid paragraph that synthesizes the overall findings. "
+        "summary (a thorough multi-paragraph synthesis in prose), per_test, flags, next_steps, disclaimer. "
+        "Write a detailed summary that explains patterns, relationships, and context among the results. "
         "You may analyze freely within educational bounds (no diagnosis/prescriptions). "
         "Keep JSON valid with double quotes only."
     )
     # Extra style guidance for more helpful outputs without changing API shape
     instructions += (
-        " Use patient‑friendly tone; avoid alarmist language; do not mention parsing or AI. "
-        "In per_test.explanation, write 1–2 clear sentences explaining what the test reflects "
-        "and whether the value is within, above, or below the provided reference; use the exact "
-        "values given and do not invent ranges. For flags items, use severity values like 'high', "
-        "'low', or 'abnormal' and human notes such as 'Higher than reference range'."
+        " Use a patient‑friendly tone; avoid alarmist language; do not mention parsing or AI. "
+        "In per_test.explanation, write 2–4 sentences: what the test measures, what this value implies "
+        "relative to the provided reference, and common clinical context (without giving medical advice). "
+        "For flags, use severity values 'high', 'low', or 'abnormal' with human notes such as 'Higher than reference range'."
     )
     return instructions + "\n\nROWS:\n" + json.dumps(trimmed, ensure_ascii=False)
 
@@ -202,7 +201,7 @@ async def _call_openai_chat(prompt: str, timeout_s: float) -> Tuple[str, Dict[st
             {"role": "system", "content": SYS_PROMPT},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.2,
+        "temperature": 0.6,
         "response_format": {"type": "json_object"},
     }
     # Some models (e.g., GPT‑5) expect max_completion_tokens rather than max_tokens
@@ -250,7 +249,7 @@ async def _call_openai_responses(prompt: str, timeout_s: float) -> Tuple[str, Di
         "reasoning": {"effort": os.getenv("OPENAI_REASONING_EFFORT", "high")},
         # Ensure enough budget for actual text, not just internal reasoning
         "max_output_tokens": int(os.getenv("OPENAI_MAX_OUTPUT_TOKENS", "5000")),
-        "temperature": 0.2,
+        "temperature": 0.6,
     }
     async with httpx.AsyncClient(timeout=timeout_s) as client:
         r = await client.post(url, headers=headers, json=payload)

@@ -39,10 +39,8 @@ class InterpretationOut(BaseModel):
 
 
 SYS_PROMPT = (
-    "You are a careful clinical educator. You explain lab results in clear, plain English "
-    "that is friendly, neutral, and non‑alarming. You never diagnose or prescribe. Focus on "
-    "what a result means relative to its reference range and what a patient might discuss "
-    "with their clinician. Output strictly and only valid JSON; no prose."
+    "You are a careful clinical explainer. Write in clear, plain English. "
+    "Return strictly and only JSON; no code fences or extra prose outside JSON."
 )
 
 
@@ -60,11 +58,11 @@ def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
         for r in rows[:MAX_ROWS]
     ]
     instructions = (
-        "Given the following parsed lab rows, produce a JSON object with keys: "
-        "summary, per_test (array of {test_name, explanation}), flags (array of {test_name, severity, note}), "
-        "next_steps (array of 4-6 strings), disclaimer (short). "
-        "Treat next_steps as 'Insights' — provide medically analytical points based on the rows. You may analyze freely "
-        "within educational bounds. Return JSON only with double quotes."
+        "Given the parsed lab rows, produce a JSON object with keys: "
+        "summary (one concise paragraph in prose, not bullet points), per_test, flags, next_steps, disclaimer. "
+        "Focus your effort on 'summary' and write it as a fluid paragraph that synthesizes the overall findings. "
+        "You may analyze freely within educational bounds (no diagnosis/prescriptions). "
+        "Keep JSON valid with double quotes only."
     )
     # Extra style guidance for more helpful outputs without changing API shape
     instructions += (

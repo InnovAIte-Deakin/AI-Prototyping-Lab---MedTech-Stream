@@ -374,11 +374,7 @@ export default function ParsePage() {
         <div className="stack">
           <h2>Insights</h2>
           <div className="card">
-            <ol>
-              {(interpretation.next_steps || []).map((s: string, i: number) => (
-                <li key={i}>{s}</li>
-              ))}
-            </ol>
+            <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{interpretation.summary}</p>
           </div>
         </div>
       )}

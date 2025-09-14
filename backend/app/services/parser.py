@@ -372,6 +372,8 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
     # If a bracket-only range appears before its value row due to PDF read order,
     # remember it and attach to the next parsed row lacking a range.
     pending_range: tuple[str | None, tuple[float, float] | None, float | None, float | None] | None = None
+    # Handle value-only lines that precede or follow the test name (e.g., split PDFs)
+    pending_value: dict | None = None  # {value, unit, comp, raw_val}
     for raw_line in text.splitlines():
         # Break tables into column cells before cleaning to keep associations
         segments = _split_columns_raw(raw_line) or [raw_line]
@@ -392,8 +394,52 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
             # Basic multi-line handling: if previous line looked like a name and this line has value, combine
             has_number = bool(FIRST_NUMBER_POS.search(line)) or bool(POS_NEG.search(line))
             if not has_number:
-                # Line without numbers: may be a name/header; stash and continue to next segment
-                if not META_NAME.search(line):
+                # Line without numbers: may be a name/header. If we have a pending numeric value,
+                # synthesize a row from buffers; otherwise stash the name.
+                if META_NAME.search(line):
+                    continue
+                if pending_value is not None:
+                    # Build a synthetic combined line: "<name> <value> <unit>"
+                    name = _canonicalize_name(line)
+                    value = pending_value.get("value")
+                    unit = _normalize_unit(pending_value.get("unit"))
+                    comp = pending_value.get("comp")
+                    raw_val = pending_value.get("raw_val")
+                    # Compute flag from any pending range
+                    flag = _compute_flag(value, None if not pending_range else pending_range[1],
+                                          None if not pending_range else pending_range[2],
+                                          None if not pending_range else pending_range[3]) if value is not None else None
+                    comp_str = comp if comp else None
+                    value_text = f"{comp_str}{raw_val}" if (comp_str and raw_val is not None) else (str(value) if value is not None else None)
+                    value_num = None
+                    try:
+                        if not comp_str and isinstance(value, (int, float)):
+                            value_num = float(value)
+                    except Exception:
+                        value_num = None
+                    row = ParsedRow(
+                        test_name=name or (line.strip()),
+                        value=value if value is not None else (value_text or ""),
+                        unit=unit,
+                        reference_range=pending_range[0] if pending_range else None,
+                        flag=flag,
+                        confidence=0.0,
+                        test_name_raw=line,
+                        unit_raw=unit,
+                        comparator=comp_str,
+                        value_text=value_text,
+                        value_num=value_num,
+                        page=None,
+                        bbox=None,
+                        raw_line=f"{line}",
+                    )
+                    row.confidence = _confidence(row)
+                    rows.append(row)
+                    # Clear buffers
+                    pending_name = None
+                    pending_value = None
+                    pending_range = None
+                else:
                     pending_name = line
                 continue
             if pending_name:
@@ -459,6 +505,10 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
             # attach that range to the previous parsed row when possible, instead of creating a new row.
             if name is None:
                 # Ignore any accidentally captured numeric value for junk-name segments
+                # If we have a value-only line (e.g., "42 ng/mL"), buffer it to attach to upcoming name
+                if vm and value is not None and not reference_range:
+                    pending_value = {"value": value, "unit": unit, "comp": comp, "raw_val": raw_val}
+                    continue
                 value = None
                 if reference_range and rows:
                     last = rows[-1]
@@ -533,6 +583,8 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
                     if flag2:
                         row.flag = flag2
                     pending_range = None
+                # Clear any pending value buffer once we have created a row
+                pending_value = None
                 row.confidence = _confidence(row)
                 rows.append(row)
             else:

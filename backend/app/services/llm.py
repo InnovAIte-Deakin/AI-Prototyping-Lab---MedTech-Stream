@@ -58,6 +58,30 @@ def _max_tokens() -> int:
         return 1600
 
 
+def _timeout_seconds(endpoint: str) -> float:
+    """HTTP timeout budget in seconds.
+
+    Reads OPENAI_HTTP_TIMEOUT_S and optional endpoint-specific overrides:
+    - OPENAI_RESPONSES_TIMEOUT_S
+    - OPENAI_CHAT_TIMEOUT_S
+    Defaults to 30 seconds if unset or invalid.
+    """
+    default_raw = os.getenv("OPENAI_HTTP_TIMEOUT_S", "30")
+    override_key = None
+    if endpoint == "responses":
+        override_key = "OPENAI_RESPONSES_TIMEOUT_S"
+    elif endpoint == "chat":
+        override_key = "OPENAI_CHAT_TIMEOUT_S"
+
+    raw = os.getenv(override_key) if override_key else None
+    raw = raw or default_raw
+    try:
+        v = float(str(raw))
+        return max(5.0, min(v, 600.0))
+    except Exception:
+        return 30.0
+
+
 def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
     # Trim to essential fields and rows to keep payload small
     MAX_ROWS = 30
@@ -256,14 +280,17 @@ async def _call_openai_responses(prompt: str, timeout_s: float) -> Tuple[str, Di
                 ],
             },
         ],
-        # Strict JSON mode for Responses lives under text
-        "text": {"format": {"type": "json_object"}, "verbosity": "high"},
-        # Reasoning knob supported by GPT‑5
-        "reasoning": {"effort": os.getenv("OPENAI_REASONING_EFFORT", "medium")},
-        # Ensure enough budget for actual text, not just internal reasoning
+        # Strict JSON mode for Responses lives under text (minimal and widely supported)
+        "text": {"format": {"type": "json_object"}},
+        # Ensure enough budget for actual text
         "max_output_tokens": _max_tokens(),
-        "temperature": 0.6,
     }
+    # Do NOT send temperature to GPT‑5 on Responses; only attach when non‑GPT‑5
+    if not model.startswith("gpt-5"):
+        try:
+            payload["temperature"] = float(os.getenv("OPENAI_TEMPERATURE", "0.6"))
+        except Exception:
+            payload["temperature"] = 0.6
     async with httpx.AsyncClient(timeout=timeout_s) as client:
         r = await client.post(url, headers=headers, json=payload)
         r.raise_for_status()
@@ -306,7 +333,11 @@ async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, di
         meta["llm"] = "openai"
         meta["attempts"] = 1
         meta["endpoint"] = "responses" if use_responses else "chat.completions"
-        raw, call = await (_call_openai_responses(prompt, timeout_s=5.5) if use_responses else _call_openai_chat(prompt, timeout_s=4.5))
+        raw, call = await (
+            _call_openai_responses(prompt, timeout_s=_timeout_seconds("responses"))
+            if use_responses
+            else _call_openai_chat(prompt, timeout_s=_timeout_seconds("chat"))
+        )
         try:
             obj = json.loads(raw)
             parsed = InterpretationOut.model_validate(obj)
@@ -327,7 +358,11 @@ async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, di
                 "Return the same content as strict valid JSON only. "
                 "Do not include any prose or code fences."
             )
-            raw2, call2 = await (_call_openai_responses(prompt + "\n\n" + repair_prompt, timeout_s=5.5) if use_responses else _call_openai_chat(prompt + "\n\n" + repair_prompt, timeout_s=4.5))
+            raw2, call2 = await (
+                _call_openai_responses(prompt + "\n\n" + repair_prompt, timeout_s=_timeout_seconds("responses"))
+                if use_responses
+                else _call_openai_chat(prompt + "\n\n" + repair_prompt, timeout_s=_timeout_seconds("chat"))
+            )
             obj2 = json.loads(raw2)
             parsed2 = InterpretationOut.model_validate(obj2)
             meta["ok"] = True

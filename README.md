@@ -6,6 +6,7 @@ ReportRx is an educational health explanations app. MVP stores no data and logs 
 
 1. Copy envs and update if needed:
    - `cp .env.example .env`
+   - Edit `.env` and set `OPENAI_API_KEY=sk-...` (do not source `.env.example`)
 2. Build and run:
    - `docker compose up --build`
 3. Visit:
@@ -24,9 +25,14 @@ ReportRx is an educational health explanations app. MVP stores no data and logs 
 
 - FRONTEND_URL: `http://localhost:3000` (CORS origin)
 - NEXT_PUBLIC_BACKEND_URL: `http://localhost:8000`
-- OPENAI_API_KEY: Optional. If unset or network blocked, backend uses deterministic fallback JSON.
+- OPENAI_API_KEY: Optional. If unset or network blocked, backend uses deterministic fallback JSON. Set it only in `.env`.
 - Upload limits: up to 5 files per request, 500MB per file (subject to infra limits).
 - ALLOWED_HOSTS: Comma-separated allowed hosts for backend (default: `localhost,127.0.0.1`; tests allow `testserver`).
+
+### Env gotcha: avoiding empty keys
+
+- Do not run with `--env-file .env.example` and do not `source` it. `.env.example` intentionally does not set `OPENAI_API_KEY` to avoid wiping your environment.
+- After editing `.env`, recreate the backend so the container picks up changes: `docker compose up -d --force-recreate backend`.
 
 ## Test/Run Instructions
 

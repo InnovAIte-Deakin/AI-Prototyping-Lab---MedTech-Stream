@@ -290,7 +290,15 @@ export default function ParsePage() {
                     <td>{String(r.value)}</td>
                     <td>{r.unit}</td>
                     <td>{r.reference_range}</td>
-                    <td>{r.flag}</td>
+                    <td>
+                      {r.flag ? (
+                        <span className={`flag-chip ${r.flag}`}>
+                          {r.flag.toUpperCase()}
+                        </span>
+                      ) : (
+                        <span className="flag-chip normal">NORMAL</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -364,49 +372,13 @@ export default function ParsePage() {
 
       {interpretation && (
         <div className="stack">
-          <h2>Interpretation</h2>
+          <h2>Insights</h2>
           <div className="card">
-            <h3>Summary</h3>
-            <p>{interpretation.summary}</p>
-
-            {interpretation.flags && interpretation.flags.length > 0 && (
-              <div className="stack" style={{ marginTop: '0.75rem' }}>
-                <h3>Flags</h3>
-                <ul>
-                  {interpretation.flags.map((f, i) => (
-                    <li key={i}>
-                      <strong>{f.test_name}:</strong> {f.severity} — <span className="muted">{f.note}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {interpretation.per_test && interpretation.per_test.length > 0 && (
-              <div className="stack" style={{ marginTop: '0.75rem' }}>
-                <h3>Per Test</h3>
-                <ul>
-                  {interpretation.per_test.map((p, i) => (
-                    <li key={i}>
-                      <strong>{p.test_name}:</strong> {p.explanation}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="stack" style={{ marginTop: '0.75rem' }}>
-              <h3>Next Steps</h3>
-              <ol>
-                {interpretation.next_steps.map((s: string, i: number) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ol>
-            </div>
-
-            <aside className="muted" style={{ marginTop: '0.75rem' }}>
-              <em>{interpretation.disclaimer}</em>
-            </aside>
+            <ol>
+              {(interpretation.next_steps || []).map((s: string, i: number) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ol>
           </div>
         </div>
       )}

@@ -63,12 +63,8 @@ def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
         "Given the following parsed lab rows, produce a JSON object with keys: "
         "summary, per_test (array of {test_name, explanation}), flags (array of {test_name, severity, note}), "
         "next_steps (array of 4-6 strings), disclaimer (short). "
-        "Important: Format summary as a compact list of rows on one or more lines using ONLY this pattern: "
-        "'<Test Name> <Value><Unit> [<Reference>] <FLAG?>'. "
-        "Rules: (1) Put flagged tests first (HIGH → ABNORMAL → LOW → normal), then others. (2) Use the provided reference exactly; "
-        "show ranges as '[low–high]' and thresholds as '[≤ N]' or '[≥ N]'. (3) Show FLAG only when not normal, in UPPERCASE (HIGH/LOW/ABNORMAL). "
-        "(4) For comparator values like '<5', keep the comparator in the value. (5) Do NOT add extra commentary in summary. "
-        "Make next_steps fluid and tailored; avoid repeating generic advice per line. Return JSON only with double quotes."
+        "Treat next_steps as 'Insights' — provide medically analytical points based on the rows. You may analyze freely "
+        "within educational bounds. Return JSON only with double quotes."
     )
     # Extra style guidance for more helpful outputs without changing API shape
     instructions += (
@@ -98,7 +94,7 @@ def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
             )
             flagged.append(FlagItem(test_name=r.test_name, severity=sev, note=note))
 
-    # Compact summary listing: '<Test> <Value><Unit> [<Reference>] <FLAG?>'
+    # Compact summary listing of flagged rows only: '<Test> <Value><Unit> [<Reference>] <FLAG?>'
     def _fmt(r: ParsedRowIn) -> str:
         val = str(r.value)
         unit = f" {r.unit}" if r.unit else ""
@@ -107,12 +103,15 @@ def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
         flag_str = f" {flag}" if flag else ""
         return f"{r.test_name} {val}{unit}{ref}{flag_str}".strip()
 
-    lines = [_fmt(r) for r in rows_sorted]
-    # Keep up to 40 rows in summary to stay readable
-    summary = "\n".join(lines[:40])
+    flagged_rows = [r for r in rows_sorted if r.flag in {"high", "low", "abnormal"}]
+    if flagged_rows:
+        lines = [_fmt(r) for r in flagged_rows]
+        summary = "\n".join(lines[:24])
+    else:
+        summary = "All provided values are within reference ranges."
 
     per_test: list[PerTestItem] = []
-    for r in rows_sorted[:10]:  # keep it concise and ordered by severity
+    for r in flagged_rows[:10]:  # only flagged tests; concise and ordered by severity
         val = r.value
         unit = f" {r.unit}" if r.unit else ""
         rr = f" (ref: {r.reference_range})" if r.reference_range else ""
@@ -155,9 +154,11 @@ def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
         return ", ".join(unique[:3]) + ", etc."
 
     steps: list[str] = []
+    # Keep first item fixed to preserve contract with existing tests/clients
+    steps.append("Please schedule a visit with your doctor to review these results and your overall health.")
     if highs or lows or abns:
         flagged_list = _join(highs + lows + abns)
-        steps.append(f"Schedule a visit to review flagged results: {flagged_list}.")
+        steps.append(f"Review flagged results together: {flagged_list}.")
         if highs:
             steps.append(f"Discuss factors that can raise {_join(highs)} and whether lifestyle changes or retesting are needed.")
         if lows:
@@ -208,7 +209,8 @@ async def _call_openai_chat(prompt: str, timeout_s: float) -> Tuple[str, Dict[st
     }
     # Some models (e.g., GPT‑5) expect max_completion_tokens rather than max_tokens
     if model.startswith("gpt-5"):
-        payload["max_completion_tokens"] = 700
+        max_out = int(os.getenv("OPENAI_MAX_OUTPUT_TOKENS", "5000"))
+        payload["max_completion_tokens"] = max_out
         # Optional: hint reasoning effort if supported (env overrides; default high)
         effort = os.getenv("OPENAI_REASONING_EFFORT", "high")
         payload["reasoning"] = {"effort": effort}
@@ -249,7 +251,7 @@ async def _call_openai_responses(prompt: str, timeout_s: float) -> Tuple[str, Di
         # Reasoning knob supported by GPT‑5
         "reasoning": {"effort": os.getenv("OPENAI_REASONING_EFFORT", "high")},
         # Ensure enough budget for actual text, not just internal reasoning
-        "max_output_tokens": int(os.getenv("OPENAI_MAX_OUTPUT_TOKENS", "700")),
+        "max_output_tokens": int(os.getenv("OPENAI_MAX_OUTPUT_TOKENS", "5000")),
         "temperature": 0.2,
     }
     async with httpx.AsyncClient(timeout=timeout_s) as client:

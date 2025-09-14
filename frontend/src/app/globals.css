@@ -522,6 +522,20 @@ button:hover {
   font-weight: 700;
 }
 
+/* Flag chips for Results table */
+.flag-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1;
+  border: 1px solid var(--border);
+}
+.flag-chip.normal { background: #fff; color: #0B1220; }
+.flag-chip.high { background: #FFE5E5; color: #7F1D1D; border-color: #F8D5D7; }
+.flag-chip.low, .flag-chip.abnormal { background: #FFF6CC; color: #7A4F00; border-color: #FCEAA6; }
+
 .table-container {
   overflow-x: auto;
 }

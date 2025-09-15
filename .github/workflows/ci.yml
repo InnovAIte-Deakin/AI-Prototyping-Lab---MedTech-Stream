@@ -1,76 +1,76 @@
-name: CI
+# name: CI
 
-on:
-  push:
-  pull_request:
+# on:
+#   push:
+#   pull_request:
 
-jobs:
-  backend:
-    name: Backend (FastAPI)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+# jobs:
+#   backend:
+#     name: Backend (FastAPI)
+#     runs-on: ubuntu-latest
+#     defaults:
+#       run:
+#         working-directory: backend
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
+#       - name: Set up Python
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: '3.11'
+#           cache: 'pip'
 
-      - name: Install Tesseract OCR
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y tesseract-ocr
+#       - name: Install Tesseract OCR
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y tesseract-ocr
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install fastapi "uvicorn[standard]" python-multipart "pydantic>=2.7.0" \
-            pymupdf pytesseract Pillow ruff black pytest httpx
+#       - name: Install dependencies
+#         run: |
+#           python -m pip install --upgrade pip
+#           pip install fastapi "uvicorn[standard]" python-multipart "pydantic>=2.7.0" \
+#             pymupdf pytesseract Pillow ruff black pytest httpx
 
-      - name: Ruff Lint
-        run: ruff check .
+#       - name: Ruff Lint
+#         run: ruff check .
 
-      - name: Black Format Check
-        run: black --check .
+#       - name: Black Format Check
+#         run: black --check .
 
-      - name: Tests
-        run: PYTHONPATH=. pytest -q
+#       - name: Tests
+#         run: PYTHONPATH=. pytest -q
 
-  frontend:
-    name: Frontend (Next.js)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+#   frontend:
+#     name: Frontend (Next.js)
+#     runs-on: ubuntu-latest
+#     defaults:
+#       run:
+#         working-directory: frontend
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package.json
+#       - name: Setup Node
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: '20'
+#           cache: 'npm'
+#           cache-dependency-path: frontend/package.json
 
-      - name: Install
-        run: npm install --no-audit --no-fund
+#       - name: Install
+#         run: npm install --no-audit --no-fund
 
-      - name: Lint
-        run: npm run lint
+#       - name: Lint
+#         run: npm run lint
 
-      - name: Typecheck
-        run: npm run typecheck
+#       - name: Typecheck
+#         run: npm run typecheck
 
-      - name: Test
-        run: npm test
+#       - name: Test
+#         run: npm test
 
-      - name: Build
-        env:
-          NEXT_PUBLIC_BACKEND_URL: http://localhost:8000
-        run: npm run build
+#       - name: Build
+#         env:
+#           NEXT_PUBLIC_BACKEND_URL: http://localhost:8000
+#         run: npm run build

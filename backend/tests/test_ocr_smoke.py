@@ -1,12 +1,10 @@
 import io
 import shutil
-import typing as _t
 
 import pytest
-
-from app.main import app
 from fastapi.testclient import TestClient
 
+from app.main import app
 
 _skip_reason: str | None = None
 if shutil.which("tesseract") is None:

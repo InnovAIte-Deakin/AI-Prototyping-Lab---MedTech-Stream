@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import io
 from typing import Any
 
-import fitz  # PyMuPDF
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel
 
+from app.services.ocr import extract_text_from_image_bytes, extract_text_from_pdf_bytes
 from app.services.parser import parse_text
-from app.services.ocr import extract_text_from_pdf_bytes, extract_text_from_image_bytes
 
 router = APIRouter()
 

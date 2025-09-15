@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import os
-from typing import Optional
 
 import fitz  # PyMuPDF
 from PIL import Image
@@ -22,7 +21,7 @@ def _ocr_available() -> bool:
         return False
 
 
-def _do_ocr_image(img: Image.Image, lang: Optional[str] = None) -> str:
+def _do_ocr_image(img: Image.Image, lang: str | None = None) -> str:
     import pytesseract  # type: ignore
 
     config = os.getenv("TESSERACT_CONFIG", "")
@@ -33,7 +32,7 @@ def _do_ocr_image(img: Image.Image, lang: Optional[str] = None) -> str:
     return text or ""
 
 
-def extract_text_from_image_bytes(data: bytes, lang: Optional[str] = None) -> str:
+def extract_text_from_image_bytes(data: bytes, lang: str | None = None) -> str:
     if not (_ocr_enabled() and _ocr_available()):
         return ""
     try:
@@ -46,7 +45,7 @@ def extract_text_from_image_bytes(data: bytes, lang: Optional[str] = None) -> st
 def extract_text_from_pdf_bytes(
     data: bytes,
     max_pages: int = 10,
-    ocr_lang: Optional[str] = None,
+    ocr_lang: str | None = None,
 ) -> str:
     """
     Extract text from a PDF.

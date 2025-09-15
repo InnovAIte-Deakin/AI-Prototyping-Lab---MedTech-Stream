@@ -406,11 +406,22 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
                     comp = pending_value.get("comp")
                     raw_val = pending_value.get("raw_val")
                     # Compute flag from any pending range
-                    flag = _compute_flag(value, None if not pending_range else pending_range[1],
-                                          None if not pending_range else pending_range[2],
-                                          None if not pending_range else pending_range[3]) if value is not None else None
+                    flag = (
+                        _compute_flag(
+                            value,
+                            None if not pending_range else pending_range[1],
+                            None if not pending_range else pending_range[2],
+                            None if not pending_range else pending_range[3],
+                        )
+                        if value is not None
+                        else None
+                    )
                     comp_str = comp if comp else None
-                    value_text = f"{comp_str}{raw_val}" if (comp_str and raw_val is not None) else (str(value) if value is not None else None)
+                    value_text = (
+                        f"{comp_str}{raw_val}"
+                        if (comp_str and raw_val is not None)
+                        else (str(value) if value is not None else None)
+                    )
                     value_num = None
                     try:
                         if not comp_str and isinstance(value, (int, float)):

@@ -1,5 +1,5 @@
 "use client";
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { ParsedRow, ParseResult } from "@/types/ui";
 
 type Metrics = {
@@ -34,11 +34,11 @@ export function ParseProvider({ children }: { children: React.ReactNode }) {
   const backendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "");
   const currentFileUrl = files.length > 0 ? files[0].url : null;
 
-  const setFiles = (fl: File[]) => {
+  const setFiles = useCallback((fl: File[]) => {
     // revoke previous URLs
     files.forEach((f) => URL.revokeObjectURL(f.url));
     _setFiles(fl.map((f) => ({ file: f, url: URL.createObjectURL(f) })));
-  };
+  }, [files]);
 
   const value = useMemo<Store>(
     () => ({ backendUrl, files, setFiles, currentFileUrl, result, setResult, metrics, setMetrics }),

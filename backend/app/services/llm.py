@@ -8,11 +8,6 @@ import time
 from typing import Any
 
 import httpx
-try:
-    # Lazy/optional import so tests run without the SDK present
-    from openai import OpenAI  # type: ignore
-except Exception:  # pragma: no cover - only used when SDK missing
-    OpenAI = None  # type: ignore
 from pydantic import BaseModel, Field
 
 
@@ -400,13 +395,15 @@ def _get_openai_client():
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("missing_api_key")
-    if OpenAI is None:
-        # Keep import-time light; only require SDK when actually making a call
-        raise RuntimeError("missing_openai_dependency")
+    # Import SDK lazily so tests can run without it installed
+    try:
+        from openai import OpenAI as _OpenAI  # type: ignore
+    except Exception as e:  # pragma: no cover - only used when SDK missing
+        raise RuntimeError("missing_openai_dependency") from e
     base_url = (
         os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "https://api.openai.com/v1"
     ).rstrip("/")
-    return OpenAI(api_key=api_key, base_url=base_url, timeout=TIMEOUT)
+    return _OpenAI(api_key=api_key, base_url=base_url, timeout=TIMEOUT)
 
 
 def call_gpt5_chat(user_prompt: str, model: str | None = None) -> tuple[str, dict[str, Any]]:

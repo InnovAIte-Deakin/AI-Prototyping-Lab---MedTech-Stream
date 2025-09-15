@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import time
-from typing import Any, Tuple, Dict
+from typing import Any, Dict, Tuple
 
 import httpx
-import logging
-from pydantic import BaseModel, Field, ValidationError
 from openai import OpenAI
-import asyncio
+from pydantic import BaseModel, Field, ValidationError
 
 
 class ParsedRowIn(BaseModel):

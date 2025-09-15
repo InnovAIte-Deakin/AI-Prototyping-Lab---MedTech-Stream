@@ -1,4 +1,5 @@
 "use client";
+import Image from 'next/image';
 import { useParseStore } from '@/store/parseStore';
 
 export function DocumentViewer(){
@@ -12,11 +13,18 @@ export function DocumentViewer(){
       {mime === 'application/pdf' ? (
         <embed src={currentFileUrl} type="application/pdf" width="100%" height="100%" />
       ) : (
-        <div className="h-full w-full grid place-items-center">
-          <img src={currentFileUrl} alt="preview" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+        <div className="h-full w-full relative" style={{ position: 'relative' }}>
+          <Image
+            src={currentFileUrl}
+            alt="preview"
+            fill
+            sizes="100vw"
+            unoptimized
+            style={{ objectFit: 'contain' }}
+            priority={false}
+          />
         </div>
       )}
     </div>
   );
 }
-

@@ -42,7 +42,7 @@ export function ParseProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<Store>(
     () => ({ backendUrl, files, setFiles, currentFileUrl, result, setResult, metrics, setMetrics }),
-    [backendUrl, files, currentFileUrl, result, metrics]
+    [backendUrl, files, setFiles, currentFileUrl, result, setResult, metrics, setMetrics]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -52,4 +52,3 @@ export function useParseStore() {
   if (!v) throw new Error("useParseStore must be used within ParseProvider");
   return v;
 }
-

@@ -56,27 +56,44 @@ async def parse_endpoint(
         if total_len and total_len > max_total:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"Payload too large (max {MAX_FILES} files, {MAX_FILE_BYTES // (1024*1024)}MB each).",
+                detail=(
+                    f"Payload too large (max {MAX_FILES} files, "
+                    f"{MAX_FILE_BYTES // (1024*1024)}MB each)."
+                ),
             )
 
         parts_text: list[str] = []
         for f in upload_list:
             ctype = (f.content_type or "application/octet-stream").lower()
             is_pdf = "pdf" in ctype
-            is_image = ctype.startswith("image/") and any(x in ctype for x in ["png", "jpeg", "jpg"]) \
-                or any(f.filename.lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg"]) if f.filename else False
+            is_image = (
+                (ctype.startswith("image/") and any(x in ctype for x in ["png", "jpeg", "jpg"]))
+                or (
+                    (f.filename is not None)
+                    and any(
+                        f.filename.lower().endswith(ext)
+                        for ext in [".png", ".jpg", ".jpeg"]
+                    )
+                )
+            )
 
             if not (is_pdf or is_image):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Unsupported file type for {f.filename or 'upload'}. Use PDF or image (PNG/JPEG).",
+                    detail=(
+                        f"Unsupported file type for {f.filename or 'upload'}. "
+                        "Use PDF or image (PNG/JPEG)."
+                    ),
                 )
 
             data = await f.read()
             if len(data) > MAX_FILE_BYTES:
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"{f.filename or 'file'} exceeds {MAX_FILE_BYTES // (1024*1024)}MB limit.",
+                    detail=(
+                        f"{f.filename or 'file'} exceeds "
+                        f"{MAX_FILE_BYTES // (1024*1024)}MB limit."
+                    ),
                 )
             try:
                 if is_pdf:
@@ -84,7 +101,10 @@ async def parse_endpoint(
                 else:
                     t = extract_text_from_image_bytes(data, lang="eng")
             except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Failed to read file {f.filename or ''}: {e}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to read file {f.filename or ''}: {e}",
+                )
             if t := (t or "").strip():
                 parts_text.append(t)
         text_content = "\n".join(parts_text)

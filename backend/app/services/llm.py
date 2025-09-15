@@ -8,7 +8,11 @@ import time
 from typing import Any
 
 import httpx
-from openai import OpenAI
+try:
+    # Lazy/optional import so tests run without the SDK present
+    from openai import OpenAI  # type: ignore
+except Exception:  # pragma: no cover - only used when SDK missing
+    OpenAI = None  # type: ignore
 from pydantic import BaseModel, Field
 
 
@@ -392,10 +396,13 @@ def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
     )
 
 
-def _get_openai_client() -> OpenAI:
+def _get_openai_client():
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("missing_api_key")
+    if OpenAI is None:
+        # Keep import-time light; only require SDK when actually making a call
+        raise RuntimeError("missing_openai_dependency")
     base_url = (
         os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "https://api.openai.com/v1"
     ).rstrip("/")

@@ -140,6 +140,40 @@ input:focus-visible, textarea:focus-visible {
 
 .stack > * + * { margin-top: 0.75rem; }
 
+/* Summary presentation */
+.summary-card {
+  padding: 1.25rem 1.25rem 1rem;
+  border-left: 6px solid var(--brand);
+}
+.summary-card .summary-toolbar {
+  display: flex;
+  gap: .5rem;
+  justify-content: flex-end;
+  margin-bottom: .5rem;
+}
+.summary-body {
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.summary-body p {
+  margin: 0 0 .75rem;
+}
+.summary-bullets {
+  margin: .25rem 0 0 .75rem;
+  padding: 0 0 0 1rem;
+}
+.summary-bullets li { margin: .25rem 0; }
+.summary-code {
+  font-size: 0.95rem;
+  background: var(--ui-muted);
+  padding: .75rem;
+  border-radius: 10px;
+  overflow: auto;
+  /* Show full content; allow natural height */
+}
+
 /* Header + layout */
 .header {
   background: linear-gradient(180deg, rgba(8,152,160,.12), transparent);

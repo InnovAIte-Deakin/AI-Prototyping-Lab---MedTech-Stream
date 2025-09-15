@@ -375,9 +375,7 @@ export default function ParsePage() {
       {interpretation && (
         <div className="stack">
           <h2>Insights</h2>
-          <div className="card">
-            <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{interpretation.summary}</p>
-          </div>
+          <SummaryCard summary={interpretation.summary} />
           {Array.isArray(interpretation.per_test) && interpretation.per_test.length > 0 && (
             <div className="card">
               <h3>Per‑test explanations</h3>
@@ -406,6 +404,73 @@ export default function ParsePage() {
         </div>
       )}
       <Disclaimer />
+    </div>
+  );
+}
+
+// Polished summary renderer: handles plain text or stray JSON gracefully
+
+function SummaryCard({ summary }: { summary: string }) {
+  const [copied, setCopied] = useState(false);
+  // Try to extract a human‑readable string from JSON‑looking content
+  const tryParse = (s: string): string | null => {
+    const trimmed = (s || "").trim();
+    if (!trimmed) return null;
+    const looksJson = (trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"));
+    if (!looksJson) return trimmed;
+    try {
+      const obj = JSON.parse(trimmed);
+      if (typeof obj === 'string') return obj;
+      if (obj && typeof obj.summary === 'string') return obj.summary;
+      // Fallback: pretty print compact JSON snippet
+      return JSON.stringify(obj, null, 2);
+    } catch {
+      return trimmed; // not real JSON; just show raw
+    }
+  };
+
+  const normalized = tryParse(summary) ?? '';
+  const isCodeBlock = normalized.trim().startsWith('{') || normalized.trim().startsWith('[');
+
+  // Turn double newlines into paragraphs; keep single‑line bullets as a list
+  const lines = normalized.split(/\n/);
+  const bullets: string[] = [];
+  const other: string[] = [];
+  for (const ln of lines) {
+    if (/^\s*[-*•]\s+/.test(ln) || /^\s*\d+\.\s+/.test(ln)) bullets.push(ln.replace(/^\s*[-*•]\s+/, '').trim()); else other.push(ln);
+  }
+
+  const paras = other.join('\n').split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(normalized);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
+
+  return (
+    <div className="card summary-card">
+      <div className="summary-toolbar no-print">
+        <button className="btn btn-outline btn-sm" onClick={onCopy}>{copied ? 'Copied' : 'Copy'}</button>
+      </div>
+      {isCodeBlock ? (
+        <pre className="summary-code">{normalized}</pre>
+      ) : (
+        <div className="summary-body">
+          {paras.map((p, i) => (
+            <p key={i}>{p}</p>
+          ))}
+          {bullets.length > 0 && (
+            <ul className="summary-bullets">
+              {bullets.map((b, i) => (
+                <li key={i}>{b}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }

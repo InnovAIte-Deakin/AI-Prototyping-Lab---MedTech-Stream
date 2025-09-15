@@ -48,4 +48,3 @@ def test_parenthetical_and_to_ranges_and_flags():
     hbsag = next(r for r in rows if r.test_name.lower().startswith("hep b"))
     assert isinstance(hbsag.value, str) and hbsag.value.lower() == "non-reactive"
     assert hbsag.flag == "normal"
-

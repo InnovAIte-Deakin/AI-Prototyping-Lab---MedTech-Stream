@@ -40,9 +40,7 @@ class InterpretationOut(BaseModel):
     disclaimer: str
 
 
-SYS_PROMPT = (
-    "You are a careful clinical explainer. Write in clear, plain English."
-)
+SYS_PROMPT = "You are a careful clinical explainer. Write in clear, plain English."
 
 # Env‑tunable HTTP timeout used by OpenAI client/HTTP calls
 TIMEOUT = float(os.getenv("OPENAI_TIMEOUT_S", "15"))
@@ -106,6 +104,7 @@ def _responses_text_from_resp(resp: Any) -> str:
             if isinstance(model_dump.get("output_text"), str) and model_dump["output_text"].strip():
                 return model_dump["output_text"]
             parts: list[str] = []
+
             def walk(x: Any):
                 if isinstance(x, dict):
                     if isinstance(x.get("text"), str):
@@ -115,6 +114,7 @@ def _responses_text_from_resp(resp: Any) -> str:
                 elif isinstance(x, list):
                     for v in x:
                         walk(v)
+
             walk(model_dump.get("output"))
             if parts:
                 return "".join(parts)
@@ -128,7 +128,9 @@ def _max_tokens() -> int:
 
     Reads OPENAI_MAX_OUTPUT_TOKENS (or OPENAI_MAX_COMPLETION_TOKENS) and falls back to 1600.
     """
-    raw = os.getenv("OPENAI_MAX_OUTPUT_TOKENS") or os.getenv("OPENAI_MAX_COMPLETION_TOKENS") or "1600"
+    raw = (
+        os.getenv("OPENAI_MAX_OUTPUT_TOKENS") or os.getenv("OPENAI_MAX_COMPLETION_TOKENS") or "1600"
+    )
     try:
         n = int(str(raw))
         # light safety clamp
@@ -147,6 +149,7 @@ def _timeout_seconds(endpoint: str) -> float:
         return max(5.0, min(v, 600.0))
     except Exception:
         return 15.0
+
 
 def _resolve_model(prefer: str | None = None) -> str:
     """Resolve the model name, preferring GPT‑5 for consistency.
@@ -198,7 +201,12 @@ def _coerce_interpretation_shape(obj: dict[str, Any] | Any) -> dict[str, Any] | 
         for k, v in pt.items():
             if isinstance(v, dict):
                 tn = v.get("test_name") or k
-                expl = v.get("explanation") or v.get("summary") or v.get("text") or json.dumps(v, ensure_ascii=False)
+                expl = (
+                    v.get("explanation")
+                    or v.get("summary")
+                    or v.get("text")
+                    or json.dumps(v, ensure_ascii=False)
+                )
             else:
                 tn = k
                 expl = str(v)
@@ -266,9 +274,13 @@ def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
         if r.flag in {"low", "high", "abnormal"}:
             sev = "high" if r.flag == "high" else ("low" if r.flag == "low" else "abnormal")
             note = (
-                "Higher than reference range" if r.flag == "high"
-                else "Lower than reference range" if r.flag == "low"
-                else "Result reported as abnormal"
+                "Higher than reference range"
+                if r.flag == "high"
+                else (
+                    "Lower than reference range"
+                    if r.flag == "low"
+                    else "Result reported as abnormal"
+                )
             )
             flagged.append(FlagItem(test_name=r.test_name, severity=sev, note=note))
 
@@ -333,7 +345,9 @@ def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
 
     steps: list[str] = []
     # Keep first item fixed to preserve contract with existing tests/clients
-    steps.append("Please schedule a visit with your doctor to review these results and your overall health.")
+    steps.append(
+        "Please schedule a visit with your doctor to review these results and your overall health."
+    )
     if highs or lows or abns:
         flagged_list = _join(highs + lows + abns)
         steps.append(f"Review flagged results together: {flagged_list}.")
@@ -352,7 +366,9 @@ def _fallback_interpretation(rows: list[ParsedRowIn]) -> InterpretationOut:
                 "confirmatory tests are recommended."
             )
         steps.append("Ask about recommended follow-up tests and timelines.")
-        steps.append("Share any symptoms, medications, or recent changes that could affect results.")
+        steps.append(
+            "Share any symptoms, medications, or recent changes that could affect results."
+        )
     else:
         steps.append("Review these results with your clinician at your next visit.")
         steps.append("Ask which values are most important for you and how to maintain them.")
@@ -380,7 +396,9 @@ def _get_openai_client() -> OpenAI:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("missing_api_key")
-    base_url = (os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "https://api.openai.com/v1").rstrip("/")
+    base_url = (
+        os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "https://api.openai.com/v1"
+    ).rstrip("/")
     return OpenAI(api_key=api_key, base_url=base_url, timeout=TIMEOUT)
 
 
@@ -401,7 +419,11 @@ def call_gpt5_chat(user_prompt: str, model: str | None = None) -> tuple[str, dic
     # - Otherwise, allow env‑tuned temperature.
     if not model.startswith("gpt-5"):
         lower_model = model.lower()
-        if not (lower_model.startswith("o") or "omni" in lower_model or lower_model.startswith("gpt-4.1")):
+        if not (
+            lower_model.startswith("o")
+            or "omni" in lower_model
+            or lower_model.startswith("gpt-4.1")
+        ):
             try:
                 kwargs["temperature"] = float(os.getenv("OPENAI_TEMPERATURE", "0.6"))
             except Exception:
@@ -420,7 +442,12 @@ def call_gpt5_chat(user_prompt: str, model: str | None = None) -> tuple[str, dic
                 content = str(parsed)
     if content is None:
         content = ""
-    return content, {"ok": True, "endpoint": "chat.completions", "model": model, "usage": getattr(r, "usage", None)}
+    return content, {
+        "ok": True,
+        "endpoint": "chat.completions",
+        "model": model,
+        "usage": getattr(r, "usage", None),
+    }
 
 
 async def _call_openai_chat(prompt: str, timeout_s: float) -> tuple[str, dict[str, Any]]:
@@ -434,14 +461,21 @@ def call_gpt5_responses(user_prompt: str, model: str | None = None) -> tuple[str
     resp = client.responses.create(
         model=model,
         instructions=SYS_PROMPT,
-        input=[{
-            "role": "user",
-            "content": [{"type": "input_text", "text": user_prompt}],
-        }],
+        input=[
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": user_prompt}],
+            }
+        ],
         max_output_tokens=_max_tokens(),
     )
     out_text = _responses_text_from_resp(resp)
-    return out_text, {"ok": True, "endpoint": "responses", "model": model, "usage": getattr(resp, "usage", None)}
+    return out_text, {
+        "ok": True,
+        "endpoint": "responses",
+        "model": model,
+        "usage": getattr(resp, "usage", None),
+    }
 
 
 async def _call_openai_responses(prompt: str, timeout_s: float) -> tuple[str, dict[str, Any]]:
@@ -459,7 +493,9 @@ async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, di
     try:
         prompt = _build_user_prompt(rows)
         # Choose endpoint: use Responses API for GPT‑5, else Chat Completions
-        use_responses = meta["model"].startswith("gpt-5") or os.getenv("OPENAI_USE_RESPONSES", "1") in {
+        use_responses = meta["model"].startswith("gpt-5") or os.getenv(
+            "OPENAI_USE_RESPONSES", "1"
+        ) in {
             "1",
             "true",
             "True",
@@ -472,7 +508,9 @@ async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, di
         call: dict[str, Any]
         if use_responses:
             try:
-                raw, call = await _call_openai_responses(prompt, timeout_s=_timeout_seconds("responses"))
+                raw, call = await _call_openai_responses(
+                    prompt, timeout_s=_timeout_seconds("responses")
+                )
             except Exception:
                 # One attempt with Chat as a safety net
                 meta["endpoint"] = "chat.completions"
@@ -550,9 +588,8 @@ async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, di
     except Exception as e:
         # Unexpected application error path. Try to surface real error details.
         meta["ok"] = False
-        status = (
-            getattr(e, "status_code", None)
-            or getattr(getattr(e, "response", None), "status_code", None)
+        status = getattr(e, "status_code", None) or getattr(
+            getattr(e, "response", None), "status_code", None
         )
         code = getattr(e, "code", None) or type(e).__name__
         message = getattr(e, "message", None)

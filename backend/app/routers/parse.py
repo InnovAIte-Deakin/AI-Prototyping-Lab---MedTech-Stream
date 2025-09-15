@@ -65,14 +65,10 @@ async def parse_endpoint(
             ctype = (f.content_type or "application/octet-stream").lower()
             is_pdf = "pdf" in ctype
             is_image = (
-                (ctype.startswith("image/") and any(x in ctype for x in ["png", "jpeg", "jpg"]))
-                or (
-                    (f.filename is not None)
-                    and any(
-                        f.filename.lower().endswith(ext)
-                        for ext in [".png", ".jpg", ".jpeg"]
-                    )
-                )
+                ctype.startswith("image/") and any(x in ctype for x in ["png", "jpeg", "jpg"])
+            ) or (
+                (f.filename is not None)
+                and any(f.filename.lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg"])
             )
 
             if not (is_pdf or is_image):

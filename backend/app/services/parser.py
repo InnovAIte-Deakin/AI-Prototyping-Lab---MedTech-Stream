@@ -143,6 +143,7 @@ def _canonicalize_name(name: str | None) -> str | None:
             return v
     return name
 
+
 # Simple header/footer noise filters
 NOISE = re.compile(
     r"^(?:"
@@ -293,7 +294,7 @@ def _compute_flag(
                         return None
                 # With threshold ranges, classify if comparator clearly violates threshold
                 if le is not None:
-                    # e.g., result "< 5" with rule "≤ 200" is normal; 
+                    # e.g., result "< 5" with rule "≤ 200" is normal;
                     # result "> 210" with rule "≤ 200" is high
                     if comp in {"<", "<=", "≤"}:
                         return "normal" if v_bound <= le else None
@@ -371,7 +372,9 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
     pending_name: str | None = None
     # If a bracket-only range appears before its value row due to PDF read order,
     # remember it and attach to the next parsed row lacking a range.
-    pending_range: tuple[str | None, tuple[float, float] | None, float | None, float | None] | None = None
+    pending_range: (
+        tuple[str | None, tuple[float, float] | None, float | None, float | None] | None
+    ) = None
     # Handle value-only lines that precede or follow the test name (e.g., split PDFs)
     pending_value: dict | None = None  # {value, unit, comp, raw_val}
     for raw_line in text.splitlines():
@@ -483,7 +486,7 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
                 vm = VALUE_WITH_UNIT.search(line)
                 if vm:
                     try:
-                        comp = (vm.group("comp") or None)
+                        comp = vm.group("comp") or None
                         # Normalize number string (decimal/comma) before casting
                         raw_val = vm.group("val")
                         if comp:
@@ -498,7 +501,7 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
 
             if split_pos is not None:
                 # Test name is the left part before first number
-                name = line[: split_pos].strip(" -:\t")
+                name = line[:split_pos].strip(" -:\t")
                 # Drop junk-only prefixes like '(' or '≤' that arise from PDF splits
                 if name and JUNK_NAME.fullmatch(name):
                     name = None
@@ -542,7 +545,7 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
             # Explicit flag markers like 'H', 'L', '↑', '↓' appearing after the value
             explicit_flag: str | None = None
             # Only search in the tail after the numeric value/unit to avoid matching unit '/L'
-            tail = line[vm.end():] if vm else ""
+            tail = line[vm.end() :] if vm else ""
             if tail:
                 mflag = END_FLAG_TAIL.search(tail)
                 if mflag:
@@ -562,7 +565,9 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
                     flag = explicit_flag
                 # Compute enriched fields
                 comp_str = comp if comp else None
-                value_text = f"{comp_str}{raw_val}" if (comp_str and raw_val is not None) else str(value)
+                value_text = (
+                    f"{comp_str}{raw_val}" if (comp_str and raw_val is not None) else str(value)
+                )
                 value_num = None
                 try:
                     if not comp_str and isinstance(value, (int, float)):

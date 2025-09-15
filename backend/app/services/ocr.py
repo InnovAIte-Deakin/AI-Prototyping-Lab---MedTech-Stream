@@ -16,6 +16,7 @@ def _ocr_available() -> bool:
     # pytesseract import is lazy to allow running without OCR installed
     try:
         import pytesseract  # type: ignore
+
         return bool(pytesseract.get_tesseract_version())
     except Exception:
         return False
@@ -65,6 +66,7 @@ def extract_text_from_pdf_bytes(
             # If there are no digits, treat as sufficiently alphabetic
             return float("inf") if letters > 0 else 0.0
         return letters / digits
+
     try:
         with fitz.open(stream=io.BytesIO(data), filetype="pdf") as doc:
             use_ocr = _ocr_enabled() and _ocr_available()

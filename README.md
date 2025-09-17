@@ -1,6 +1,6 @@
-# ReportRx Monorepo
+# ReportX Monorepo
 
-ReportRx is an educational health explanations app. MVP stores no data and logs metadata only (no PHI or request bodies). This monorepo contains a Next.js frontend and a FastAPI backend with Docker Compose for local prod-like runs.
+ReportX is an educational health explanations app. MVP stores no data and logs metadata only (no PHI or request bodies). This monorepo contains a Next.js frontend and a FastAPI backend with Docker Compose for local prod-like runs.
 
 ## Quickstart
 

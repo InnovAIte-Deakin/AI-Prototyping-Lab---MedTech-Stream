@@ -1,9 +1,9 @@
 [project]
-name = "reportrx-backend"
+name = "reportx-backend"
 version = "0.1.0"
-description = "ReportRx FastAPI backend"
+description = "ReportX FastAPI backend"
 requires-python = ">=3.11"
-authors = [{name = "ReportRx", email = "dev@reportrx.local"}]
+authors = [{name = "ReportX", email = "dev@reportx.local"}]
 dependencies = [
   "fastapi>=0.110.0",
   "uvicorn[standard]>=0.29.0",

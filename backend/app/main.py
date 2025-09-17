@@ -105,7 +105,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="ReportRx API", version="0.1.0")
+    app = FastAPI(title="ReportX API", version="0.1.0")
 
     # CORS: only allow the configured frontend origin
     frontend_origin = get_frontend_origin()

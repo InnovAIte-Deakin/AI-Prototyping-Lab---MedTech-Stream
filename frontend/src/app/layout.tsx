@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import Header from '@/components/Header';
 
 export const metadata = {
-  title: 'ReportRx',
+  title: 'ReportX',
   description: 'Educational health explanations (no storage)',
 };
 
@@ -16,7 +16,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <Header />
         <main id="main" className="container">{children}</main>
         <footer className="container footer">
-          <div>© {new Date().getFullYear()} ReportRx — Educational only, not medical advice.</div>
+          <div>© {new Date().getFullYear()} ReportX — Educational only, not medical advice.</div>
         </footer>
       </body>
     </html>

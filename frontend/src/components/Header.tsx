@@ -13,7 +13,7 @@ export default function Header() {
           <div className="logo-section">
             <a href="/" className="logo">
               <div className="logo-icon">Rx</div>
-              ReportRx
+              ReportX
             </a>
           </div>
 

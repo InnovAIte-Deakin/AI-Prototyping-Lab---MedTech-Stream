@@ -25,7 +25,7 @@ export default function Header() {
                   className="nav-btn nav-btn-primary"
                   type="button"
                 >
-                  Parse Report
+                  Review My Report
                 </button>
               </li>
               <li>

@@ -15,7 +15,7 @@ export function FileQueue(){
     const list = Array.from(e.target.files || []);
     const bad = list.find(f => !ACCEPT.includes(f.type) || f.size > MAX_BYTES);
     if (bad){
-      setError(`Unsupported type or too large: ${bad.name}`);
+      setError("That file type or size isn’t supported. Please choose a PDF or image under 10 MB.");
       return;
     }
     setError(null);
@@ -32,7 +32,7 @@ export function FileQueue(){
         for (const f of files) fd.append('files', f.file);
         res = await fetch(`${backendUrl}/api/v1/parse`, { method:'POST', body: fd });
       } else {
-        setError('Please select at least one PDF or image, or paste text in the old Parse page.');
+        setError('Please pick a file to review, or paste your results in the classic text view.');
         setBusy(false);
         return;
       }
@@ -42,9 +42,9 @@ export function FileQueue(){
       const unparsed = Array.isArray(json.unparsed_lines) ? json.unparsed_lines : [];
       setResult({ rows, unparsed, extractedText: json.extracted_text });
       setMetrics({ lastStatus: res.status, lastParseMs: took, parsedRowCount: rows.length, unparsedCount: unparsed.length });
-      if (!res.ok) setError(`Parse failed: ${res.status}`);
+      if (!res.ok) setError('We couldn’t finish reviewing your file. Please try again.');
     } catch (e: any) {
-      setError(e.message || String(e));
+      setError('We couldn’t finish reviewing your file. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -57,7 +57,7 @@ export function FileQueue(){
         {error ? <div className="alert alert-error">{error}</div> : null}
       </div>
       <div>
-        <Button onClick={onParse} disabled={busy}>{busy ? 'Parsing…' : 'Parse'}</Button>
+        <Button onClick={onParse} disabled={busy}>{busy ? 'Reviewing…' : 'Review'}</Button>
       </div>
       <ul className="muted" style={{ fontSize: 14 }}>
         {files.map((f, i) => (
@@ -67,4 +67,3 @@ export function FileQueue(){
     </div>
   );
 }
-

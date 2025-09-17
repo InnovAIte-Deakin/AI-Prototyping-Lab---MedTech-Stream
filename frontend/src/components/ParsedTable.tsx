@@ -9,13 +9,13 @@ export function ParsedTable(){
   const rows = result?.rows || [];
   if (rows.length === 0){
     return <div className="stack p-3">
-      <div className="muted">No rows parsed yet.</div>
+      <div className="muted">No results reviewed yet.</div>
     </div>;
   }
   return (
     <div className="stack" style={{ padding: '.5rem' }}>
       <div className="p-2" style={{ display: 'flex', gap: '.5rem', alignItems: 'center' }}>
-        <strong>Parsed {rows.length} rows</strong>
+        <strong>Reviewed {rows.length} results</strong>
         <Button size="sm" variant="outline" onClick={() => download('parsed.csv', rowsToCSV(rows), 'text/csv')}>Export CSV</Button>
         <Button size="sm" variant="outline" onClick={() => download('parsed.json', JSON.stringify(rows, null, 2), 'application/json')}>Export JSON</Button>
       </div>
@@ -27,10 +27,10 @@ export function ParsedTable(){
               <TH>Value</TH>
               <TH>Unit</TH>
               <TH>Reference</TH>
-              <TH>Comp</TH>
+              <TH style={{ whiteSpace: 'nowrap' }}>Comparison</TH>
               <TH>Flag</TH>
-              <TH>Conf</TH>
-              <TH>Pg</TH>
+              <TH style={{ whiteSpace: 'nowrap' }}>Confidence score</TH>
+              <TH style={{ whiteSpace: 'nowrap' }}>Page</TH>
             </TR>
           </THead>
           <TBody>

@@ -70,7 +70,7 @@ describe('Parse + Interpret flow', () => {
     // Enter some text and submit form
     const textarea = screen.getByRole('textbox');
     fireEvent.change(textarea, { target: { value: 'Hemoglobin 13.5 g/dL (11-15)' } });
-    const parseBtn = screen.getByRole('button', { name: /parse/i });
+    const parseBtn = screen.getByRole('button', { name: /review/i });
     // Submit via form to trigger onSubmit reliably
     fireEvent.submit(parseBtn.closest('form') as HTMLFormElement);
 

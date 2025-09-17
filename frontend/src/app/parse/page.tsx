@@ -75,13 +75,21 @@ export default function ParsePage() {
           body: JSON.stringify({ text }),
         });
       }
-      if (!res.ok) throw new Error(`Parse failed: ${res.status}`);
+      if (!res.ok) {
+        const e: any = new Error("We couldn’t review that report right now. Please try again.");
+        e.userMessage = true;
+        throw e;
+      }
       const data = (await res.json()) as { rows: Row[]; unparsed_lines: string[]; extracted_text?: string };
       setRows(data.rows);
       setUnparsed(data.unparsed_lines);
       setExtractedText(data.extracted_text || '');
     } catch (err: any) {
-      setError(err.message || String(err));
+      if (err && (err as any).userMessage) {
+        setError(err.message);
+      } else {
+        setError("We had trouble reviewing your report. Please try again in a moment.");
+      }
     } finally {
       setLoading(false);
     }
@@ -97,12 +105,20 @@ export default function ParsePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rows }),
       });
-      if (!res.ok) throw new Error(`Interpret failed: ${res.status}`);
+      if (!res.ok) {
+        const e: any = new Error("We couldn’t review that report right now. Please try again.");
+        e.userMessage = true;
+        throw e;
+      }
       const data = (await res.json()) as { interpretation: any, meta?: any };
       setInterpretation(data.interpretation);
       setMeta((data as any).meta || null);
     } catch (err: any) {
-      setExplainError(err.message || String(err));
+      if (err && (err as any).userMessage) {
+        setExplainError(err.message);
+      } else {
+        setExplainError("We had trouble reviewing your report. Please try again in a moment.");
+      }
     } finally {
       setExplaining(false);
     }
@@ -125,8 +141,8 @@ export default function ParsePage() {
   return (
     <div className="parse-page">
       <div className="parse-header">
-        <h1>Parse Lab Report</h1>
-        <p className="parse-subtitle">Upload your lab reports or paste the text to get started</p>
+        <h1>Understand Your Lab Report</h1>
+        <p className="parse-subtitle">Upload your report or paste the text. We’ll sort the numbers and explain them in plain language so you can talk confidently with your clinician.</p>
       </div>
 
       <div className="upload-section">
@@ -143,7 +159,7 @@ export default function ParsePage() {
                   </svg>
                 </div>
                 <div>
-                  <h3>Upload Files</h3>
+                  <h3>Upload Your Report</h3>
                   <p>PDF, PNG, or JPEG files (up to 5 files, 500MB each)</p>
                 </div>
               </div>
@@ -251,10 +267,10 @@ export default function ParsePage() {
                   <svg className="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 12a9 9 0 11-6.219-8.56"/>
                   </svg>
-                  Parsing...
+                  Reviewing...
                 </>
               ) : (
-                'Parse Report'
+                'Review Report'
               )}
             </Button>
             <Button variant="outline" type="button" onClick={clearAll} size="lg">
@@ -266,7 +282,7 @@ export default function ParsePage() {
 
       {error && (
         <div className="alert alert-error">
-          <strong>Could not parse.</strong> {error}
+          <strong>We ran into a hiccup.</strong> {error}
         </div>
       )}
 
@@ -321,7 +337,7 @@ export default function ParsePage() {
           <details className="info-card">
             <summary className="info-summary">
               <span className="info-icon">⚠️</span>
-              <span className="info-title">Unparsed Lines ({unparsed.length})</span>
+              <span className="info-title">Lines we couldn’t read ({unparsed.length})</span>
               <span className="info-description">Lines that couldn&#39;t be automatically processed</span>
             </summary>
             <div className="info-content">
@@ -356,7 +372,7 @@ export default function ParsePage() {
       {explainError ? (
         <div className="alert alert-error">
           <div>
-            <strong>Interpretation error:</strong> {explainError}
+            <strong>We couldn’t review your report this time.</strong> {explainError}
           </div>
           <div className="no-print">
             <Button onClick={onExplain}>Retry</Button>

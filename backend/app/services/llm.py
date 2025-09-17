@@ -151,14 +151,18 @@ def _timeout_seconds(endpoint: str) -> float:
 
 
 def _resolve_model(prefer: str | None = None) -> str:
-    """Resolve the model name, preferring GPT‑5 for consistency.
+    """Resolve the model name, honoring any configured value when provided.
 
-    If a non‑GPT‑5 model is provided (e.g., o4-mini), return 'gpt-5'.
+    Returns the first non-empty string among ``prefer`` and ``OPENAI_MODEL``.
+    Falls back to ``"gpt-5"`` only when no model was supplied.
     """
-    m = prefer or os.getenv("OPENAI_MODEL", "gpt-5")
-    if not (isinstance(m, str) and m.startswith("gpt-5")):
-        return "gpt-5"
-    return m
+    candidates: tuple[str | None, ...] = (prefer, os.getenv("OPENAI_MODEL"))
+    for candidate in candidates:
+        if isinstance(candidate, str):
+            model = candidate.strip()
+            if model:
+                return model
+    return "gpt-5"
 
 
 def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
@@ -461,7 +465,7 @@ def call_gpt5_chat(user_prompt: str, model: str | None = None) -> tuple[str, dic
 
 async def _call_openai_chat(prompt: str, timeout_s: float) -> tuple[str, dict[str, Any]]:
     # Async wrapper to preserve existing test hooks
-    return await asyncio.to_thread(call_gpt5_chat, prompt, os.getenv("OPENAI_MODEL", "gpt-5"))
+    return await asyncio.to_thread(call_gpt5_chat, prompt, os.getenv("OPENAI_MODEL"))
 
 
 def call_gpt5_responses(user_prompt: str, model: str | None = None) -> tuple[str, dict[str, Any]]:
@@ -489,7 +493,7 @@ def call_gpt5_responses(user_prompt: str, model: str | None = None) -> tuple[str
 
 async def _call_openai_responses(prompt: str, timeout_s: float) -> tuple[str, dict[str, Any]]:
     # Async wrapper to preserve existing call pattern
-    return await asyncio.to_thread(call_gpt5_responses, prompt, os.getenv("OPENAI_MODEL", "gpt-5"))
+    return await asyncio.to_thread(call_gpt5_responses, prompt, os.getenv("OPENAI_MODEL"))
 
 
 async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, dict[str, Any]]:
@@ -497,22 +501,25 @@ async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, di
     logger = logging.getLogger("reportrx.backend")
     meta: dict[str, Any] = {"llm": "none", "attempts": 0}
     # Record model/base used for observability (no PHI)
-    meta["model"] = _resolve_model(os.getenv("OPENAI_MODEL", "gpt-5"))
+    meta["model"] = _resolve_model(os.getenv("OPENAI_MODEL"))
     meta["endpoint"] = "unknown"
     try:
         prompt = _build_user_prompt(rows)
-        # Choose endpoint: use Responses API for GPT‑5, else Chat Completions
-        use_responses = meta["model"].startswith("gpt-5") or os.getenv(
-            "OPENAI_USE_RESPONSES", "1"
-        ) in {
-            "1",
-            "true",
-            "True",
-        }
+        # Choose endpoint: default to Responses for GPT‑5; otherwise stick with Chat
+        # Completions unless OPENAI_USE_RESPONSES explicitly opts in.
+        env_force_responses = os.getenv("OPENAI_USE_RESPONSES")
+        use_responses = meta["model"].startswith("gpt-5")
+        if not use_responses and isinstance(env_force_responses, str):
+            use_responses = env_force_responses.strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
         meta["llm"] = "openai"
         meta["attempts"] = 1
         meta["endpoint"] = "responses" if use_responses else "chat.completions"
-        # Primary attempt: Responses for GPT‑5, else Chat
+        # Primary attempt: Responses when selected, otherwise Chat Completions
         raw: str
         call: dict[str, Any]
         if use_responses:

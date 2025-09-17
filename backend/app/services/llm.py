@@ -422,7 +422,9 @@ def call_gpt5_chat(user_prompt: str, model: str | None = None) -> tuple[str, dic
             {"role": "system", "content": SYS_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        "max_completion_tokens": _max_tokens(),
+        # OpenAI chat completions expect `max_tokens`; older docs mention
+        # `max_completion_tokens`, but that triggers a 400 with current SDKs.
+        "max_tokens": _max_tokens(),
     }
     # Temperature handling:
     # - GPT‑5: only default supported; do not set.

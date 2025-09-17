@@ -12,6 +12,7 @@ from starlette.responses import Response
 from .routers.health import router as health_router
 from .routers.interpret import router as interpret_router
 from .routers.parse import router as parse_router
+from .routers.translate import router as translate_router
 
 
 def get_frontend_origin() -> str:
@@ -130,6 +131,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(parse_router, prefix="/api/v1")
     app.include_router(interpret_router, prefix="/api/v1")
+    app.include_router(translate_router, prefix="/api/v1")
 
     @app.get("/", include_in_schema=False)
     async def root(_: Request) -> Response:

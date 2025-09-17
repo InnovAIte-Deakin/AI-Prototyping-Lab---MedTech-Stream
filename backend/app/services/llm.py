@@ -151,14 +151,16 @@ def _timeout_seconds(endpoint: str) -> float:
 
 
 def _resolve_model(prefer: str | None = None) -> str:
-    """Resolve the model name, preferring GPT‑5 for consistency.
+    """Resolve the model name from input/env.
 
-    If a non‑GPT‑5 model is provided (e.g., o4-mini), return 'gpt-5'.
+    - If `prefer` is a non-empty string, return it as-is (trimmed).
+    - Else if `OPENAI_MODEL` is set and non-empty, return it (trimmed).
+    - Otherwise, fall back to 'gpt-5'.
     """
-    m = prefer or os.getenv("OPENAI_MODEL", "gpt-5")
-    if not (isinstance(m, str) and m.startswith("gpt-5")):
-        return "gpt-5"
-    return m
+    m = prefer if (isinstance(prefer, str) and prefer.strip()) else os.getenv("OPENAI_MODEL")
+    if isinstance(m, str) and m.strip():
+        return m.strip()
+    return "gpt-5"
 
 
 def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
@@ -503,7 +505,7 @@ async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, di
         prompt = _build_user_prompt(rows)
         # Choose endpoint: use Responses API for GPT‑5, else Chat Completions
         use_responses = meta["model"].startswith("gpt-5") or os.getenv(
-            "OPENAI_USE_RESPONSES", "1"
+            "OPENAI_USE_RESPONSES", "0"
         ) in {
             "1",
             "true",
@@ -641,3 +643,161 @@ async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, di
     }
     logger.info(_log)
     return fb, meta
+
+
+async def translate_summary(
+    text: str,
+    *,
+    target_language: str,
+    language_label: str,
+) -> tuple[str | None, dict[str, Any]]:
+    """Translate an English patient summary into a target language using the LLM.
+
+    Returns (translated_text or None, meta). Never raises.
+    """
+    start = time.perf_counter()
+    logger = logging.getLogger("reportrx.backend")
+    trimmed = (text or "").strip()
+
+    meta: dict[str, Any] = {
+        "llm": "none",
+        "attempts": 0,
+        "model": _resolve_model(os.getenv("OPENAI_MODEL", "gpt-5")),
+        "endpoint": "unknown",
+        "language": target_language,
+    }
+
+    if not trimmed:
+        meta["ok"] = True
+        meta["duration_ms"] = 0
+        return "", meta
+
+    prompt = (
+        f"Translate the following patient education summary from English into {language_label}. "
+        "Preserve headings, bullet symbols (- or numbered lists), paragraph spacing, and tone. "
+        "Return only the translated text with no commentary or transliteration.\n\nTEXT:\n"
+        f"{trimmed}"
+    )
+
+    try:
+        use_responses = meta["model"].startswith("gpt-5") or os.getenv("OPENAI_USE_RESPONSES", "0") in {
+            "1",
+            "true",
+            "True",
+        }
+        meta["llm"] = "openai"
+        meta["attempts"] = 1
+        meta["endpoint"] = "responses" if use_responses else "chat.completions"
+
+        raw: str
+        call: dict[str, Any]
+        if use_responses:
+            try:
+                raw, call = await _call_openai_responses(prompt, timeout_s=_timeout_seconds("responses"))
+            except Exception:
+                meta["endpoint"] = "chat.completions"
+                raw, call = await _call_openai_chat(prompt, timeout_s=_timeout_seconds("chat"))
+        else:
+            raw, call = await _call_openai_chat(prompt, timeout_s=_timeout_seconds("chat"))
+
+        out = (raw or "").strip()
+        meta["ok"] = True
+        if call:
+            if "usage" in call:
+                meta["usage"] = _jsonable_usage(call["usage"])
+            if "finish_reason" in call and call["finish_reason"]:
+                meta["finish_reason"] = call["finish_reason"]
+            if "status" in call:
+                meta["status"] = call["status"]
+        logger.info({
+            "event": "llm_call",
+            "endpoint": meta.get("endpoint"),
+            "model": meta.get("model"),
+            "ok": True,
+            "attempts": meta.get("attempts"),
+            "usage": meta.get("usage", {}),
+            "language": meta.get("language"),
+        })
+        return out, meta
+
+    except httpx.HTTPStatusError as e:
+        meta["ok"] = False
+        status = None
+        code = None
+        message = None
+        try:
+            if e.response is not None:
+                status = getattr(e.response, "status_code", None)
+                meta["status"] = status
+                try:
+                    body = e.response.json()
+                    err = body.get("error") if isinstance(body, dict) else None
+                    if isinstance(err, dict):
+                        message = err.get("message") or message
+                        code = err.get("code") or err.get("type") or code
+                    if not message:
+                        message = json.dumps(body)
+                except Exception:
+                    try:
+                        message = e.response.text or None
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        if not message:
+            message = str(e) or "http_error"
+        meta["error"] = {"status": status, "code": code, "message": message}
+
+    except httpx.RequestError as e:
+        meta["ok"] = False
+        status = None
+        code = type(e).__name__
+        message = getattr(e, "message", None) or str(e) or repr(e)
+        meta["error"] = {"status": status, "code": code, "message": message}
+
+    except RuntimeError as e:
+        # propagate specific message as error code (e.g., 'missing_api_key')
+        meta["ok"] = False
+        status = None
+        msg = str(e) or "runtime_error"
+        meta["error"] = {"status": status, "code": msg, "message": msg}
+
+    except Exception as e:
+        meta["ok"] = False
+        status = getattr(e, "status_code", None) or getattr(getattr(e, "response", None), "status_code", None)
+        code = getattr(e, "code", None) or type(e).__name__
+        message = getattr(e, "message", None)
+        if not message:
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                try:
+                    body = resp.json()  # type: ignore[attr-defined]
+                    err = body.get("error") if isinstance(body, dict) else None
+                    if isinstance(err, dict):
+                        message = err.get("message") or message
+                        code = code or err.get("code") or err.get("type")
+                    if not message:
+                        message = json.dumps(body)
+                except Exception:
+                    try:
+                        message = getattr(resp, "text", None) or message
+                    except Exception:
+                        pass
+        if not message:
+            message = str(e) or repr(e) or "unknown_error"
+        meta["error"] = {"status": status, "code": code, "message": message}
+
+    finally:
+        meta["duration_ms"] = int((time.perf_counter() - start) * 1000)
+        logger.info({
+            "event": "llm_call",
+            "endpoint": meta.get("endpoint"),
+            "model": meta.get("model"),
+            "ok": meta.get("ok", False),
+            "attempts": meta.get("attempts"),
+            "usage": meta.get("usage", {}),
+            "language": meta.get("language"),
+            "error": meta.get("error"),
+        })
+
+    return None, meta

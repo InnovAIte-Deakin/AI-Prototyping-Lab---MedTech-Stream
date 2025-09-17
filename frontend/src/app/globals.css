@@ -151,11 +151,33 @@ input:focus-visible, textarea:focus-visible {
   justify-content: flex-end;
   margin-bottom: .5rem;
 }
+.summary-card .summary-toolbar .summary-translate-select {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--ui-bg);
+  color: var(--ink);
+  font-size: 0.85rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 10px;
+  min-width: 9rem;
+}
+.summary-card .summary-toolbar .summary-translate-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .summary-body {
   font-size: 1.05rem;
   line-height: 1.8;
   color: var(--ink);
   overflow-wrap: anywhere;
+}
+.summary-status {
+  font-size: 0.85rem;
+  color: var(--muted-ink);
+  margin-bottom: 0.75rem;
+}
+.summary-status.error {
+  color: var(--danger);
 }
 .summary-body p {
   margin: 0 0 .75rem;

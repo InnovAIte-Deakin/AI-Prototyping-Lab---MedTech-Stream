@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -64,3 +65,28 @@ def test_interpret_repair_on_malformed(monkeypatch):
     validate_interpretation_payload(data)
 
     # No extra context behavior required in the simple version
+
+
+def test_interpret_rows_prefers_llm_summary(monkeypatch):
+    from app.services import llm as llm_module
+
+    rows = [llm_module.ParsedRowIn.model_validate(r) for r in sample_rows()]
+    base = llm_module._fallback_interpretation(rows)
+    assert base.per_test  # sanity check fallback provides per-test context
+    assert base.next_steps
+
+    async def good_call(prompt: str, timeout_s: float) -> tuple[str, dict[str, Any]]:  # type: ignore[override]
+        return "Stub summary from LLM", {"usage": {"total_tokens": 42}}
+
+    monkeypatch.setenv("OPENAI_API_KEY", "dummy")
+    monkeypatch.setenv("OPENAI_USE_RESPONSES", "1")
+    monkeypatch.setattr(llm_module, "_call_openai_responses", good_call)
+
+    result, meta = asyncio.run(llm_module.interpret_rows(rows))
+
+    assert meta.get("ok") is True
+    assert result.summary == "Stub summary from LLM"
+    assert result.per_test == []
+    assert result.next_steps == []
+    assert result.flags == base.flags
+    assert result.disclaimer == base.disclaimer

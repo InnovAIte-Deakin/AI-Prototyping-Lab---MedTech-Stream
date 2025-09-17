@@ -530,7 +530,10 @@ async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, di
         # No JSON required: treat LLM output as plain text summary
         text_out = (raw or "").strip()
         base = _fallback_interpretation(rows)
-        parsed = base.model_copy(update={"summary": text_out or base.summary})
+        if text_out:
+            parsed = base.model_copy(update={"summary": text_out, "per_test": [], "next_steps": []})
+        else:
+            parsed = base
         meta["ok"] = True
         if call:
             if "usage" in call:

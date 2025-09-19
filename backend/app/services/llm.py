@@ -200,65 +200,6 @@ def _build_user_prompt(rows: list[ParsedRowIn]) -> str:
     return instructions + "\n\nROWS:\n" + json.dumps(trimmed, ensure_ascii=False)
 
 
-def _coerce_interpretation_shape(obj: dict[str, Any] | Any) -> dict[str, Any] | Any:
-    """Best-effort coercion of common LLM JSON drift into the expected schema.
-
-    Converts dict-forms to list-forms for per_test/flags and normalizes string/list fields.
-    Safe no-ops when structure already matches.
-    """
-    if not isinstance(obj, dict):
-        return obj
-
-    # per_test: allow {"Test": {"explanation": "..."}} or {"Test": "..."}
-    pt = obj.get("per_test")
-    if isinstance(pt, dict):
-        items: list[dict[str, Any]] = []
-        for k, v in pt.items():
-            if isinstance(v, dict):
-                tn = v.get("test_name") or k
-                expl = (
-                    v.get("explanation")
-                    or v.get("summary")
-                    or v.get("text")
-                    or json.dumps(v, ensure_ascii=False)
-                )
-            else:
-                tn = k
-                expl = str(v)
-            items.append({"test_name": tn, "explanation": expl})
-        obj["per_test"] = items
-
-    # flags: allow {"Test": {"severity":"high","note":"..."}} or {"Test":"note"}
-    fg = obj.get("flags")
-    if isinstance(fg, dict):
-        items: list[dict[str, Any]] = []
-        for k, v in fg.items():
-            if isinstance(v, dict):
-                tn = v.get("test_name") or k
-                sev = v.get("severity") or v.get("flag") or v.get("level") or "abnormal"
-                note = v.get("note") or v.get("message") or v.get("reason") or ""
-            else:
-                tn = k
-                sev = "abnormal"
-                note = str(v)
-            items.append({"test_name": tn, "severity": str(sev), "note": note})
-        obj["flags"] = items
-
-    # next_steps: allow string -> list by splitting lines
-    ns = obj.get("next_steps")
-    if isinstance(ns, str):
-        steps = [s.strip() for s in ns.splitlines() if s.strip()]
-        obj["next_steps"] = steps
-
-    # summary/disclaimer can sometimes be arrays; join to text
-    for field in ("summary", "disclaimer"):
-        v = obj.get(field)
-        if isinstance(v, list):
-            obj[field] = "\n".join(str(x) for x in v)
-
-    return obj
-
-
 def _jsonable_usage(u: Any) -> Any:
     """Convert OpenAI SDK usage objects into plain JSON-serializable data."""
     if u is None:

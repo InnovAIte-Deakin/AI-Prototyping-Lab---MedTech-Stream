@@ -49,7 +49,7 @@ POS_NEG = re.compile(r"\b(positive|negative|reactive|non[- ]?reactive)\b", re.IG
 END_FLAG_TAIL = re.compile(r"(?i)(?:[\[(]?\s*)(?P<flag>High|Low|H|L|↑|↓)(?:\s*[\])])?\s*$")
 
 # Avoid matching numbers that are part of an alphanumeric token (e.g., the '12' in 'B12')
-FIRST_NUMBER_POS = re.compile(rf"(?<![A-Za-z]){NUM}")
+FIRST_NUMBER_POS = re.compile(rf"(?<![A-Za-z0-9]){NUM}")
 
 # Additional filters for obvious non-data lines
 SECTION_HEADER = re.compile(
@@ -179,6 +179,7 @@ ANY_META_TOKEN = re.compile(
 BRACKETS = re.compile(r"\[[^\]]*\]")
 FOOTNOTE_MARK = re.compile(r"\*+")
 WHITESPACE = re.compile(r"\s+")
+LEADING_ENUM = re.compile(r"^\s*\d+\s*[\).:-]\s*")
 PIPE = re.compile(r"\|")
 
 
@@ -207,6 +208,7 @@ def _clean_line(line: str) -> str:
     line = FOOTNOTE_MARK.sub("", line)
     line = PIPE.sub(" ", line)
     line = line.strip()
+    line = LEADING_ENUM.sub("", line, count=1)
     line = WHITESPACE.sub(" ", line)
     return line
 
@@ -517,7 +519,7 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
 
             # If the segment starts with junk-only prefix (e.g., '(') and carries only a range,
             # attach that range to the previous parsed row when possible, instead of creating a new row.
-            if name is None:
+            if not name:
                 # Ignore any accidentally captured numeric value for junk-name segments
                 # If we have a value-only line (e.g., "42 ng/mL"), buffer it to attach to upcoming name
                 if vm and value is not None and not reference_range:

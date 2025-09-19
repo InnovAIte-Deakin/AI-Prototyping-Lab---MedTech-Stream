@@ -34,7 +34,6 @@ export default function ParsePage() {
   const [error, setError] = useState<string | null>(null);
   const [explaining, setExplaining] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
-  const [meta, setMeta] = useState<any>(null);
   const [interpretation, setInterpretation] = useState<null | {
     summary: string;
     per_test: { test_name: string; explanation: string }[];
@@ -120,9 +119,8 @@ export default function ParsePage() {
         e.userMessage = true;
         throw e;
       }
-      const data = (await res.json()) as { interpretation: any, meta?: any };
+      const data = (await res.json()) as { interpretation: any };
       setInterpretation(data.interpretation);
-      setMeta((data as any).meta || null);
     } catch (err: any) {
       if (err && (err as any).userMessage) {
         setExplainError(err.message);
@@ -306,7 +304,6 @@ export default function ParsePage() {
                 <tr>
                   <th>Test</th>
                   <th>Value</th>
-                  <th>Unit</th>
                   <th>Reference</th>
                   <th>Flag</th>
                 </tr>
@@ -315,8 +312,7 @@ export default function ParsePage() {
                 {rows.map((r, i) => (
                   <tr key={i}>
                     <td>{r.test_name}</td>
-                    <td>{String(r.value)}</td>
-                    <td>{r.unit}</td>
+                    <td>{`${String(r.value)}${r.unit ? ` ${r.unit}` : ''}`}</td>
                     <td>{r.reference_range}</td>
                     <td>
                       {r.flag ? (
@@ -421,11 +417,6 @@ export default function ParsePage() {
                 ))}
               </ol>
             </div>
-          )}
-          {meta && (
-            <pre className="card no-print" style={{ fontSize: 12, color: 'var(--muted-ink)', background: 'var(--ui-muted)' }}>
-{`LLM: ${meta.endpoint || 'unknown'} • ok: ${String(meta.ok)} • model: ${meta.model || ''}${meta.error ? ` • error: ${typeof meta.error === 'string' ? meta.error : (meta.error.message || JSON.stringify(meta.error))}` : ''}`}
-            </pre>
           )}
         </div>
       )}

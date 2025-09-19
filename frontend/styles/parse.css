@@ -133,12 +133,7 @@
 }
 
 .file-input {
-  position: absolute;
-  opacity: 0;
-  width: 100%;
-  height: 100%;
-  cursor: pointer;
-  z-index: 2;
+  display: none;
 }
 
 .file-upload-label {
@@ -230,8 +225,8 @@
 }
 
 .remove-file {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border: none;
   background: var(--danger);
   color: white;
@@ -240,8 +235,8 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 600;
   line-height: 1;
   padding: 0;
   transition: all 0.2s ease;

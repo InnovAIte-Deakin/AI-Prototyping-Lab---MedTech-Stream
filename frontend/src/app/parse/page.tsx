@@ -210,12 +210,22 @@ export default function ParsePage() {
                           <span className="file-size">({Math.round(file.size / 1024)} KB)</span>
                           <button
                             type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setFiles((prev) => prev.filter((_, idx) => idx !== i));
-                            }}
                             className="remove-file"
-                            aria-label="Remove file"
+                            aria-label={`Remove ${file.name}`}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setFiles((prev) => {
+                                const next = prev.filter((_, idx) => idx !== i);
+                                if (next.length === 0) {
+                                  const input = document.getElementById('file-upload') as HTMLInputElement | null;
+                                  if (input) {
+                                    input.value = '';
+                                  }
+                                }
+                                return next;
+                              });
+                            }}
                           >
                             ×
                           </button>

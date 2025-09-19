@@ -14,12 +14,12 @@ RANGE_X_Y = re.compile(rf"\b(?P<low>{NUM})\s*{HYPHEN}\s*(?P<high>{NUM})\b")
 RANGE_TO = re.compile(rf"\b(?P<low>{NUM})\s*(?:to)\s*(?P<high>{NUM})\b", re.IGNORECASE)
 PAREN_X_Y = re.compile(rf"\((?P<low>{NUM})\s*{HYPHEN}\s*(?P<high>{NUM})\)")
 # Parenthesized threshold forms like "(≤ 200)" or "(≥ 3.5)"
-PAREN_LE = re.compile(rf"\(\s*(?:≤|<=)\s*(?P<le>{NUM})\s*\)")
-PAREN_GE = re.compile(rf"\(\s*(?:≥|>=)\s*(?P<ge>{NUM})\s*\)")
+PAREN_LE = re.compile(rf"\(\s*(?P<comp>≤|<=|<)\s*(?P<le>{NUM})\s*\)")
+PAREN_GE = re.compile(rf"\(\s*(?P<comp>≥|>=|>)\s*(?P<ge>{NUM})\s*\)")
 # Threshold ranges like "≤ 200" or "<=200" may be preceded by spaces or symbols,
 # so avoid a leading word boundary and ensure we stop at whitespace/end.
-RANGE_LE = re.compile(rf"(?:≤|<=)\s*(?P<le>{NUM})(?!\S)")
-RANGE_GE = re.compile(rf"(?:≥|>=)\s*(?P<ge>{NUM})(?!\S)")
+RANGE_LE = re.compile(rf"(?P<comp>≤|<=|<)\s*(?P<le>{NUM})(?!\S)")
+RANGE_GE = re.compile(rf"(?P<comp>≥|>=|>)\s*(?P<ge>{NUM})(?!\S)")
 # Some PDF extractions (e.g., certain fonts) convert '≤' into a middle dot '·'.
 # Treat '· N' as a conservative proxy for '≤ N'.
 RANGE_ALT_LE = re.compile(rf"[·•]\s*(?P<le>{NUM})(?!\S)")
@@ -58,7 +58,8 @@ SECTION_HEADER = re.compile(
 )
 ONLY_COMPARATOR = re.compile(rf"^\(?\s*(?:≤|>=|≥|<=|<|>)\s*{NUM}\s*\)?\s*$")
 BARE_PAREN = re.compile(r"^\(\s*\)?$")
-JUNK_NAME = re.compile(r"^[\s()\[\]{}·•≤≥]+$")
+JUNK_NAME = re.compile(r"^[\s()\[\]{}·•≤≥<>]+$")
+HYPHEN_LINE = re.compile(r"^[-_·•.,\s]+$")
 
 
 def _normalize_number_str(s: str) -> str:
@@ -229,12 +230,16 @@ def _extract_range(
         return f"{low}-{high}", (low, high), None, None
     m = PAREN_LE.search(segment)
     if m:
+        comp = m.group("comp")
         le = _to_float(m.group("le"))
-        return f"≤ {le}", None, le, None
+        display = "≤" if comp in {"≤", "<="} else "<"
+        return f"{display} {le}", None, le, None
     m = PAREN_GE.search(segment)
     if m:
+        comp = m.group("comp")
         ge = _to_float(m.group("ge"))
-        return f"≥ {ge}", None, None, ge
+        display = "≥" if comp in {"≥", ">="} else ">"
+        return f"{display} {ge}", None, None, ge
     m = RANGE_X_Y.search(segment)
     if m:
         low = _to_float(m.group("low"))
@@ -247,16 +252,20 @@ def _extract_range(
         return f"{low}-{high}", (low, high), None, None
     m = RANGE_LE.search(segment)
     if m:
+        comp = m.group("comp")
         le = _to_float(m.group("le"))
-        return f"≤ {le}", None, le, None
+        display = "≤" if comp in {"≤", "<="} else "<"
+        return f"{display} {le}", None, le, None
     m = RANGE_ALT_LE.search(segment)
     if m:
         le = _to_float(m.group("le"))
         return f"≤ {le}", None, le, None
     m = RANGE_GE.search(segment)
     if m:
+        comp = m.group("comp")
         ge = _to_float(m.group("ge"))
-        return f"≥ {ge}", None, None, ge
+        display = "≥" if comp in {"≥", ">="} else ">"
+        return f"{display} {ge}", None, None, ge
     return None, None, None, None
 
 
@@ -385,6 +394,8 @@ def parse_text(text: str) -> tuple[list[ParsedRow], list[str]]:
         for segment in segments:
             line = _clean_line(segment)
             if not line:
+                continue
+            if HYPHEN_LINE.match(line):
                 continue
             if NOISE.search(line):
                 continue

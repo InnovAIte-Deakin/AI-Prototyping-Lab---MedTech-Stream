@@ -210,7 +210,10 @@ export default function ParsePage() {
                           <span className="file-size">({Math.round(file.size / 1024)} KB)</span>
                           <button
                             type="button"
-                            onClick={() => setFiles(files.filter((_, idx) => idx !== i))}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setFiles((prev) => prev.filter((_, idx) => idx !== i));
+                            }}
                             className="remove-file"
                             aria-label="Remove file"
                           >
@@ -302,9 +305,9 @@ export default function ParsePage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Test</th>
-                  <th>Value</th>
+                  <th>Text</th>
                   <th>Reference</th>
+                  <th>Value</th>
                   <th>Flag</th>
                 </tr>
               </thead>
@@ -312,8 +315,8 @@ export default function ParsePage() {
                 {rows.map((r, i) => (
                   <tr key={i}>
                     <td>{r.test_name}</td>
-                    <td>{`${String(r.value)}${r.unit ? ` ${r.unit}` : ''}`}</td>
                     <td>{r.reference_range}</td>
+                    <td>{`${String(r.value)}${r.unit ? ` ${r.unit}` : ''}`}</td>
                     <td>
                       {r.flag ? (
                         <span className={`flag-chip ${r.flag}`}>

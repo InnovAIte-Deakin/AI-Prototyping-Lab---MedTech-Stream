@@ -230,8 +230,8 @@
 }
 
 .remove-file {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border: none;
   background: var(--danger);
   color: white;
@@ -240,8 +240,10 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
+  line-height: 1;
+  padding: 0;
   transition: all 0.2s ease;
   flex-shrink: 0;
 }

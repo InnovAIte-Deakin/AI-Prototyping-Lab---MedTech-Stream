@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { TextArea } from '@/components/ui/TextArea';
@@ -15,6 +15,15 @@ type Row = {
   flag: 'low' | 'high' | 'normal' | 'abnormal' | null;
   confidence: number;
 };
+
+const LANGUAGE_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Español' },
+  { value: 'ar', label: 'العربية' },
+  { value: 'zh', label: '中文 (普通话)' },
+  { value: 'hi', label: 'हिन्दी' },
+  { value: 'fr', label: 'Français' },
+];
 
 export default function ParsePage() {
   const [text, setText] = useState('');
@@ -32,6 +41,7 @@ export default function ParsePage() {
     flags: { test_name: string; severity: string; note: string }[];
     next_steps: string[];
     disclaimer: string;
+    translations?: Record<string, string>;
   }>(null);
   const [extractedText, setExtractedText] = useState<string>('');
   const [doctorView, setDoctorView] = useState<boolean>(false);
@@ -391,7 +401,7 @@ export default function ParsePage() {
       {interpretation && (
         <div className="stack">
           <h2>Insights</h2>
-          <SummaryCard backendUrl={backend} summary={interpretation.summary} />
+          <SummaryCard summary={interpretation.summary} translations={interpretation.translations} />
           {Array.isArray(interpretation.per_test) && interpretation.per_test.length > 0 && (
             <div className="card">
               <h3>Per‑test explanations</h3>
@@ -426,98 +436,60 @@ export default function ParsePage() {
 
 // Polished summary renderer: handles plain text or stray JSON gracefully
 
-function SummaryCard({ summary, backendUrl }: { summary: string, backendUrl: string }) {
+function SummaryCard({ summary, translations }: { summary: string; translations?: Record<string, string> }) {
   const [copied, setCopied] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<string>('en');
-  const [translatedText, setTranslatedText] = useState<string | null>(null);
-  const [translating, setTranslating] = useState<boolean>(false);
-  const [translateError, setTranslateError] = useState<string | null>(null);
-  // Try to extract a human‑readable string from JSON‑looking content
-  const tryParse = (s: string): string | null => {
-    const trimmed = (s || "").trim();
+
+  const normalizedTranslations = useMemo(() => {
+    const next: Record<string, string> = { en: summary };
+    Object.entries(translations ?? {}).forEach(([code, text]) => {
+      if (typeof text === 'string' && text.trim()) {
+        next[code] = text.trim();
+      }
+    });
+    return next;
+  }, [summary, translations]);
+
+  const availableOptions = useMemo(() => {
+    return LANGUAGE_OPTIONS.filter(opt => Boolean(normalizedTranslations[opt.value]));
+  }, [normalizedTranslations]);
+
+  useEffect(() => {
+    if (!availableOptions.find(opt => opt.value === selectedLanguage)) {
+      setSelectedLanguage('en');
+    }
+    setCopied(false);
+  }, [availableOptions, selectedLanguage, summary]);
+
+  const tryParse = (value: string): string | null => {
+    const trimmed = (value || '').trim();
     if (!trimmed) return null;
-    const looksJson = (trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"));
+    const looksJson = (trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'));
     if (!looksJson) return trimmed;
     try {
-      const obj = JSON.parse(trimmed);
-      if (typeof obj === 'string') return obj;
-      if (obj && typeof obj.summary === 'string') return obj.summary;
-      // Fallback: pretty print compact JSON snippet
-      return JSON.stringify(obj, null, 2);
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed === 'string') return parsed;
+      if (parsed && typeof parsed.summary === 'string') return parsed.summary;
+      return JSON.stringify(parsed, null, 2);
     } catch {
-      return trimmed; // not real JSON; just show raw
+      return trimmed;
     }
   };
 
-  const baseText = tryParse(summary) ?? '';
-  const isCodeBlock = baseText.trim().startsWith('{') || baseText.trim().startsWith('[');
+  const displayRaw = normalizedTranslations[selectedLanguage] ?? summary;
+  const displayText = tryParse(displayRaw) ?? '';
+  const isCodeBlock = displayText.trim().startsWith('{') || displayText.trim().startsWith('[');
 
-  const LANGUAGE_OPTIONS = [
-    { value: 'en', label: 'English' },
-    { value: 'es', label: 'Español' },
-    { value: 'ar', label: 'العربية' },
-    { value: 'zh', label: '中文 (普通话)' },
-    { value: 'hi', label: 'हिन्दी' },
-    { value: 'fr', label: 'Français' },
-  ];
-
-  const canTranslate = !isCodeBlock && baseText.trim().length > 0;
-
-  useEffect(() => {
-    let active = true;
-    const controller = new AbortController();
-    if (!canTranslate || selectedLanguage === 'en') {
-      setTranslatedText(null);
-      setTranslateError(null);
-      setTranslating(false);
-      return () => { controller.abort(); };
-    }
-    const run = async () => {
-      try {
-        setTranslating(true);
-        setTranslateError(null);
-        const res = await fetch(`${backendUrl}/api/v1/translate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: baseText, target_language: selectedLanguage }),
-          signal: controller.signal,
-        });
-        if (!active) return;
-        if (!res.ok) {
-          let msg = 'Translation unavailable. Please try again later.';
-          try {
-            const body = await res.json();
-            if (body && typeof body.detail === 'string') msg = body.detail;
-          } catch {}
-          setTranslateError(msg);
-          setTranslatedText(null);
-        } else {
-          const data = await res.json();
-          setTranslatedText(data.translation);
-        }
-      } catch (err: any) {
-        if (!active) return;
-        if (err?.name !== 'AbortError') {
-          setTranslateError('Translation unavailable. Please try again later.');
-          setTranslatedText(null);
-        }
-      } finally {
-        if (active) setTranslating(false);
-      }
-    };
-    run();
-    return () => { active = false; controller.abort(); };
-  }, [selectedLanguage, baseText, backendUrl, canTranslate]);
-
-  const displayText = translatedText ?? baseText;
-  // Turn double newlines into paragraphs; keep single‑line bullets as a list
   const lines = displayText.split(/\n/);
   const bullets: string[] = [];
   const other: string[] = [];
   for (const ln of lines) {
-    if (/^\s*[-*•]\s+/.test(ln) || /^\s*\d+\.\s+/.test(ln)) bullets.push(ln.replace(/^\s*[-*•]\s+/, '').trim()); else other.push(ln);
+    if (/^\s*[-*•]\s+/.test(ln) || /^\s*\d+\.\s+/.test(ln)) {
+      bullets.push(ln.replace(/^\s*[-*•]\s+/, '').trim());
+    } else {
+      other.push(ln);
+    }
   }
-
   const paras = other.join('\n').split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
 
   const onCopy = async () => {
@@ -536,20 +508,17 @@ function SummaryCard({ summary, backendUrl }: { summary: string, backendUrl: str
           className="summary-translate-select"
           value={selectedLanguage}
           onChange={(e) => setSelectedLanguage(e.target.value)}
-          disabled={!canTranslate}
         >
-          {LANGUAGE_OPTIONS.map(opt => (
+          {availableOptions.map(opt => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
         <button className="btn btn-outline btn-sm" onClick={onCopy}>{copied ? 'Copied' : 'Copy'}</button>
       </div>
       {isCodeBlock ? (
-        <pre className="summary-code">{baseText}</pre>
+        <pre className="summary-code">{displayText}</pre>
       ) : (
         <div className="summary-body">
-          {translating && <p className="summary-status">Translating summary to {LANGUAGE_OPTIONS.find(l => l.value === selectedLanguage)?.label}...</p>}
-          {translateError && <p className="summary-status error">{translateError}</p>}
           {paras.map((p, i) => (
             <p key={i}>{p}</p>
           ))}

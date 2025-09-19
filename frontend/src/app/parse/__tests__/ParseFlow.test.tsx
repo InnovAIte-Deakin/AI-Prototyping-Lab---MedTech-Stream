@@ -18,7 +18,7 @@ describe('Parse + Interpret flow', () => {
   const origFetch = global.fetch;
 
   beforeEach(() => {
-    // Mock fetch for /parse, /interpret, and /translate
+    // Mock fetch for /parse and /interpret
     global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes('/api/v1/parse')) {
@@ -36,23 +36,11 @@ describe('Parse + Interpret flow', () => {
               flags: [],
               next_steps: ['See your doctor.'],
               disclaimer: 'Educational only.',
+              translations: {
+                es: 'Resumen en español.',
+              },
             },
           }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
-      if (url.includes('/api/v1/translate')) {
-        const bodyRaw = (init && (init as any).body) as string;
-        let payload: any = {};
-        try { payload = JSON.parse(bodyRaw || '{}'); } catch {}
-        if (payload.target_language !== 'es') {
-          return new Response(
-            JSON.stringify({ detail: 'Bad target language' }),
-            { status: 400, headers: { 'Content-Type': 'application/json' } }
-          );
-        }
-        return new Response(
-          JSON.stringify({ translation: 'Resumen en español.', language: 'es', meta: { ok: true } }),
           { status: 200, headers: { 'Content-Type': 'application/json' } }
         );
       }
@@ -86,8 +74,6 @@ describe('Parse + Interpret flow', () => {
     // Change the translate dropdown to Español and wait for translation
     const select = screen.getByLabelText(/translate summary/i);
     fireEvent.change(select, { target: { value: 'es' } });
-    await waitFor(() => {
-      expect(screen.getByText(/Resumen en español\./i)).toBeInTheDocument();
-    });
+    expect(screen.getByText(/Resumen en español\./i)).toBeInTheDocument();
   });
 });

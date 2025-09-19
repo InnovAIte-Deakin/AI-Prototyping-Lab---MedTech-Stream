@@ -227,7 +227,8 @@ export default function ParsePage() {
                               });
                             }}
                           >
-                            ×
+                            <span className="remove-file-icon" aria-hidden="true"></span>
+                            <span className="sr-only">Remove</span>
                           </button>
                         </li>
                       ))}

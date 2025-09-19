@@ -235,17 +235,55 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1;
   padding: 0;
   transition: all 0.2s ease;
   flex-shrink: 0;
+  position: relative;
 }
 
 .remove-file:hover {
   background: #b91c1c;
   transform: scale(1.1);
+}
+
+.remove-file-icon {
+  position: relative;
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+.remove-file-icon::before,
+.remove-file-icon::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 2px;
+  background: #fff;
+  border-radius: 999px;
+  transform-origin: center;
+}
+
+.remove-file-icon::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.remove-file-icon::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Text Input Zone */

@@ -174,6 +174,14 @@
   background: var(--ui-bg);
 }
 
+.selected-files__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+  gap: 1rem;
+}
+
 .selected-files h4 {
   font-size: 0.875rem;
   font-weight: 600;
@@ -189,14 +197,32 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.6rem;
+  max-height: 12.5rem;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--brand-100) transparent;
+}
+
+.selected-files ul::-webkit-scrollbar {
+  width: 6px;
+}
+
+.selected-files ul::-webkit-scrollbar-thumb {
+  background: var(--brand-100);
+  border-radius: 999px;
+}
+
+.selected-files ul::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .file-item {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
+  gap: 0.6rem;
+  padding: 0.6rem 0.85rem;
   background: var(--ui-elev);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -246,6 +272,29 @@
   transform: scale(1.1);
 }
 
+.remove-file--pill {
+  width: auto;
+  height: 28px;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  top: -10px;
+}
+
+.remove-file--pill .remove-file-icon {
+  width: 10px;
+  height: 10px;
+}
+
+.remove-file-label {
+  margin-left: 0.35rem;
+}
+
 .remove-file-icon {
   position: relative;
   display: block;
@@ -284,6 +333,109 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.thinking-card {
+  padding: 1.5rem;
+  background: var(--ui-elev);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.thinking-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 0%, rgba(8, 152, 160, 0.08) 45%, transparent 90%);
+  animation: thinking-sheen 2.4s linear infinite;
+  pointer-events: none;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.thinking-pulse {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--brand);
+  position: relative;
+  animation: thinking-pulse 1.5s ease-in-out infinite;
+}
+
+.thinking-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.thinking-step {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--muted-ink);
+  font-size: 0.95rem;
+  position: relative;
+}
+
+.thinking-step::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--brand);
+  position: relative;
+}
+
+.thinking-step.is-active::before {
+  background: var(--brand);
+  box-shadow: 0 0 0 3px rgba(8, 152, 160, 0.25);
+}
+
+.thinking-step.is-active {
+  color: var(--ink);
+}
+
+.thinking-meter {
+  margin-top: 1.5rem;
+  height: 6px;
+  background: var(--ui-muted);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.thinking-meter::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(8, 152, 160, 0.1), var(--brand), rgba(124, 58, 237, 0.2));
+  animation: thinking-meter 2s ease-in-out infinite;
+}
+
+@keyframes thinking-sheen {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes thinking-pulse {
+  0%, 100% { transform: scale(0.9); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; }
+}
+
+@keyframes thinking-meter {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(50%); }
 }
 
 /* Text Input Zone */
@@ -818,4 +970,30 @@ button:hover {
   .selected-files {
     padding: 1rem;
   }
+}
+.upload-alert {
+  position: absolute;
+  top: -0.5rem;
+  right: 1rem;
+  background: rgba(220, 38, 38, 0.95);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 10px 30px rgba(220, 38, 38, 0.25);
+}
+
+.upload-alert::before {
+  content: '⚠';
+  font-size: 1rem;
+}
+
+.selected-files {
+  border-top: 1px solid var(--border);
+  padding: 1.5rem 2rem;
+  background: var(--ui-bg);
+  position: relative;
 }

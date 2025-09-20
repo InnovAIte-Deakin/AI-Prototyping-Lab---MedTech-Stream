@@ -25,6 +25,27 @@ const LANGUAGE_OPTIONS = [
   { value: 'fr', label: 'Français' },
 ];
 
+const THINKING_STEPS = [
+  'Parsing your report text',
+  'Comparing values with reference ranges',
+  'Drafting a patient-friendly explanation',
+];
+
+const ACCEPTED_TYPES = new Set([
+  'application/pdf',
+  'application/x-pdf',
+  'image/png',
+  'image/jpeg',
+]);
+
+const MAX_UPLOAD_FILES = 5;
+
+const isAcceptedFile = (file: File): boolean => {
+  if (ACCEPTED_TYPES.has(file.type)) return true;
+  const lower = file.name.toLowerCase();
+  return lower.endsWith('.pdf') || lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg');
+};
+
 export default function ParsePage() {
   const [text, setText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -34,6 +55,7 @@ export default function ParsePage() {
   const [error, setError] = useState<string | null>(null);
   const [explaining, setExplaining] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [interpretation, setInterpretation] = useState<null | {
     summary: string;
     per_test: { test_name: string; explanation: string }[];
@@ -48,6 +70,12 @@ export default function ParsePage() {
 
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
+  useEffect(() => {
+    if (!uploadError) return;
+    const timer = window.setTimeout(() => setUploadError(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [uploadError]);
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(true);
@@ -61,8 +89,27 @@ export default function ParsePage() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    const droppedFiles = Array.from(e.dataTransfer.files).slice(0, 5);
-    setFiles(droppedFiles);
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length === 0) {
+      return;
+    }
+    const valid = droppedFiles.filter(isAcceptedFile);
+    if (valid.length === 0) {
+      setUploadError('Only PDF, PNG, or JPEG files are supported.');
+      return;
+    }
+    if (valid.length < droppedFiles.length) {
+      setUploadError('Only PDF, PNG, or JPEG files are supported.');
+    }
+    setFiles((prev) => {
+      const merged = [...prev, ...valid];
+      if (merged.length <= MAX_UPLOAD_FILES) {
+        setUploadError(null);
+        return merged;
+      }
+      setUploadError(`You can upload up to ${MAX_UPLOAD_FILES} files. Ignored ${merged.length - MAX_UPLOAD_FILES} extra file(s).`);
+      return merged.slice(0, MAX_UPLOAD_FILES);
+    });
   };
 
   async function onSubmit(e: React.FormEvent) {
@@ -73,7 +120,7 @@ export default function ParsePage() {
       let res: Response;
       if (files.length > 0) {
         const fd = new FormData();
-        for (const f of files.slice(0, 5)) {
+        for (const f of files.slice(0, MAX_UPLOAD_FILES)) {
           fd.append('files', f);
         }
         res = await fetch(`${backend}/api/v1/parse`, { method: 'POST', body: fd });
@@ -144,6 +191,11 @@ export default function ParsePage() {
     setInterpretation(null);
     setError(null);
     setExplainError(null);
+    setUploadError(null);
+    const input = document.getElementById('file-upload') as HTMLInputElement | null;
+    if (input) {
+      input.value = '';
+    }
   };
 
   return (
@@ -182,7 +234,32 @@ export default function ParsePage() {
                   type="file"
                   multiple
                   accept="application/pdf,image/png,image/jpeg"
-                  onChange={(e) => setFiles(Array.from(e.target.files || []).slice(0, 5))}
+                  onChange={(e) => {
+                    const selected = Array.from(e.target.files || []);
+                    if (selected.length === 0) {
+                      return;
+                    }
+                    const valid = selected.filter(isAcceptedFile);
+                    if (valid.length === 0) {
+                      setUploadError('Only PDF, PNG, or JPEG files are supported.');
+                      e.target.value = '';
+                      return;
+                    }
+                    if (valid.length < selected.length) {
+                      setUploadError('Only PDF, PNG, or JPEG files are supported.');
+                    }
+                    setFiles((prev) => {
+                      const merged = [...prev, ...valid];
+                      if (merged.length <= MAX_UPLOAD_FILES) {
+                        setUploadError(null);
+                        return merged;
+                      }
+                      setUploadError(`You can upload up to ${MAX_UPLOAD_FILES} files. Ignored ${merged.length - MAX_UPLOAD_FILES} extra file(s).`);
+                      return merged.slice(0, MAX_UPLOAD_FILES);
+                    });
+                    // reset input so selecting again with same file works
+                    e.target.value = '';
+                  }}
                   className="file-input"
                   id="file-upload"
                 />
@@ -202,7 +279,25 @@ export default function ParsePage() {
 
                 {files.length > 0 && (
                   <div className="selected-files">
-                    <h4>Selected Files:</h4>
+                    {uploadError && (
+                      <div className="upload-alert">{uploadError}</div>
+                    )}
+                    <div className="selected-files__header">
+                      <h4>Selected Files</h4>
+                      <button
+                        type="button"
+                        className="remove-file remove-file--pill"
+                        onClick={() => {
+                          setFiles([]);
+                          setUploadError(null);
+                          const input = document.getElementById('file-upload') as HTMLInputElement | null;
+                          if (input) input.value = '';
+                        }}
+                      >
+                        <span className="remove-file-icon" aria-hidden="true"></span>
+                        <span className="remove-file-label">Clear All</span>
+                      </button>
+                    </div>
                     <ul>
                       {files.map((file, i) => (
                         <li key={i} className="file-item">
@@ -217,6 +312,9 @@ export default function ParsePage() {
                               event.stopPropagation();
                               setFiles((prev) => {
                                 const next = prev.filter((_, idx) => idx !== i);
+                                if (next.length < MAX_UPLOAD_FILES) {
+                                  setUploadError(null);
+                                }
                                 if (next.length === 0) {
                                   const input = document.getElementById('file-upload') as HTMLInputElement | null;
                                   if (input) {
@@ -400,13 +498,7 @@ export default function ParsePage() {
         </div>
       ) : null}
 
-      {explaining && (
-        <div className="card">
-          <div className="skeleton" style={{ width: '60%' }} />
-          <div className="skeleton" style={{ width: '80%', marginTop: '0.5rem' }} />
-          <div className="skeleton" style={{ width: '70%', marginTop: '0.5rem' }} />
-        </div>
-      )}
+      {explaining && <ThinkingCard />}
 
       {interpretation && (
         <div className="stack">
@@ -440,6 +532,34 @@ export default function ParsePage() {
 }
 
 // Polished summary renderer: handles plain text or stray JSON gracefully
+
+function ThinkingCard() {
+  const [activeStep, setActiveStep] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActiveStep((prev) => (prev + 1) % THINKING_STEPS.length);
+    }, 1800);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="card thinking-card">
+      <div className="thinking-header">
+        <span className="thinking-pulse" />
+        <span>Analyzing your report…</span>
+      </div>
+      <ul className="thinking-steps">
+        {THINKING_STEPS.map((step, index) => (
+          <li key={step} className={`thinking-step ${index <= activeStep ? 'is-active' : ''}`}>
+            {step}
+          </li>
+        ))}
+      </ul>
+      <div className="thinking-meter" />
+    </div>
+  );
+}
 
 function SummaryCard({ summary, translations }: { summary: string; translations?: Record<string, string> }) {
   const [copied, setCopied] = useState(false);

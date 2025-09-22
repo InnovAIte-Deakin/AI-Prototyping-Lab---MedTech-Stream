@@ -5,7 +5,6 @@ ReportX is an educational health explanations app. MVP stores no data and logs m
 ## Quickstart
 
 1. Copy envs and update if needed:
-   - `cp .env.example .env`
    - Edit `.env` and set `OPENAI_API_KEY=sk-...` (do not source `.env.example`)
 2. Build and run:
    - `docker compose up --build`

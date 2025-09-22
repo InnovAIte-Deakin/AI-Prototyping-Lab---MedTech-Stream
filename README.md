@@ -259,7 +259,7 @@ Python (FastAPI or Flask)
 
 AI Model API  
 
-OpenAI GPT-5 and GPT-4 fallback   
+OpenAI GPT-5 
 
 Parsing/OCR  
 

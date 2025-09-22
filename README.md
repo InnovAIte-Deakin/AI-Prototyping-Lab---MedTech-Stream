@@ -294,7 +294,7 @@ Model
 
 Description  
 
-GPT-4 or Claude  
+GPT-5
 
 Generates safe, contextual interpretations of lab values and summaries  
 

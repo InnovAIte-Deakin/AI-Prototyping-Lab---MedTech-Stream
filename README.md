@@ -17,8 +17,7 @@ ReportX is an educational health explanations app. MVP stores no data and logs m
 
 - PDF/Text/Image parsing (in-memory) → structured rows with heuristics for ranges/units and flagging.
 - LLM interpretation to JSON with strict schema, one repair attempt, and robust fallback.
-- Frontend flow: upload/paste → Parse → edit table → Explain → see summary, per_test, flags, next_steps, disclaimer.
-- Risevest-inspired theme (colors, rounded buttons, cards, sticky tables) with accessible defaults (≥16px, focus rings, keyboard friendly).
+- Frontend flow: upload/paste → Parse → edit table → Explain → see summary, per_test, flags, next_steps, disclaimer → Translate.
 
 ## Environment
 

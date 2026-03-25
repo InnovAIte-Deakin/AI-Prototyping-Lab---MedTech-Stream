@@ -225,6 +225,122 @@ AC7.2 If a question asks for a diagnosis, prescription, or urgent triage, the ap
 
 AC7.3 Answers use the current language setting and keep numbers and units as they are. 
 
+FR8: User Accounts and Role-Based Access 
+
+The system shall support secure user authentication and role-based access for three user types: patient, caregiver, and clinician. 
+
+Acceptance Criteria 
+
+AC8.1 Given a new visitor, when they register, then they must select a role (patient, caregiver, or clinician) and the system assigns the corresponding permission set upon account creation. 
+
+AC8.2 Given a patient account, when logged in, then the user can upload reports, view their own report history, and manage sharing preferences. 
+
+AC8.3 Given a caregiver account, when granted permission by a patient, then the caregiver can view and act on that patient's reports; without permission, no patient data is accessible. 
+
+AC8.4 Given a clinician account, when logged in, then the clinician can only view reports that have been explicitly shared with them by a patient; no other patient data is visible. 
+
+AC8.5 Given any authenticated user, when they attempt to access a resource outside their role's permission scope, then the system denies access and returns a clear error message. 
+
+AC8.6 Given an unauthenticated visitor, when they attempt to access any report or account data, then the system redirects them to the login page. 
+
+AC8.7 Given a user session, when the session token expires or the user logs out, then all in-memory data is cleared and re-authentication is required. 
+
+ 
+
+FR9: Consent-Driven Data Sharing 
+
+The system shall provide patients with explicit, granular control over who can access their reports, for how long, and what they can see. 
+
+Acceptance Criteria 
+
+AC9.1 Given a patient viewing one of their uploaded reports, when they initiate sharing, then they must specify: the recipient clinician (by verified identity), the scope of access (full report or summary only), and an expiry date before the share is confirmed. 
+
+AC9.2 Given an active share, when the patient revokes access, then the clinician's access is removed immediately and a revocation event is written to the audit log. 
+
+AC9.3 Given any share, view, or revocation event, when the event occurs, then a timestamped record is written to the patient's audit log within 5 seconds. 
+
+AC9.4 Given a patient reviewing their audit log, when they open it, then all share, view, and revocation events for their reports are displayed in chronological order. 
+
+AC9.5 Given a share with an expiry date, when the expiry date is reached, then the clinician's access is automatically revoked and an event is recorded in the audit log without requiring patient action. 
+
+AC9.6 Given a clinician attempting to access a report after expiry or revocation, then the system denies access and displays a message indicating the access is no longer valid. 
+
+ 
+
+FR10: Conversation Threads Tied to a Specific Report 
+
+The system shall provide a threaded messaging channel scoped to each uploaded report, allowing patients and clinicians to communicate asynchronously with context anchored to specific findings. 
+
+Acceptance Criteria 
+
+AC10.1 Given a patient viewing their report results, when they tap or select a specific lab row or flagged finding, then a new conversation thread can be opened anchored to that row. 
+
+AC10.2 Given an open thread, when either the patient or the linked clinician sends a message, then the message appears in the thread within the report view for both parties, with a timestamp and sender role label. 
+
+AC10.3 Given a clinician viewing a shared report, when they open a thread, then the same contextual anchor (the specific lab row or finding) is visible alongside the message history. 
+
+AC10.4 Given a report with active threads, when a new message is posted, then the other party receives a notification (in-app at minimum). 
+
+AC10.5 Given a clinician account that has not been granted access to a report, when they attempt to view or post to any thread on that report, then the system denies access. 
+
+AC10.6 Given a thread, when a patient or clinician views it, then all prior messages in that thread are displayed in chronological order with no messages omitted. 
+
+ 
+
+FR11: Structured "Questions for My Clinician" and Clinician Response Templates 
+
+The system shall use AI-generated findings to produce structured, pre-filled question prompts for patients and guide clinicians to respond using a structured template. 
+
+Acceptance Criteria 
+
+AC11.1 Given a completed AI explanation with flagged findings, when the patient navigates to the questions section, then the system presents at least three structured, pre-filled question prompts derived from those specific findings, covering symptoms, concern level, and timeline. 
+
+AC11.2 Given the pre-filled prompts, when a patient reviews them, then they can edit any prompt before sending, and the edited version is what is delivered to the clinician. 
+
+AC11.3 Given a patient sending questions through the conversation thread, when the clinician receives them, then a structured response template is presented to the clinician covering: what the result means, an urgency rating (routine, soon, or urgent), and a recommended follow-up action. 
+
+AC11.4 Given a clinician submitting a structured response, when the patient receives it, then the response is rendered as a readable card (not raw clinical text), using plain language consistent with the patient's selected language setting. 
+
+AC11.5 Given a flagged finding where no question prompt was auto-generated, when the patient views the questions section, then a free-text option is available to submit a custom question through the thread. 
+
+ 
+
+FR12: Trend and Longitudinal Health Analysis 
+
+The system shall allow users to upload multiple reports over time and receive AI-generated trend analysis comparing the same biomarkers across reports. 
+
+Acceptance Criteria 
+
+AC12.1 Given an authenticated patient, when they upload more than one report, then each report is stored as a dated record linked to their account, and all reports are accessible from a report history view. 
+
+AC12.2 Given two or more reports containing the same biomarker (matched by test name), when the patient views the trend section, then the system generates a plain-language trend note for that biomarker indicating whether the value is improving, stable, or worsening. 
+
+AC12.3 Given a biomarker with trend data, when the patient views that test's section, then a sparkline chart is displayed alongside the trend note showing the value over time. 
+
+AC12.4 Given a biomarker that appears in only one uploaded report, when the patient views the trend section, then no trend note or chart is shown for that biomarker, and the system does not fabricate a trend. 
+
+AC12.5 Given trend notes, when displayed, then they adhere to the same plain-language standard, disclaimer requirements, and language settings as single-report explanations (per FR3 and FR4). 
+
+AC12.6 Given a clinician viewing a shared report, when the patient has granted access to the full report, then trend notes and charts for that patient are visible to the clinician in the shared view. 
+
+ 
+
+FR13: Doctor-Ready Summary Report 
+
+The system shall generate a structured, one-page PDF summary designed for clinical use, drawing on the AI explanation, flagged values, trend notes, and patient-submitted questions. 
+
+Acceptance Criteria 
+
+AC13.1 Given a completed AI explanation for a report, when the patient selects "Export Doctor Summary," then the system generates a one-page PDF within 10 seconds. 
+
+AC13.2 Given the generated PDF, when reviewed, then it includes: flagged values, AI explanation summary, trend notes (if available), and any questions the patient has submitted through the conversation thread. 
+
+AC13.3 Given the generated PDF, when reviewed, then the language used in the clinical sections targets a clinician audience (uses clinical terminology rather than the plain-language version shown to patients). 
+
+AC13.4 Given the consent workflow (FR9), when a patient shares a report with a clinician, then the option to include the doctor-ready summary in the shared view is presented to the patient. 
+
+AC13.5 Given a generated PDF, when exported, then no data is stored server-side as part of the export action; the file is generated and delivered client-side only (consistent with NFR2, unless user accounts and data retention have been explicitly enabled per FR8). 
+
  
 
 3.2 Non-Functional Requirements  

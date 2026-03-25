@@ -1,0 +1,15 @@
+
+set -euo pipefail
+cmd="${1:-up}"
+ensure_docker(){ if ! docker info >/dev/null 2>&1; then case "$(uname -s)" in Darwin) open -a Docker ;; esac; until docker info >/dev/null 2>&1; do sleep 2; done; fi; }
+ensure_env(){ test -f .env || cp .env.example .env; }
+open_url(){ url="$1"; if command -v open >/dev/null; then open "$url"; elif command -v xdg-open >/dev/null; then xdg-open "$url"; fi; }
+wait_url(){ url="$1"; for i in {1..90}; do curl -sf "$url" >/dev/null && return 0; sleep 1; done; echo "timeout: $url"; exit 1; }
+case "$cmd" in
+  up) ensure_docker; ensure_env; docker compose up -d; wait_url http://localhost:8000/health; open_url http://localhost:3000; docker compose ps ;;
+  down) docker compose down -v ;;
+  logs) docker compose logs -f ;;
+  ps) docker compose ps ;;
+  rebuild) ensure_docker; ensure_env; docker compose build --no-cache && docker compose up -d ;;
+  *) echo "usage: ./dev {up|down|logs|ps|rebuild}"; exit 2 ;;
+esac

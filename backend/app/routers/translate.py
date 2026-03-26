@@ -6,8 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.services.llm import translate_summary
-
+from app.services import llm as llm_service
 
 router = APIRouter()
 
@@ -40,7 +39,11 @@ async def translate_endpoint(payload: TranslateRequest) -> Any:
         raise HTTPException(status_code=400, detail="unsupported target_language")
 
     label = SUPPORTED_LANGUAGES[code]
-    translation, meta = await translate_summary(text, target_language=code, language_label=label)
+    translation, meta = await llm_service.translate_summary(
+        text,
+        target_language=code,
+        language_label=label,
+    )
 
     # Shared public meta keys from interpret + language
     public_meta_keys = [

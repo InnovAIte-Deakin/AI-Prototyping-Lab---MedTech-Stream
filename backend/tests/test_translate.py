@@ -1,4 +1,3 @@
-from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -34,7 +33,11 @@ def test_translate_missing_api_key(monkeypatch):
     from app.services import llm as llm_module
 
     async def stub_translate_fail(text: str, *, target_language: str, language_label: str):  # type: ignore
-        return None, {"ok": False, "error": {"code": "missing_api_key", "message": "missing_api_key"}, "language": target_language}
+        return None, {
+            "ok": False,
+            "error": {"code": "missing_api_key", "message": "missing_api_key"},
+            "language": target_language,
+        }
 
     monkeypatch.setattr(llm_module, "translate_summary", stub_translate_fail)
 

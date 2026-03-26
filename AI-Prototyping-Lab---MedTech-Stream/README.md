@@ -1,12 +1,16 @@
 # ReportX 
 
-ReportX is an educational health explanations app. MVP stores no data and logs metadata only (no PHI or request bodies). This monorepo contains a Next.js frontend and a FastAPI backend with Docker Compose for local prod-like runs.
+ReportX is an educational health explanations app. The current parse/interpret MVP flow still runs in-memory and logs metadata only (no PHI or request bodies), and the monorepo now also includes a PostgreSQL persistence foundation for upcoming accounts, sharing, messaging, and report-history features.
 
 ## Quickstart
 
 1. Copy envs and update if needed:
-   - Edit `.env` and set `OPENAI_API_KEY=sk-...` (do not source `.env.example`)
-2. Build and run:
+   - Edit `.env`, set `DATABASE_URL` if you are not using the default local Postgres value, and set `OPENAI_API_KEY=sk-...` if needed (do not source `.env.example`)
+2. Start Postgres:
+   - `docker compose up -d postgres`
+3. Apply backend migrations:
+   - `docker compose run --rm backend alembic upgrade head`
+4. Build and run:
    - `docker compose up --build`
 3. Visit:
    - Frontend: http://localhost:3000
@@ -23,6 +27,10 @@ ReportX is an educational health explanations app. MVP stores no data and logs m
 
 - FRONTEND_URL: `http://localhost:3000` (CORS origin)
 - NEXT_PUBLIC_BACKEND_URL: `http://localhost:8000`
+- DATABASE_URL: `postgresql+asyncpg://reportx:reportx@localhost:5432/reportx` for local host usage. Docker Compose injects the internal `postgres` host automatically for the backend container.
+- AUTH_SECRET_KEY: Required for login, refresh, and protected API access. Use a long random secret in local/dev environments.
+- ACCESS_TOKEN_TTL_MINUTES: Access-token lifetime in minutes. Default: `15`.
+- REFRESH_SESSION_TTL_DAYS: Refresh-session lifetime in days. Default: `30`.
 - OPENAI_API_KEY: Optional. If unset or network blocked, backend uses deterministic fallback JSON. Set it only in `.env`.
 - Upload limits: up to 5 files per request, 500MB per file (subject to infra limits).
 - ALLOWED_HOSTS: Comma-separated allowed hosts for backend (default: `localhost,127.0.0.1`; tests allow `testserver`).
@@ -35,12 +43,21 @@ ReportX is an educational health explanations app. MVP stores no data and logs m
 ## Test/Run Instructions
 
 - Run services: `docker compose up --build`
+- Apply migrations: `cd backend && alembic upgrade head` or `docker compose run --rm backend alembic upgrade head`
+- Backend tests: `cd backend && pytest -q`
+
+## Auth Foundation
+
+- Backend auth now exposes `/api/v1/auth/register`, `/login`, `/refresh`, `/logout`, and `/me`.
+- Access tokens are bearer JWTs; refresh tokens are rotated and only their hashes are stored in `auth_sessions`.
+- Protected report reads currently flow through `GET /api/v1/reports/{report_id}` and allow only the subject patient or an explicitly shared grantee with an active consent share.
 
 ## Limitations
 
 - OCR: Scanned PDFs and images (PNG/JPEG) are supported via Tesseract OCR when available. Docker and CI include Tesseract. OCR accuracy depends on image quality.
 - Network restrictions: if the backend cannot reach the LLM, it falls back to a safe, deterministic JSON interpretation.
-- Stateless: no DB; all parsing is ephemeral; do not upload PHI to shared environments.
+- Parse/interpret endpoints still behave ephemerally today; the new database layer is a foundation for future authenticated, shared, and history-aware work.
+- Privacy-first persistence is limited to structured report data and collaboration metadata; raw uploads and extracted free text are not stored by default.
 
 ## Observability
 
@@ -53,7 +70,8 @@ ReportX is an educational health explanations app. MVP stores no data and logs m
 
 ## Notes
 
-- No persistence: backend writes nothing to disk; no volumes for uploads.
+- Persistence foundation: backend uses SQLAlchemy + Alembic with PostgreSQL as the primary target. Reports default to private, consent shares default to least-privilege read access, and refresh sessions store hashed token material rather than plaintext secrets.
+- No volumes for uploads; raw files remain transient in the current parse pipeline.
 - Logging: backend logs method, path, status, and duration only (no bodies/files).
 - Env: never commit secrets. `.env` is ignored; see `.env.example` for required variables.
  - OCR: set `ENABLE_OCR=1` (default) and optionally `TESSERACT_CONFIG` and language packs; backend tries text layer first, then falls back to OCR.

@@ -1,4 +1,21 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-reportx}
+      POSTGRES_USER: ${POSTGRES_USER:-reportx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reportx}
+    ports:
+      - "5432:5432"
+    volumes:
+      - reportx-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reportx} -d ${POSTGRES_DB:-reportx}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -6,6 +23,7 @@ services:
     environment:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,testserver,backend,frontend}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://reportx:reportx@postgres:5432/reportx}
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
       OPENAI_API_KEY: ${OPENAI_API_KEY}
@@ -17,6 +35,9 @@ services:
       OPENAI_TIMEOUT_S: ${OPENAI_TIMEOUT_S:-15}
       OPENAI_USE_RESPONSES: ${OPENAI_USE_RESPONSES:-0}
       ENABLE_OCR: ${ENABLE_OCR:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
     command: uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
@@ -59,3 +80,6 @@ services:
 networks:
   default:
     driver: bridge
+
+volumes:
+  reportx-postgres-data:

@@ -2,6 +2,7 @@ import logging
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,10 +10,21 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import Response
 
+from .db.session import build_database_manager
+from .routers.auth import router as auth_router
 from .routers.health import router as health_router
 from .routers.interpret import router as interpret_router
 from .routers.parse import router as parse_router
+from .routers.reports import router as reports_router
 from .routers.translate import router as translate_router
+
+
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    try:
+        yield
+    finally:
+        await app.state.database.dispose()
 
 
 def get_frontend_origin() -> str:
@@ -105,7 +117,8 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="ReportX API", version="0.1.0")
+    app = FastAPI(title="ReportX API", version="0.1.0", lifespan=app_lifespan)
+    app.state.database = build_database_manager()
 
     # CORS: only allow the configured frontend origin
     frontend_origin = get_frontend_origin()
@@ -129,8 +142,10 @@ def create_app() -> FastAPI:
 
     # Routers
     app.include_router(health_router, prefix="/api/v1")
+    app.include_router(auth_router, prefix="/api/v1")
     app.include_router(parse_router, prefix="/api/v1")
     app.include_router(interpret_router, prefix="/api/v1")
+    app.include_router(reports_router, prefix="/api/v1")
     app.include_router(translate_router, prefix="/api/v1")
 
     @app.get("/", include_in_schema=False)

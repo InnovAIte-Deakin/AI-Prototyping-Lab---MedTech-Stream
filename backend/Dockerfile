@@ -27,7 +27,9 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Add non-root user
 RUN useradd -ms /bin/bash appuser
 
-# Copy app
+# Copy app + migration assets
+COPY alembic.ini ./
+COPY alembic ./alembic
 COPY app ./app
 
 USER appuser

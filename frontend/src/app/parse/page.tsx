@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { TextArea } from '@/components/ui/TextArea';
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/Table';
 import Disclaimer from '@/components/Disclaimer';
+import { ProtectedView } from '@/components/ProtectedView';
 
 type Row = {
   test_name: string;
@@ -199,9 +200,10 @@ export default function ParsePage() {
   };
 
   return (
-    <div className="parse-page">
-      <div className="parse-header">
-        <h1>Understand Your Lab Report</h1>
+    <ProtectedView>
+      <div className="parse-page">
+        <div className="parse-header">
+          <h1>Understand Your Lab Report</h1>
         <p className="parse-subtitle">Upload your report or paste the text. We’ll sort the numbers and explain them in plain language so you can talk confidently with your clinician.</p>
       </div>
 
@@ -528,6 +530,7 @@ export default function ParsePage() {
       )}
       <Disclaimer />
     </div>
+    </ProtectedView>
   );
 }
 

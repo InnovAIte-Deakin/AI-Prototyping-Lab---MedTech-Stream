@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ParsePage from '../page';
+import { AuthProvider } from '@/store/authStore';
 
 const sampleRows = [
   {
@@ -53,7 +54,12 @@ describe('Parse + Interpret flow', () => {
   });
 
   it('parses text, shows interpretation and supports translation', async () => {
-    render(<ParsePage />);
+    localStorage.setItem('reportx_session', JSON.stringify({ user: { email: 'a@b.com', role: 'patient', token: 'token', expiresAt: Date.now() + 100000 } }));
+    render(
+      <AuthProvider>
+        <ParsePage />
+      </AuthProvider>
+    );
 
     // Enter some text and submit form
     const textarea = screen.getByRole('textbox');

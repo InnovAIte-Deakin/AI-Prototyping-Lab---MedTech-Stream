@@ -3,6 +3,7 @@ import '../../styles/header.css';
 import '../../styles/parse.css';
 import type { ReactNode } from 'react';
 import Header from '@/components/Header';
+import { AuthProvider } from '@/store/authStore';
 
 export const metadata = {
   title: 'ReportX',
@@ -13,11 +14,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <Header />
-        <main id="main" className="container">{children}</main>
-        <footer className="container footer">
-          <div>© {new Date().getFullYear()} ReportX — Educational only, not medical advice.</div>
-        </footer>
+        <AuthProvider>
+          <Header />
+          <main id="main" className="container">{children}</main>
+          <footer className="container footer">
+            <div>© {new Date().getFullYear()} ReportX — Educational only, not medical advice.</div>
+          </footer>
+        </AuthProvider>
       </body>
     </html>
   );

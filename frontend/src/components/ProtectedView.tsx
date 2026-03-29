@@ -10,12 +10,30 @@ export function ProtectedView({ children }: { children: React.ReactNode }) {
     if (status === 'unknown') {
       return;
     }
+
+    let cancelled = false;
+
     if (!user || isExpired()) {
-      refresh();
-      if (typeof window !== 'undefined') {
-        window.history.replaceState(null, '', '/auth/login');
-      }
+      const doRefreshAndRedirect = async () => {
+        try {
+          await refresh();
+          if (cancelled) {
+            return;
+          }
+        } catch {
+          // ignore
+        }
+        if (!cancelled && typeof window !== 'undefined') {
+          window.location.href = '/auth/login';
+        }
+      };
+
+      void doRefreshAndRedirect();
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [status, user, isExpired, refresh]);
 
   if (status !== 'authenticated' || !user || isExpired()) {

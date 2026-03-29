@@ -33,7 +33,21 @@ describe('Report history and sharing preference flow', () => {
   });
 
   it('navigates into report detail and allows sharing preference update', async () => {
-    const report = addReportToHistory({ patientEmail: 'patient@example.com', title: 'Report A', rows: [{ test_name: 'Hgb', value: 13.5, unit: 'g/dL', reference_range: '11-15', flag: 'normal', confidence: 1 }], unparsed: [] });
+    const report = addReportToHistory({
+      patientEmail: 'patient@example.com',
+      title: 'Report A',
+      rows: [
+        {
+          test_name: 'Hgb',
+          value: 13.5,
+          unit: 'g/dL',
+          reference_range: '11-15',
+          flag: 'normal',
+          confidence: 1,
+        },
+      ],
+      unparsed: [],
+    });
 
     render(
       <AuthProvider>

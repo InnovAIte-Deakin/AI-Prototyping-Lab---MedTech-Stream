@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus('unauthenticated');
     persistSession(null);
     if (typeof window !== 'undefined') {
-      window.history.replaceState(null, '', '/auth/login');
+      window.location.href = '/auth/login';
     }
   }, []);
 
@@ -73,6 +73,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!stored) {
       setUser(null);
       setStatus('unauthenticated');
+      if (typeof window !== 'undefined') {
+        window.location.href = '/auth/login';
+      }
       return;
     }
     if (Date.now() > stored.expiresAt) {
@@ -80,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStatus('unauthenticated');
       persistSession(null);
       if (typeof window !== 'undefined') {
-        window.history.replaceState(null, '', '/auth/login');
+        window.location.href = '/auth/login';
       }
       return;
     }
@@ -106,7 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStatus('authenticated');
       persistSession(nextUser);
       if (typeof window !== 'undefined') {
-        window.history.replaceState(null, '', '/parse');
+        window.location.href = '/parse';
       }
     },
     []

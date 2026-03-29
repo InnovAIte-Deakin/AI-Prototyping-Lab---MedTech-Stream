@@ -32,8 +32,15 @@ export default function Header() {
                 </button>
               </li>
               <li>
-                <button
-                  onClick={() => window.location.href = '/health'}
+                <button                  onClick={() => window.location.href = '/reports'}
+                  className="nav-btn nav-btn-outline"
+                  type="button"
+                >
+                  My Reports
+                </button>
+              </li>
+              <li>
+                <button                  onClick={() => window.location.href = '/health'}
                   className="nav-btn nav-btn-outline"
                   type="button"
                 >

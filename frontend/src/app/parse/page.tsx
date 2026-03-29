@@ -7,6 +7,8 @@ import { TextArea } from '@/components/ui/TextArea';
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/Table';
 import Disclaimer from '@/components/Disclaimer';
 import { ProtectedView } from '@/components/ProtectedView';
+import { useAuth } from '@/store/authStore';
+import { addReportToHistory, updateReportInHistory } from '@/lib/reportHistory';
 
 type Row = {
   test_name: string;
@@ -68,6 +70,8 @@ export default function ParsePage() {
   const [extractedText, setExtractedText] = useState<string>('');
   const [doctorView, setDoctorView] = useState<boolean>(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [currentReportId, setCurrentReportId] = useState<string | null>(null);
+  const { user } = useAuth();
 
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -141,6 +145,17 @@ export default function ParsePage() {
       setRows(data.rows);
       setUnparsed(data.unparsed_lines);
       setExtractedText(data.extracted_text || '');
+
+      if (user) {
+        const entry = addReportToHistory({
+          patientEmail: user.email,
+          title: `Report ${new Date().toLocaleString()}`,
+          rows: data.rows,
+          unparsed: data.unparsed_lines,
+          extractedText: data.extracted_text || '',
+        });
+        setCurrentReportId(entry.id);
+      }
     } catch (err: any) {
       if (err && (err as any).userMessage) {
         setError(err.message);
@@ -169,6 +184,9 @@ export default function ParsePage() {
       }
       const data = (await res.json()) as { interpretation: any };
       setInterpretation(data.interpretation);
+      if (currentReportId) {
+        updateReportInHistory(currentReportId, { interpretation: data.interpretation });
+      }
     } catch (err: any) {
       if (err && (err as any).userMessage) {
         setExplainError(err.message);

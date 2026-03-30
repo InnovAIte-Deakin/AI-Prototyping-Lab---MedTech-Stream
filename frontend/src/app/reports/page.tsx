@@ -75,7 +75,7 @@ export default function ReportsPage() {
 
         {reportHistory.length === 0 ? (
           <div className="card">
-            <p>You don't have any reports yet. Please <a href="/parse">review a report</a> first.</p>
+            <p>You don&apos;t have any reports yet. Please <a href="/parse">review a report</a> first.</p>
           </div>
         ) : (
           <div className="card">

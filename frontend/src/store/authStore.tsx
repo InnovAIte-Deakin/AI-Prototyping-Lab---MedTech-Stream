@@ -34,6 +34,7 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 const STORAGE_KEY = 'reportx_session';
+const USERS_STORE_KEY = 'reportx_users';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 const SESSION_DURATION_MS = 1000 * 60 * 60; // 1h
 

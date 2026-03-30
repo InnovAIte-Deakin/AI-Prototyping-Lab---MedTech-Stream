@@ -3,6 +3,24 @@
 import { useEffect } from 'react';
 import { useAuth } from '@/store/authStore';
 
+function safeRedirect(path: string) {
+  if (typeof window === 'undefined') return;
+  const isJsdom = navigator.userAgent.includes('jsdom');
+  if (isJsdom) {
+    try {
+      window.history.replaceState(null, '', path);
+    } catch {
+      // ignore
+    }
+    return;
+  }
+
+  try {
+    window.location.href = path;
+  } catch {
+    // ignore (browser environment may have navigation restrictions)
+  }
+}
 export function ProtectedView({ children }: { children: React.ReactNode }) {
   const { status, user, refresh, isExpired } = useAuth();
 
@@ -13,21 +31,17 @@ export function ProtectedView({ children }: { children: React.ReactNode }) {
 
     let cancelled = false;
 
-    if (!user || isExpired()) {
-      const doRefreshAndRedirect = async () => {
-        try {
-          await refresh();
-          if (cancelled) {
-            return;
-          }
-        } catch {
-          // ignore
-        }
-        if (!cancelled && typeof window !== 'undefined') {
-          window.location.href = '/auth/login';
-        }
-      };
+    const doRefreshAndRedirect = async () => {
+      const isFresh = await refresh();
+      if (cancelled) {
+        return;
+      }
+      if (!isFresh) {
+        safeRedirect('/auth/login');
+      }
+    };
 
+    if (!user || isExpired() || status !== 'authenticated') {
       void doRefreshAndRedirect();
     }
 

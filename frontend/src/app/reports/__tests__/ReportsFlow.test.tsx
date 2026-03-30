@@ -10,7 +10,13 @@ describe('Report history and sharing preference flow', () => {
   beforeEach(() => {
     clearReportHistory();
     localStorage.clear();
-    localStorage.setItem('reportx_session', JSON.stringify({ user: { email: 'patient@example.com', role: 'patient', token: 'token', expiresAt: Date.now() + 100000 } }));
+    localStorage.setItem('reportx_session', JSON.stringify({
+      user: { id: '1', email: 'patient@example.com', role: 'patient', displayName: 'Patient' },
+      accessToken: 'access-token',
+      accessTokenExpiresAt: Date.now() + 100000,
+      refreshToken: 'refresh-token',
+      refreshTokenExpiresAt: Date.now() + 1000000,
+    }));
   });
 
   it('shows only patient reports in history and provides action buttons', async () => {
@@ -67,6 +73,74 @@ describe('Report history and sharing preference flow', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/sharing preferences updated/i)).toBeInTheDocument();
+    });
+  });
+
+  it('loads existing sharing preferences and preserves full scope value', async () => {
+    const existingPrefs = {
+      clinicianEmail: 'saved-doc@clinic.org',
+      scope: 'full' as const,
+      expiresAt: Date.now() + 86400000,
+      active: true,
+    };
+    const report = addReportToHistory({
+      patientEmail: 'patient@example.com',
+      title: 'Report B',
+      rows: [],
+      unparsed: [],
+      sharingPreferences: existingPrefs,
+    });
+
+    render(
+      <AuthProvider>
+        <ReportDetailPage params={{ reportId: report.id }} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Report B')).toBeInTheDocument();
+    });
+
+    expect(screen.getByLabelText(/clinician email/i)).toHaveValue('saved-doc@clinic.org');
+    expect(screen.getByLabelText(/scope/i)).toHaveValue('full');
+    expect(screen.getByRole('button', { name: /update share/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /update share/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/sharing preferences updated/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /update share/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /revoke/i })).toBeInTheDocument();
+    });
+  });
+
+  it('refreshes report state after start sharing so button states are updated', async () => {
+    const report = addReportToHistory({
+      patientEmail: 'patient@example.com',
+      title: 'Report C',
+      rows: [],
+      unparsed: [],
+    });
+
+    render(
+      <AuthProvider>
+        <ReportDetailPage params={{ reportId: report.id }} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Report C')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/clinician email/i), { target: { value: 'doc2@clinic.org' } });
+    fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /start sharing/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/sharing preferences updated/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /update share/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /revoke/i })).toBeInTheDocument();
     });
   });
 });

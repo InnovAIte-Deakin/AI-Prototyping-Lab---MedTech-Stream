@@ -54,7 +54,13 @@ describe('Parse + Interpret flow', () => {
   });
 
   it('parses text, shows interpretation and supports translation', async () => {
-    localStorage.setItem('reportx_session', JSON.stringify({ user: { email: 'a@b.com', role: 'patient', token: 'token', expiresAt: Date.now() + 100000 } }));
+    localStorage.setItem('reportx_session', JSON.stringify({
+      user: { id: '1', email: 'a@b.com', role: 'patient', displayName: 'A' },
+      accessToken: 'access-token',
+      accessTokenExpiresAt: Date.now() + 100000,
+      refreshToken: 'refresh-token',
+      refreshTokenExpiresAt: Date.now() + 1000000,
+    }));
     render(
       <AuthProvider>
         <ParsePage />

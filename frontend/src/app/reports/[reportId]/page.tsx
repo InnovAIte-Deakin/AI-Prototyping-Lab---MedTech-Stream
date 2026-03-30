@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { getReportById, getReportHistoryForUser, updateReportInHistory } from '@/lib/reportHistory';
@@ -10,17 +10,36 @@ function formatDate(ts: number) {
   return new Date(ts).toLocaleString();
 }
 
+const defaultSharingPreferences: SharingPreferences = {
+  clinicianEmail: '',
+  scope: 'summary',
+  expiresAt: Date.now() + 86400000,
+  active: false,
+};
+
 export default function ReportDetailPage({ params }: { params: { reportId: string } }) {
   const { user } = useAuth();
-  const [sharingPreferences, setSharingPreferences] = useState<SharingPreferences>({ clinicianEmail: '', scope: 'summary', expiresAt: Date.now() + 86400000, active: false });
+  const [report, setReport] = useState<ReportHistoryEntry | undefined>(undefined);
+  const [sharingPreferences, setSharingPreferences] = useState<SharingPreferences>(defaultSharingPreferences);
   const [statusMessage, setStatusMessage] = useState('');
 
-  const report = useMemo(() => {
-    if (!params.reportId || !user) return undefined;
+  useEffect(() => {
+    if (!params.reportId || !user) {
+      setReport(undefined);
+      return;
+    }
     const candidate = getReportById(params.reportId);
-    if (!candidate || candidate.patientEmail !== user.email) return undefined;
-    return candidate;
+    if (!candidate || candidate.patientEmail !== user.email) {
+      setReport(undefined);
+      return;
+    }
+    setReport(candidate);
   }, [params.reportId, user]);
+
+  useEffect(() => {
+    if (!report) return;
+    setSharingPreferences(report.sharingPreferences ?? defaultSharingPreferences);
+  }, [report]);
 
   if (!user) {
     return (
@@ -41,17 +60,23 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     );
   }
 
-  const currentPrefs = report.sharingPreferences ?? { clinicianEmail: '', scope: 'summary', expiresAt: Date.now() + 86400000, active: false };
+  const currentPrefs = report?.sharingPreferences ?? defaultSharingPreferences;
 
   function updateShare() {
     if (!report) return;
-    updateReportInHistory(report.id, { sharingPreferences });
+    const updatedPrefs: SharingPreferences = { ...sharingPreferences, active: true };
+    setSharingPreferences(updatedPrefs);
+    updateReportInHistory(report.id, { sharingPreferences: updatedPrefs });
+    setReport({ ...report, sharingPreferences: updatedPrefs });
     setStatusMessage('Sharing preferences updated.');
   }
 
   function revokeShare() {
     if (!report) return;
-    updateReportInHistory(report.id, { sharingPreferences: { clinicianEmail: '', scope: 'summary', expiresAt: Date.now(), active: false } });
+    const resetPrefs: SharingPreferences = { ...defaultSharingPreferences, expiresAt: Date.now() };
+    setSharingPreferences(resetPrefs);
+    updateReportInHistory(report.id, { sharingPreferences: resetPrefs });
+    setReport({ ...report, sharingPreferences: resetPrefs });
     setStatusMessage('Sharing revoked.');
   }
 
@@ -89,7 +114,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
             <label htmlFor="clinician-email">Clinician Email</label>
             <input
               id="clinician-email"
-              value={sharingPreferences.clinicianEmail || currentPrefs.clinicianEmail}
+              value={sharingPreferences.clinicianEmail}
               onChange={(e) => setSharingPreferences({ ...sharingPreferences, clinicianEmail: e.target.value })}
             />
           </div>
@@ -97,7 +122,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
             <label htmlFor="share-scope">Scope</label>
             <select
               id="share-scope"
-              value={sharingPreferences.scope || currentPrefs.scope}
+              value={sharingPreferences.scope}
               onChange={(e) => setSharingPreferences({ ...sharingPreferences, scope: e.target.value as 'summary' | 'full' })}
             >
               <option value="summary">Summary only</option>
@@ -109,12 +134,12 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
             <input
               id="share-expiry"
               type="datetime-local"
-              value={new Date(sharingPreferences.expiresAt || currentPrefs.expiresAt).toISOString().slice(0, 16)}
+              value={new Date(sharingPreferences.expiresAt).toISOString().slice(0, 16)}
               onChange={(e) => setSharingPreferences({ ...sharingPreferences, expiresAt: new Date(e.target.value).getTime() })}
             />
           </div>
-          <button className="nav-btn nav-btn-primary" onClick={updateShare}>{currentPrefs.active ? 'Update Share' : 'Start Sharing'}</button>
-          {currentPrefs.active && <button className="nav-btn nav-btn-danger" onClick={revokeShare} style={{ marginLeft: '0.5rem' }}>Revoke</button>}
+          <button className="nav-btn nav-btn-primary" onClick={updateShare}>{sharingPreferences.active ? 'Update Share' : 'Start Sharing'}</button>
+          {sharingPreferences.active && <button className="nav-btn nav-btn-danger" onClick={revokeShare} style={{ marginLeft: '0.5rem' }}>Revoke</button>}
           {statusMessage && <p>{statusMessage}</p>}
         </div>
 

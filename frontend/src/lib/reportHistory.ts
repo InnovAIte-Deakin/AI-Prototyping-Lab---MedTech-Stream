@@ -28,28 +28,22 @@ export type ReportHistoryEntry = {
   sharingPreferences?: SharingPreferences;
 };
 
-const STORAGE_KEY = 'reportx_report_history';
+/**
+ * Security note: medical report data is PHI and must not be persisted to durable storage.
+ * Use in-memory caching only, forcibly clear on browser refresh/close.
+ */
+let inMemoryReportHistory: ReportHistoryEntry[] = [];
 
 function loadAll(): ReportHistoryEntry[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as ReportHistoryEntry[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return inMemoryReportHistory;
 }
 
 function saveAll(items: ReportHistoryEntry[]) {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  inMemoryReportHistory = items;
 }
 
 export function clearReportHistory() {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(STORAGE_KEY);
+  inMemoryReportHistory = [];
 }
 
 export function getReportHistoryForUser(patientEmail: string): ReportHistoryEntry[] {

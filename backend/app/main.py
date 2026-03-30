@@ -1,5 +1,6 @@
 import logging
 import os
+import subprocess
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -21,6 +22,25 @@ from .routers.translate import router as translate_router
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
+    # Ensure migrations are applied on startup so required tables (e.g. roles) exist.
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        logging.info('Running alembic migrations at startup...')
+        result = subprocess.run(
+            ['alembic', 'upgrade', 'head'],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            logging.error('Alembic migration failed: %s', result.stderr.strip())
+            raise RuntimeError(f'Alembic migration failed: {result.stderr.strip()}')
+        logging.info('Alembic migrations applied successfully.')
+    except Exception as exc:
+        logging.exception('Failed to apply migrations on startup')
+        raise
+
     try:
         yield
     finally:

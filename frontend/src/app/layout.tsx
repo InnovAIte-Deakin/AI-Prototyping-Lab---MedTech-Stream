@@ -7,7 +7,7 @@ import { AuthProvider } from '@/store/authStore';
 
 export const metadata = {
   title: 'ReportX',
-  description: 'Educational health explanations (no storage)',
+  description: 'Educational health explanations with optional user accounts and saved reports',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

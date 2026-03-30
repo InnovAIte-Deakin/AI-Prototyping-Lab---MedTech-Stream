@@ -45,6 +45,32 @@ type UserRecord = {
 
 type UserStore = Record<string, UserRecord>;
 
+function formatErrorDetail(detail: unknown): string {
+  if (!detail && detail !== 0) return '';
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          const d = (item as any).msg || (item as any).detail;
+          if (typeof d === 'string') return d;
+          return JSON.stringify(item);
+        }
+        return String(item);
+      })
+      .join('; ');
+  }
+
+  if (typeof detail === 'object' && detail !== null) {
+    const d = (detail as any).msg || (detail as any).detail || (detail as any).message;
+    if (typeof d === 'string') return d;
+    return JSON.stringify(detail);
+  }
+
+  return String(detail);
+}
+
 function safeRedirect(path: string) {
   if (typeof window === 'undefined') return;
   // During tests, jsdom does not support real navigation; use history.replaceState to avoid errors.
@@ -204,7 +230,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => null);
-        const message = json?.detail || 'Invalid email or password.';
+        const message = formatErrorDetail(json?.detail) || 'Invalid email or password.';
         setSession(null);
         setStatus('unauthenticated');
         throw new Error(message);
@@ -245,7 +271,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!res.ok) {
         const json = await res.json().catch(() => null);
-        const message = json?.detail || 'Registration failed.';
+        const message = formatErrorDetail(json?.detail) || 'Registration failed.';
         throw new Error(message);
       }
 

@@ -17,7 +17,7 @@ from sqlalchemy.orm import selectinload
 from app.db.models import AuthSession, Role, User, UserRole
 from app.db.seed import seed_core_roles_async
 
-PASSWORD_CONTEXT = CryptContext(schemes=["bcrypt"], deprecated="auto")
+PASSWORD_CONTEXT = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 USER_ROLE_LOAD = selectinload(User.role_assignments).selectinload(UserRole.role)
 AUTH_SESSION_LOAD = selectinload(AuthSession.user).selectinload(User.role_assignments).selectinload(UserRole.role)

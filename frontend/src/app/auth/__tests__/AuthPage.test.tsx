@@ -79,6 +79,41 @@ describe('Auth pages', () => {
     });
   });
 
+  it('should show error when register payload validation returns structured detail', async () => {
+    // Override stub fetch behaviour for registration error
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.endsWith('/api/v1/auth/register')) {
+        return {
+          ok: false,
+          status: 422,
+          json: async () => ({
+            detail: [
+              { loc: ['body', 'email'], msg: 'value is not a valid email address', type: 'value_error' },
+            ],
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as any);
+
+    render(
+      <AuthProvider>
+        <RegisterPage />
+      </AuthProvider>
+    );
+
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'bad-email' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'Password123!' } });
+    fireEvent.change(screen.getByLabelText(/role/i), { target: { value: 'patient' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /register/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/value is not a valid email address/i)).toBeInTheDocument();
+    });
+  });
+
   it('should show error when login password is blank', async () => {
     render(
       <AuthProvider>

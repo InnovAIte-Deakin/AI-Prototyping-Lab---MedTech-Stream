@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ProtectedView } from '@/components/ProtectedView';
 import { useAuth } from '@/store/authStore';
-import { getReportHistoryForUser, updateReportInHistory } from '@/lib/reportHistory';
+import { fetchReportHistory } from '@/lib/reportHistory';
 import type { ReportHistoryEntry, SharingPreferences } from '@/lib/reportHistory';
 
 function formatDate(ts: number) {
@@ -16,15 +16,31 @@ export default function ReportsPage() {
   const [editingSharingId, setEditingSharingId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SharingPreferences>({ clinicianEmail: '', scope: 'summary', expiresAt: Date.now() + 86400000, active: false });
   const [statusMessage, setStatusMessage] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+  async function fetchReports() {
+    if (!user) return;
+
+    try {
+      const data = await fetchReportHistory();
+      setReportHistory(data);
+      setLoadError(null);
+      setStatusMessage('');
+    } catch (err: any) {
+      console.error('fetchReports failed', err);
+      setReportHistory([]);
+      setLoadError(err?.message || 'Failed to load report history.');
+      setStatusMessage('');
+    }
+  }
 
   useEffect(() => {
-    if (!user) return;
-    setReportHistory(getReportHistoryForUser(user.email));
+    void fetchReports();
   }, [user]);
 
   function refresh() {
-    if (!user) return;
-    setReportHistory(getReportHistoryForUser(user.email));
+    void fetchReports();
   }
 
   function beginSharing(entry: ReportHistoryEntry) {
@@ -38,25 +54,79 @@ export default function ReportsPage() {
     setStatusMessage('');
   }
 
-  function saveSharing() {
+  async function saveSharing() {
     if (!editingSharingId || !user) return;
-    const payload = {
-      sharingPreferences: {
-        clinicianEmail: sheet.clinicianEmail,
-        scope: sheet.scope,
-        expiresAt: sheet.expiresAt,
-        active: true,
-      },
-    };
-    updateReportInHistory(editingSharingId, payload);
-    refresh();
-    setStatusMessage('Sharing preferences saved for this report.');
+
+    const tokenText = localStorage.getItem('reportx_session');
+    const token = tokenText ? JSON.parse(tokenText)?.accessToken : null;
+    if (!token) {
+      setStatusMessage('Unable to set sharing: not authenticated.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${backend}/api/v1/reports/${editingSharingId}/share`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          clinician_email: sheet.clinicianEmail,
+          scope: sheet.scope === 'full' ? 'report' : 'patient',
+          access_level: sheet.scope === 'full' ? 'comment' : 'read',
+          expires_at: new Date(sheet.expiresAt).toISOString(),
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => null);
+        setStatusMessage(error?.detail || 'Failed to save sharing preferences.');
+        return;
+      }
+
+      // Refresh list from backend
+      await fetchReports();
+      setStatusMessage('Sharing preferences saved for this report.');
+    } catch {
+      setStatusMessage('Failed to save sharing preferences.');
+    }
   }
 
-  function revokeSharing(id: string) {
-    updateReportInHistory(id, { sharingPreferences: { clinicianEmail: '', scope: 'summary', expiresAt: Date.now(), active: false } });
-    refresh();
-    setStatusMessage('Sharing revoked.');
+  async function revokeSharing(id: string) {
+    const tokenText = localStorage.getItem('reportx_session');
+      const token = tokenText ? JSON.parse(tokenText)?.accessToken : null;
+      if (!token) {
+        setStatusMessage('Unable to revoke sharing: not authenticated.');
+        return;
+      }
+
+      // Determine clinician email for the specified report id. Prefer the report's stored prefs.
+      const targetEntry = reportHistory.find((r) => r.id === id);
+      const clinicianEmail = targetEntry?.sharingPreferences?.clinicianEmail || sheet.clinicianEmail;
+      if (!clinicianEmail) {
+        setStatusMessage('Clinician email not found for this report. Open Manage Sharing to set it first.');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${backend}/api/v1/reports/${id}/share/revoke`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ clinician_email: clinicianEmail }),
+        });
+        if (!res.ok) {
+          const error = await res.json().catch(() => null);
+          setStatusMessage(error?.detail || 'Failed to revoke sharing.');
+          return;
+        }
+        await fetchReports();
+        setStatusMessage('Sharing revoked.');
+      } catch {
+        setStatusMessage('Failed to revoke sharing.');
+      }
   }
 
   if (!user) {
@@ -72,6 +142,11 @@ export default function ReportsPage() {
       <section className="stack">
         <h1>My Report History</h1>
         <p>These are your own reports, saved locally in your browser session.</p>
+        {loadError && (
+          <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+            {loadError}
+          </div>
+        )}
 
         {reportHistory.length === 0 ? (
           <div className="card">

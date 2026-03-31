@@ -56,4 +56,25 @@ describe('reportHistory utility', () => {
     const aliceReports = getReportHistoryForUser('alice@example.com');
     expect(aliceReports[0].sharingPreferences?.clinicianEmail).toBe('clinician@health.org');
   });
+
+  it('rejects invalid rows in addReportToHistory', () => {
+    expect(() => {
+      addReportToHistory({
+        patientEmail: 'alice@example.com',
+        title: 'Invalid row case',
+        rows: [
+          {
+            test_name: 'Bad row',
+            value: 'bad',
+            unit: 'g/dL',
+            reference_range: '0-100',
+            flag: 'not-a-flag',
+            confidence: 0.5,
+          } as any,
+        ],
+        unparsed: [],
+      });
+    }).toThrow('rows contained invalid items');
+  });
+
 });

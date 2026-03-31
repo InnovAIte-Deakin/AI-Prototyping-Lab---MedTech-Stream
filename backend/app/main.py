@@ -1,6 +1,6 @@
+import asyncio
 import logging
 import os
-import subprocess
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -20,24 +20,36 @@ from .routers.reports import router as reports_router
 from .routers.translate import router as translate_router
 
 
+async def _run_alembic_migrations(project_root: str, timeout: int) -> None:
+    process = await asyncio.create_subprocess_exec(
+        'alembic', 'upgrade', 'head',
+        cwd=project_root,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        process.kill()
+        await process.wait()
+        raise RuntimeError(f'Alembic migration timed out after {timeout} seconds') from exc
+
+    if process.returncode != 0:
+        error_msg = stderr.decode().strip() or stdout.decode().strip()
+        raise RuntimeError(f'Alembic migration failed: {error_msg}')
+
+
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
     # Ensure migrations are applied on startup so required tables (e.g. roles) exist.
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     try:
         logging.info('Running alembic migrations at startup...')
-        result = subprocess.run(
-            ['alembic', 'upgrade', 'head'],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            logging.error('Alembic migration failed: %s', result.stderr.strip())
-            raise RuntimeError(f'Alembic migration failed: {result.stderr.strip()}')
+        timeout = int(os.getenv('ALEMBIC_STARTUP_TIMEOUT_SECONDS', '60'))
+        await _run_alembic_migrations(project_root, timeout=timeout)
         logging.info('Alembic migrations applied successfully.')
-    except Exception as exc:
+    except Exception:
         logging.exception('Failed to apply migrations on startup')
         raise
 

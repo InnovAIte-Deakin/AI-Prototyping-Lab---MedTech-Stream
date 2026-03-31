@@ -37,14 +37,19 @@ export function FileQueue(){
         return;
       }
       const took = Math.round(performance.now() - t0);
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       const rows = Array.isArray(json.rows) ? json.rows : [];
       const unparsed = Array.isArray(json.unparsed_lines) ? json.unparsed_lines : [];
       setResult({ rows, unparsed, extractedText: json.extracted_text });
       setMetrics({ lastStatus: res.status, lastParseMs: took, parsedRowCount: rows.length, unparsedCount: unparsed.length });
-      if (!res.ok) setError('We couldn’t finish reviewing your file. Please try again.');
+
+      if (!res.ok) {
+        const serverDetail = (json && json.detail) ? `: ${json.detail}` : '';
+        setError(`Unable to review file: (${res.status}${serverDetail}). Please try again.`);
+      }
     } catch (e: any) {
-      setError('We couldn’t finish reviewing your file. Please try again.');
+      const message = e?.message ? `${e.message}` : 'Network error';
+      setError(`Couldn’t finish reviewing your file: ${message}.`);
     } finally {
       setBusy(false);
     }

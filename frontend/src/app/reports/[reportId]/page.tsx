@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
-import { getReportById, getReportHistoryForUser, updateReportInHistory } from '@/lib/reportHistory';
+import { fetchReportById, updateReportInHistory } from '@/lib/reportHistory';
 import type { ReportHistoryEntry, SharingPreferences } from '@/lib/reportHistory';
 
 function formatDate(ts: number) {
@@ -24,16 +24,27 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   const [statusMessage, setStatusMessage] = useState('');
 
   useEffect(() => {
-    if (!params.reportId || !user) {
-      setReport(undefined);
-      return;
+    async function loadReport() {
+      if (!params.reportId || !user) {
+        setReport(undefined);
+        return;
+      }
+      try {
+        const candidate = await fetchReportById(params.reportId);
+        if (!candidate) {
+          setReport(undefined);
+          setStatusMessage('Report not found.');
+          return;
+        }
+        setReport(candidate);
+        setStatusMessage('');
+      } catch (err: any) {
+        console.error('loadReport failed', err);
+        setReport(undefined);
+        setStatusMessage(err?.message || 'Failed to load report.');
+      }
     }
-    const candidate = getReportById(params.reportId);
-    if (!candidate || candidate.patientEmail !== user.email) {
-      setReport(undefined);
-      return;
-    }
-    setReport(candidate);
+    void loadReport();
   }, [params.reportId, user]);
 
   useEffect(() => {
@@ -55,29 +66,113 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
         <section className="stack">
           <h1>Report Not Found</h1>
           <p>This report does not exist or you do not have permission to view it.</p>
+          {statusMessage && <div className="alert alert-error" style={{ marginTop: '1rem' }}>{statusMessage}</div>}
         </section>
       </ProtectedView>
     );
   }
 
-  const currentPrefs = report?.sharingPreferences ?? defaultSharingPreferences;
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
-  function updateShare() {
+  async function updateShare() {
     if (!report) return;
-    const updatedPrefs: SharingPreferences = { ...sharingPreferences, active: true };
-    setSharingPreferences(updatedPrefs);
-    updateReportInHistory(report.id, { sharingPreferences: updatedPrefs });
-    setReport({ ...report, sharingPreferences: updatedPrefs });
-    setStatusMessage('Sharing preferences updated.');
+    if (!sharingPreferences.clinicianEmail) {
+      setStatusMessage('Please provide clinician email for sharing.');
+      return;
+    }
+
+    const accessToken = (() => {
+      const stored = localStorage.getItem('reportx_session');
+      if (!stored) return null;
+      try {
+        const session = JSON.parse(stored);
+        return session?.accessToken || null;
+      } catch {
+        return null;
+      }
+    })();
+
+    if (!accessToken) {
+      setStatusMessage('Unable to find authenticated session. Please log in.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${backend}/api/v1/reports/${report.id}/share`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          clinician_email: sharingPreferences.clinicianEmail,
+          scope: 'report',
+          access_level: sharingPreferences.scope === 'full' ? 'comment' : 'read',
+          expires_at: new Date(sharingPreferences.expiresAt).toISOString(),
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        const message = error?.detail || 'Failed to update sharing preferences.';
+        setStatusMessage(message);
+        return;
+      }
+
+      const updatedPrefs: SharingPreferences = { ...sharingPreferences, active: true };
+      setSharingPreferences(updatedPrefs);
+      updateReportInHistory(report.id, { sharingPreferences: updatedPrefs });
+      setReport({ ...report, sharingPreferences: updatedPrefs });
+      setStatusMessage('Sharing preferences updated.');
+    } catch (err) {
+      setStatusMessage('Unable to save sharing preferences. Please try again.');
+    }
   }
 
-  function revokeShare() {
+  async function revokeShare() {
     if (!report) return;
-    const resetPrefs: SharingPreferences = { ...defaultSharingPreferences, expiresAt: Date.now() };
-    setSharingPreferences(resetPrefs);
-    updateReportInHistory(report.id, { sharingPreferences: resetPrefs });
-    setReport({ ...report, sharingPreferences: resetPrefs });
-    setStatusMessage('Sharing revoked.');
+
+    const accessToken = (() => {
+      const stored = localStorage.getItem('reportx_session');
+      if (!stored) return null;
+      try {
+        const session = JSON.parse(stored);
+        return session?.accessToken || null;
+      } catch {
+        return null;
+      }
+    })();
+
+    if (!accessToken) {
+      setStatusMessage('Unable to find authenticated session. Please log in.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${backend}/api/v1/reports/${report.id}/share/revoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ clinician_email: sharingPreferences.clinicianEmail }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        const message = error?.detail || 'Failed to revoke sharing preferences.';
+        setStatusMessage(message);
+        return;
+      }
+
+      const resetPrefs: SharingPreferences = { ...defaultSharingPreferences, expiresAt: Date.now() };
+      setSharingPreferences(resetPrefs);
+      updateReportInHistory(report.id, { sharingPreferences: resetPrefs });
+      setReport({ ...report, sharingPreferences: resetPrefs });
+      setStatusMessage('Sharing revoked.');
+    } catch {
+      setStatusMessage('Unable to revoke sharing preferences. Please try again.');
+    }
   }
 
   const interpretation = report.interpretation;

@@ -3,8 +3,11 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ParsePage from '../page';
 import { AuthProvider } from '@/store/authStore';
+import * as reportHistory from '@/lib/reportHistory';
 
-const sampleRows = [
+import type { ParsedRow } from '@/types/ui';
+
+const sampleRows: ParsedRow[] = [
   {
     test_name: 'Hemoglobin',
     value: 13.5,
@@ -51,6 +54,19 @@ describe('Parse + Interpret flow', () => {
 
   afterEach(() => {
     global.fetch = origFetch as any;
+    localStorage.removeItem('reportx_session');
+  });
+
+  it('works for anonymous users and does not require login', async () => {
+    // No session set, page should still render with the parsing form.
+    render(
+      <AuthProvider>
+        <ParsePage />
+      </AuthProvider>
+    );
+
+    expect(screen.getByText('Understand Your Lab Report')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /review report/i })).toBeInTheDocument();
   });
 
   it('parses text, shows interpretation and supports translation', async () => {
@@ -87,5 +103,54 @@ describe('Parse + Interpret flow', () => {
     const select = screen.getByLabelText(/translate summary/i);
     fireEvent.change(select, { target: { value: 'es' } });
     expect(screen.getByText(/Resumen en español\./i)).toBeInTheDocument();
+  });
+
+  it('invokes updateReportInHistory after explain', async () => {
+    const createReportSpy = vi
+      .spyOn(reportHistory, 'createReportEntry')
+      .mockResolvedValue({
+        id: 'r1',
+        patientEmail: 'a@b.com',
+        title: 'Report 1',
+        createdAt: Date.now(),
+        rows: sampleRows,
+        unparsed: [],
+        interpretation: undefined,
+      });
+    const updateReportSpy = vi
+      .spyOn(reportHistory, 'updateReportInHistory')
+      .mockReturnValue(true);
+
+    localStorage.setItem('reportx_session', JSON.stringify({
+      user: { id: '1', email: 'a@b.com', role: 'patient', displayName: 'A' },
+      accessToken: 'access-token',
+      accessTokenExpiresAt: Date.now() + 100000,
+      refreshToken: 'refresh-token',
+      refreshTokenExpiresAt: Date.now() + 1000000,
+    }));
+
+    render(
+      <AuthProvider>
+        <ParsePage />
+      </AuthProvider>
+    );
+
+    const textarea = screen.getByRole('textbox');
+    fireEvent.change(textarea, { target: { value: 'Hemoglobin 13.5 g/dL (11-15)' } });
+
+    const parseBtn = screen.getByRole('button', { name: /review/i });
+    fireEvent.submit(parseBtn.closest('form') as HTMLFormElement);
+
+    // Wait for parse result rendering
+    await screen.findByText('Hemoglobin');
+
+    fireEvent.click(screen.getByRole('button', { name: /explain/i }));
+    await waitFor(() => expect(screen.getByText(/Parsed 1 tests\./i)).toBeInTheDocument());
+
+    expect(createReportSpy).toHaveBeenCalled();
+    expect(updateReportSpy).toHaveBeenCalledWith('r1', { interpretation: expect.any(Object) });
+
+    createReportSpy.mockRestore();
+    updateReportSpy.mockRestore();
   });
 });

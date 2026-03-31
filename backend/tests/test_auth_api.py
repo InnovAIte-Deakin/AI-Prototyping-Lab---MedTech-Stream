@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -12,6 +13,8 @@ from sqlalchemy.orm import selectinload, sessionmaker
 from app.db.base import Base
 from app.db.models import AuthSession, Report, User, UserRole
 from app.main import create_app
+from app.services.auth import hash_password, verify_password
+from passlib.context import CryptContext
 from tests.factories import PersistenceFactory
 
 
@@ -33,7 +36,6 @@ def auth_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AuthApiHarness:
     monkeypatch.setenv("REFRESH_SESSION_TTL_DAYS", "30")
 
     engine = create_engine(sync_database_url, future=True)
-    Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
     app = create_app()
@@ -208,6 +210,23 @@ def test_login_success_and_failure(auth_api: AuthApiHarness):
     assert failure.status_code == 401
 
 
+def test_verify_legacy_bcrypt_hash(auth_api: AuthApiHarness):
+    password = "Password123!"
+    legacy_ctx = CryptContext(schemes=["bcrypt"])
+    try:
+        legacy_hash = legacy_ctx.hash(password)
+    except ValueError as exc:
+        pytest.skip(f"bcrypt backend not fully available in this environment: {exc}")
+
+    # Can verify old bcrypt hashes after switching default to pbkdf2_sha256
+    assert verify_password(password, legacy_hash) is True
+
+    # New hashes should still use pbkdf2_sha256 and verify correctly
+    new_hash = hash_password(password)
+    assert new_hash.startswith("$pbkdf2-sha256$")
+    assert verify_password(password, new_hash) is True
+
+
 def test_refresh_rotates_refresh_token_and_rejects_the_old_one(auth_api: AuthApiHarness):
     register_user(
         auth_api,
@@ -368,6 +387,51 @@ def test_clinician_is_denied_until_a_patient_shares_the_report(auth_api: AuthApi
     assert allowed.json()["report"]["id"] == report_id
 
 
+def test_patient_can_share_report_via_api(auth_api: AuthApiHarness):
+    from datetime import datetime, timedelta, UTC
+
+    register_user(
+        auth_api,
+        email="patient.share2@example.com",
+        password="Password123!",
+        role="patient",
+        display_name="Patient Share 2",
+    )
+    register_user(
+        auth_api,
+        email="clinician.user2@example.com",
+        password="Password123!",
+        role="clinician",
+        display_name="Clinician User 2",
+    )
+
+    report_id = create_report_for_users(
+        auth_api.session_factory,
+        subject_email="patient.share2@example.com",
+        created_by_email="patient.share2@example.com",
+    )
+
+    patient_login = login_user(auth_api, email="patient.share2@example.com", password="Password123!")
+    share_response = auth_api.client.post(
+        f"/api/v1/reports/{report_id}/share",
+        headers=auth_headers(patient_login["access_token"]),
+        json={
+            "clinician_email": "clinician.user2@example.com",
+            "scope": "report",
+            "access_level": "read",
+            "expires_at": (datetime.now(UTC) + timedelta(days=7)).isoformat(),
+        },
+    )
+    assert share_response.status_code == 201, share_response.text
+
+    clinician_login = login_user(auth_api, email="clinician.user2@example.com", password="Password123!")
+    allowed = auth_api.client.get(
+        f"/api/v1/reports/{report_id}",
+        headers=auth_headers(clinician_login["access_token"]),
+    )
+    assert allowed.status_code == 200
+
+
 def test_logout_revokes_the_session_and_expired_sessions_are_rejected(auth_api: AuthApiHarness):
     register_user(
         auth_api,
@@ -402,6 +466,45 @@ def test_logout_revokes_the_session_and_expired_sessions_are_rejected(auth_api: 
     )
     assert revoked_refresh.status_code == 401
 
+
+def test_app_lifespan_runs_alembic_with_async_subprocess(auth_api: AuthApiHarness, monkeypatch):
+    import app.main as main_mod
+    from fastapi.testclient import TestClient
+
+    called = {"count": 0}
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = 0
+
+        async def communicate(self):
+            return b"ok", b""
+
+        async def wait(self):
+            return None
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        called["count"] += 1
+        assert args[:3] == ("alembic", "upgrade", "head")
+        return FakeProcess()
+
+    monkeypatch.setenv("ALEMBIC_STARTUP_TIMEOUT_SECONDS", "5")
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    app = main_mod.create_app()
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 204
+
+    assert called["count"] == 1
+
+    register_user(
+        auth_api,
+        email="logout.user@example.com",
+        password="Password123!",
+        role="patient",
+        display_name="Logout User",
+    )
     relogin = login_user(auth_api, email="logout.user@example.com", password="Password123!")
     expire_latest_session(auth_api.session_factory, email="logout.user@example.com")
 

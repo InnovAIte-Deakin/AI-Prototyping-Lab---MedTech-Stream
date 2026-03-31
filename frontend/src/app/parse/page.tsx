@@ -6,9 +6,8 @@ import { Input } from '@/components/ui/Input';
 import { TextArea } from '@/components/ui/TextArea';
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/Table';
 import Disclaimer from '@/components/Disclaimer';
-import { ProtectedView } from '@/components/ProtectedView';
 import { useAuth } from '@/store/authStore';
-import { addReportToHistory, updateReportInHistory } from '@/lib/reportHistory';
+import { addReportToHistory, createReportEntry, updateReportInHistory } from '@/lib/reportHistory';
 
 type Row = {
   test_name: string;
@@ -137,7 +136,8 @@ export default function ParsePage() {
         });
       }
       if (!res.ok) {
-        const e: any = new Error("We couldn’t review that report right now. Please try again.");
+        const text = await res.text().catch(() => '');
+        const e: any = new Error(text || "We couldn’t review that report right now. Please try again.");
         e.userMessage = true;
         throw e;
       }
@@ -147,17 +147,54 @@ export default function ParsePage() {
       setExtractedText(data.extracted_text || '');
 
       if (user) {
-        const entry = addReportToHistory({
-          patientEmail: user.email,
+        try {
+          const reportEntry = await createReportEntry({
+            title: `Report ${new Date().toLocaleString()}`,
+            source_kind: 'text',
+            findings: data.rows.map((row) => ({
+              test_name: row.test_name,
+              value_numeric: typeof row.value === 'number' ? row.value : undefined,
+              value_text: typeof row.value === 'string' ? row.value : undefined,
+              unit: row.unit || undefined,
+              reference_range: row.reference_range || undefined,
+              flag: row.flag || undefined,
+            })),
+          });
+
+          if (reportEntry) {
+            setCurrentReportId(reportEntry.id);
+            addReportToHistory(reportEntry);
+          } else {
+            addReportToHistory({
+              patientEmail: user.email,
+              title: `Report ${new Date().toLocaleString()}`,
+              rows: data.rows,
+              unparsed: data.unparsed_lines,
+              extractedText: data.extracted_text || '',
+            });
+          }
+        } catch (entryErr: any) {
+          // API failure should still allow local caching in the UX path, but avoid dupes.
+          setError(entryErr?.message || 'Saved locally but failed to persist report remotely.');
+          addReportToHistory({
+            patientEmail: user.email,
+            title: `Report ${new Date().toLocaleString()}`,
+            rows: data.rows,
+            unparsed: data.unparsed_lines,
+            extractedText: data.extracted_text || '',
+          });
+        }
+      } else {
+        addReportToHistory({
+          patientEmail: 'anonymous',
           title: `Report ${new Date().toLocaleString()}`,
           rows: data.rows,
           unparsed: data.unparsed_lines,
           extractedText: data.extracted_text || '',
         });
-        setCurrentReportId(entry.id);
       }
     } catch (err: any) {
-      if (err && (err as any).userMessage) {
+      if (err?.message) {
         setError(err.message);
       } else {
         setError("We had trouble reviewing your report. Please try again in a moment.");
@@ -188,7 +225,7 @@ export default function ParsePage() {
         updateReportInHistory(currentReportId, { interpretation: data.interpretation });
       }
     } catch (err: any) {
-      if (err && (err as any).userMessage) {
+      if (err?.message) {
         setExplainError(err.message);
       } else {
         setExplainError("We had trouble reviewing your report. Please try again in a moment.");
@@ -208,6 +245,7 @@ export default function ParsePage() {
     setRows([]);
     setUnparsed([]);
     setInterpretation(null);
+    setCurrentReportId(null);
     setError(null);
     setExplainError(null);
     setUploadError(null);
@@ -218,10 +256,9 @@ export default function ParsePage() {
   };
 
   return (
-    <ProtectedView>
-      <div className="parse-page">
-        <div className="parse-header">
-          <h1>Understand Your Lab Report</h1>
+    <div className="parse-page">
+      <div className="parse-header">
+        <h1>Understand Your Lab Report</h1>
         <p className="parse-subtitle">Upload your report or paste the text. We’ll sort the numbers and explain them in plain language so you can talk confidently with your clinician.</p>
       </div>
 
@@ -548,7 +585,6 @@ export default function ParsePage() {
       )}
       <Disclaimer />
     </div>
-    </ProtectedView>
   );
 }
 

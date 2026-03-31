@@ -56,7 +56,33 @@ class ReportCreateResponse(BaseModel):
     observed_at: datetime
 
 
-@router.get("", response_model=list["ReportOut"])
+class ReportFindingOut(BaseModel):
+    id: str
+    biomarker_key: str
+    display_name: str
+    value_numeric: float | None
+    value_text: str | None
+    unit: str | None
+    flag: str
+    reference_range_text: str | None
+
+
+class ReportOut(BaseModel):
+    id: str
+    subject_user_id: str
+    created_by_user_id: str
+    title: str | None
+    source_kind: str
+    sharing_mode: str
+    observed_at: datetime
+    findings: list[ReportFindingOut]
+
+
+class ReportDetailResponse(BaseModel):
+    report: ReportOut
+
+
+@router.get("", response_model=list[ReportOut])
 async def list_reports(
     auth: AuthContext = Depends(get_current_auth_context),
     session: AsyncSession = Depends(get_db_session),
@@ -217,32 +243,6 @@ async def revoke_share(
 
     share.revoked_at = datetime.now(UTC)
     await session.commit()
-
-
-class ReportFindingOut(BaseModel):
-    id: str
-    biomarker_key: str
-    display_name: str
-    value_numeric: float | None
-    value_text: str | None
-    unit: str | None
-    flag: str
-    reference_range_text: str | None
-
-
-class ReportOut(BaseModel):
-    id: str
-    subject_user_id: str
-    created_by_user_id: str
-    title: str | None
-    source_kind: str
-    sharing_mode: str
-    observed_at: datetime
-    findings: list[ReportFindingOut]
-
-
-class ReportDetailResponse(BaseModel):
-    report: ReportOut
 
 
 def _finding_out(finding: ReportFinding) -> ReportFindingOut:

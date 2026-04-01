@@ -6,11 +6,13 @@ import { ParsedTable } from '@/components/ParsedTable';
 import { UnparsedLines } from '@/components/UnparsedLines';
 import { HealthGate } from '@/components/HealthGate';
 import { LogsPane } from '@/components/LogsPane';
+import { ProtectedView } from '@/components/ProtectedView';
 
 export default function WorkbenchPage(){
   return (
-    <HealthGate>
-      <ParseProvider>
+    <ProtectedView>
+      <HealthGate>
+        <ParseProvider>
         <div className="grid" style={{ gridTemplateColumns: '320px 1fr 480px', gridTemplateRows: '1fr auto', height: 'calc(100vh - 3rem)', gap: '0.75rem' }}>
           <aside className="card" style={{ overflow: 'auto' }}>
             <h2 style={{ marginTop: 0 }}>Files</h2>
@@ -36,6 +38,7 @@ export default function WorkbenchPage(){
         </div>
       </ParseProvider>
     </HealthGate>
+  </ProtectedView>
   );
 }
 

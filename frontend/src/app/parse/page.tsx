@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/Input';
 import { TextArea } from '@/components/ui/TextArea';
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/Table';
 import Disclaimer from '@/components/Disclaimer';
+import { useAuth } from '@/store/authStore';
+import { addReportToHistory, createReportEntry, updateReportInHistory } from '@/lib/reportHistory';
 
 type Row = {
   test_name: string;
@@ -67,6 +69,8 @@ export default function ParsePage() {
   const [extractedText, setExtractedText] = useState<string>('');
   const [doctorView, setDoctorView] = useState<boolean>(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [currentReportId, setCurrentReportId] = useState<string | null>(null);
+  const { user } = useAuth();
 
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -132,7 +136,8 @@ export default function ParsePage() {
         });
       }
       if (!res.ok) {
-        const e: any = new Error("We couldn’t review that report right now. Please try again.");
+        const text = await res.text().catch(() => '');
+        const e: any = new Error(text || "We couldn’t review that report right now. Please try again.");
         e.userMessage = true;
         throw e;
       }
@@ -140,8 +145,56 @@ export default function ParsePage() {
       setRows(data.rows);
       setUnparsed(data.unparsed_lines);
       setExtractedText(data.extracted_text || '');
+
+      if (user) {
+        try {
+          const reportEntry = await createReportEntry({
+            title: `Report ${new Date().toLocaleString()}`,
+            source_kind: 'text',
+            findings: data.rows.map((row) => ({
+              test_name: row.test_name,
+              value_numeric: typeof row.value === 'number' ? row.value : undefined,
+              value_text: typeof row.value === 'string' ? row.value : undefined,
+              unit: row.unit || undefined,
+              reference_range: row.reference_range || undefined,
+              flag: row.flag || undefined,
+            })),
+          });
+
+          if (reportEntry) {
+            setCurrentReportId(reportEntry.id);
+            addReportToHistory(reportEntry);
+          } else {
+            addReportToHistory({
+              patientEmail: user.email,
+              title: `Report ${new Date().toLocaleString()}`,
+              rows: data.rows,
+              unparsed: data.unparsed_lines,
+              extractedText: data.extracted_text || '',
+            });
+          }
+        } catch (entryErr: any) {
+          // API failure should still allow local caching in the UX path, but avoid dupes.
+          setError(entryErr?.message || 'Saved locally but failed to persist report remotely.');
+          addReportToHistory({
+            patientEmail: user.email,
+            title: `Report ${new Date().toLocaleString()}`,
+            rows: data.rows,
+            unparsed: data.unparsed_lines,
+            extractedText: data.extracted_text || '',
+          });
+        }
+      } else {
+        addReportToHistory({
+          patientEmail: 'anonymous',
+          title: `Report ${new Date().toLocaleString()}`,
+          rows: data.rows,
+          unparsed: data.unparsed_lines,
+          extractedText: data.extracted_text || '',
+        });
+      }
     } catch (err: any) {
-      if (err && (err as any).userMessage) {
+      if (err?.message) {
         setError(err.message);
       } else {
         setError("We had trouble reviewing your report. Please try again in a moment.");
@@ -168,8 +221,11 @@ export default function ParsePage() {
       }
       const data = (await res.json()) as { interpretation: any };
       setInterpretation(data.interpretation);
+      if (currentReportId) {
+        updateReportInHistory(currentReportId, { interpretation: data.interpretation });
+      }
     } catch (err: any) {
-      if (err && (err as any).userMessage) {
+      if (err?.message) {
         setExplainError(err.message);
       } else {
         setExplainError("We had trouble reviewing your report. Please try again in a moment.");
@@ -189,6 +245,7 @@ export default function ParsePage() {
     setRows([]);
     setUnparsed([]);
     setInterpretation(null);
+    setCurrentReportId(null);
     setError(null);
     setExplainError(null);
     setUploadError(null);

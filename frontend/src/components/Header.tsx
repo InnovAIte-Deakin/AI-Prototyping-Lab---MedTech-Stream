@@ -1,9 +1,12 @@
 'use client';
 
 import React from 'react';
+import { useAuth } from '@/store/authStore';
 import ThemeToggle from './ThemeToggle';
 
 export default function Header() {
+  const { user, status, logout } = useAuth();
+
   return (
     <>
       <a href="#main" className="skip-link">Skip to content</a>
@@ -29,14 +32,46 @@ export default function Header() {
                 </button>
               </li>
               <li>
-                <button
-                  onClick={() => window.location.href = '/health'}
+                <button                  onClick={() => window.location.href = '/reports'}
+                  className="nav-btn nav-btn-outline"
+                  type="button"
+                >
+                  My Reports
+                </button>
+              </li>
+              <li>
+                <button                  onClick={() => window.location.href = '/health'}
                   className="nav-btn nav-btn-outline"
                   type="button"
                 >
                   Health Check
                 </button>
               </li>
+              {status === 'authenticated' && user ? (
+                <>
+                  <li>
+                    <button
+                      onClick={logout}
+                      className="nav-btn nav-btn-outline"
+                      type="button"
+                    >
+                      Logout
+                    </button>
+                  </li>
+                  <li style={{ display: 'flex', alignItems: 'center', marginLeft: '0.5rem' }}>
+                    <small style={{ color: '#555' }}>{user.email} ({user.role})</small>
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li>
+                    <button onClick={() => (window.location.href = '/auth/login')} className="nav-btn nav-btn-outline" type="button">Login</button>
+                  </li>
+                  <li>
+                    <button onClick={() => (window.location.href = '/auth/register')} className="nav-btn nav-btn-outline" type="button">Register</button>
+                  </li>
+                </>
+              )}
             </ul>
             <ThemeToggle />
           </nav>

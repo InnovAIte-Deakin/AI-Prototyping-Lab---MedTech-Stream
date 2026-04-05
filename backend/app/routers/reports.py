@@ -76,6 +76,7 @@ class ReportOut(BaseModel):
     title: str | None
     source_kind: str
     sharing_mode: str
+    created_at: datetime
     observed_at: datetime
     findings: list[ReportFindingOut]
 
@@ -292,6 +293,7 @@ def _report_out(report: Report) -> ReportOut:
         title=report.title,
         source_kind=report.source_kind.value,
         sharing_mode=report.sharing_mode.value,
+        created_at=report.created_at,
         observed_at=report.observed_at,
         findings=[_finding_out(finding) for finding in findings],
     )

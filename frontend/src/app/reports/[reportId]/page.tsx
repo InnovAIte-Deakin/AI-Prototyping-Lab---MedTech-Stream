@@ -41,7 +41,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   const [loadingTrendTranslations, setLoadingTrendTranslations] = useState(false);
   const [trendTranslationError, setTrendTranslationError] = useState<string | null>(null);
   const [trendNoteTranslations, setTrendNoteTranslations] = useState<Record<string, Record<string, string>>>({});
-  const [prefetchedTrendLanguages, setPrefetchedTrendLanguages] = useState<Record<string, boolean>>({});
+  const [prefetchedTrendLanguages, setPrefetchedTrendLanguages] = useState<Record<string, Record<string, boolean>>>({});
   const [biomarkerFilterText, setBiomarkerFilterText] = useState('');
   const [selectedBiomarkerKey, setSelectedBiomarkerKey] = useState('');
 
@@ -127,7 +127,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
 
     const withEnoughPoints = trends.filter((item) => item.sparkline.length > 1);
     const toTranslate = withEnoughPoints.filter(
-      (item) => !trendNoteTranslations[item.biomarker_key]?.[languageCode] && !prefetchedTrendLanguages[item.biomarker_key],
+      (item) => !trendNoteTranslations[item.biomarker_key]?.[languageCode] && !prefetchedTrendLanguages[item.biomarker_key]?.[languageCode],
     );
 
     if (toTranslate.length === 0) return;
@@ -172,7 +172,11 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
       setPrefetchedTrendLanguages((prev) => {
         const next = { ...prev };
         for (const item of translated) {
-          next[item.biomarkerKey] = true;
+          const langMap = { ...(next[item.biomarkerKey] || {}) };
+          for (const lang of Object.keys(item.translations)) {
+            langMap[lang] = true;
+          }
+          next[item.biomarkerKey] = langMap;
         }
         return next;
       });
@@ -211,7 +215,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
         },
         body: JSON.stringify({
           clinician_email: sharingPreferences.clinicianEmail,
-          scope: 'report',
+          scope: sharingPreferences.scope === 'full' ? 'patient' : 'report',
           access_level: sharingPreferences.scope === 'full' ? 'comment' : 'read',
           expires_at: new Date(sharingPreferences.expiresAt).toISOString(),
         }),

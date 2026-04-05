@@ -68,7 +68,6 @@ export default function ReportsPage() {
   const timeline = useMemo(() => buildBiomarkerTimeline(reportHistory), [reportHistory]);
   const reportCards = useMemo(() => [...timeline.reports].sort((a, b) => b.reportDate - a.reportDate), [timeline.reports]);
   const reportCardById = useMemo(() => new Map(reportCards.map((item) => [item.id, item])), [reportCards]);
-  const reportById = useMemo(() => new Map(reportHistory.map((entry) => [entry.id, entry])), [reportHistory]);
 
   const rows = useMemo(() => {
     const items = reportHistory
@@ -136,7 +135,7 @@ export default function ReportsPage() {
         },
         body: JSON.stringify({
           clinician_email: sheet.clinicianEmail,
-          scope: sheet.scope === 'full' ? 'report' : 'patient',
+          scope: sheet.scope === 'full' ? 'patient' : 'report',
           access_level: sheet.scope === 'full' ? 'comment' : 'read',
           expires_at: new Date(sheet.expiresAt).toISOString(),
         }),

@@ -77,6 +77,22 @@ def _distance_to_reference(value: float, low: float | None, high: float | None) 
     return value - high
 
 
+def _pick_best_finding(findings: list[tuple[ReportFinding, Report]]) -> tuple[ReportFinding, Report]:
+    """From multiple findings for the same (report, biomarker), pick the most clinically relevant one.
+
+    Priority: highest flag severity → largest distance from reference range → latest position.
+    """
+
+    def sort_key(item: tuple[ReportFinding, Report]) -> tuple[int, float, int]:
+        finding, _ = item
+        severity = _flag_severity(finding.flag)
+        numeric_value = float(finding.value_numeric) if finding.value_numeric is not None else 0.0
+        distance = _distance_to_reference(numeric_value, finding.reference_low, finding.reference_high)
+        return (severity, distance or 0.0, finding.position)
+
+    return max(findings, key=sort_key)
+
+
 def _classify_direction(previous: TrendPoint, current: TrendPoint) -> str:
     previous_severity = _flag_severity(previous.flag)
     current_severity = _flag_severity(current.flag)
@@ -141,7 +157,16 @@ async def build_trends_for_patient(
 
     trends: list[BiomarkerTrend] = []
     for biomarker_key, entries in grouped.items():
-        if len(entries) < 2:
+        # Collapse to one finding per report, picking the most clinically relevant
+        by_report: dict[str, list[tuple[ReportFinding, Report]]] = {}
+        for finding, report in entries:
+            by_report.setdefault(report.id, []).append((finding, report))
+        deduped = [_pick_best_finding(items) for items in by_report.values()]
+        deduped.sort(
+            key=lambda item: (item[1].observed_at, item[1].created_at, item[0].position)
+        )
+
+        if len(deduped) < 2:
             continue
 
         points = [
@@ -154,12 +179,12 @@ async def build_trends_for_patient(
                 reference_low=finding.reference_low,
                 reference_high=finding.reference_high,
             )
-            for finding, report in entries
+            for finding, report in deduped
         ]
         previous, current = points[-2], points[-1]
         direction = _classify_direction(previous, current)
 
-        latest_finding = entries[-1][0]
+        latest_finding = deduped[-1][0]
         trends.append(
             BiomarkerTrend(
                 biomarker_key=biomarker_key,

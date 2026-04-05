@@ -124,8 +124,8 @@ export async function fetchReportHistory(): Promise<ReportHistoryEntry[]> {
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',
-      createdAt: new Date(report.observed_at).getTime(),
-      savedAt: new Date(report.observed_at).getTime(),
+      createdAt: new Date(report.created_at).getTime(),
+      savedAt: new Date(report.created_at).getTime(),
       reportDate: new Date(report.observed_at).getTime(),
       panelName: resolvePanelName(report.title, report.panel_name) ?? undefined,
       rows: report.findings.map((f: any) => ({
@@ -186,8 +186,8 @@ export async function createReportEntry(input: {
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',
-      createdAt: new Date(report.observed_at).getTime(),
-      savedAt: new Date(report.observed_at).getTime(),
+      createdAt: new Date(report.created_at).getTime(),
+      savedAt: new Date(report.created_at).getTime(),
       reportDate: new Date(report.observed_at).getTime(),
       panelName: resolvePanelName(report.title, report.panel_name) ?? undefined,
       rows: input.findings.map((f) => ({
@@ -227,8 +227,8 @@ export async function fetchReportById(reportId: string): Promise<ReportHistoryEn
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',
-      createdAt: new Date(report.observed_at).getTime(),
-      savedAt: new Date(report.observed_at).getTime(),
+      createdAt: new Date(report.created_at).getTime(),
+      savedAt: new Date(report.created_at).getTime(),
       reportDate: new Date(report.observed_at).getTime(),
       panelName: resolvePanelName(report.title, report.panel_name) ?? undefined,
       rows: report.findings.map((f: any) => ({

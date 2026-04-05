@@ -138,12 +138,12 @@ describe('Report history and sharing preference flow', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /report a/i })).toBeInTheDocument();
+      expect(screen.getAllByText('Report A').length).toBeGreaterThan(0);
     });
 
     expect(screen.queryByText('Report B')).toBeNull();
-    expect(screen.getByRole('button', { name: /open report/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /manage sharing preferences/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^open$/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /^sharing$/i }).length).toBeGreaterThan(0);
   });
 
   it('shows one timeline trend graph on history page with all uploaded report dates on x-axis', async () => {

@@ -9,6 +9,35 @@ import { BiomarkerTimelineChart } from '@/components/BiomarkerTimelineChart';
 import { buildBiomarkerTimeline } from '@/lib/reportTimeline';
 import { resolveReportDate } from '@/lib/reportHistory';
 
+type SortDirection = 'desc' | 'asc';
+
+function formatReportDate(ts: number) {
+  return new Intl.DateTimeFormat(undefined, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(ts));
+}
+
+function resolvePanelShortName(entry: ReportHistoryEntry): string | null {
+  const explicit = entry.panelName?.trim();
+  if (explicit) return explicit;
+
+  const fromTitle = entry.title?.match(/\b(LFT|KFT|FBC|CBC|BMP|CMP|LIPID|TFT)\b/i)?.[1];
+  if (fromTitle) return fromTitle.toUpperCase();
+
+  return null;
+}
+
+function hasActualReportDate(entry: ReportHistoryEntry): boolean {
+  return typeof entry.reportDate === 'number' && Number.isFinite(entry.reportDate);
+}
+
+function uploadDate(entry: ReportHistoryEntry): number {
+  if (typeof entry.savedAt === 'number' && Number.isFinite(entry.savedAt)) return entry.savedAt;
+  return entry.createdAt;
+}
+
 export default function ReportsPage() {
   const { user } = useAuth();
   const [reportHistory, setReportHistory] = useState<ReportHistoryEntry[]>([]);
@@ -16,6 +45,7 @@ export default function ReportsPage() {
   const [sheet, setSheet] = useState<SharingPreferences>({ clinicianEmail: '', scope: 'summary', expiresAt: Date.now() + 86400000, active: false });
   const [statusMessage, setStatusMessage] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
   const fetchReports = useCallback(async () => {
@@ -38,6 +68,39 @@ export default function ReportsPage() {
   const timeline = useMemo(() => buildBiomarkerTimeline(reportHistory), [reportHistory]);
   const reportCards = useMemo(() => [...timeline.reports].sort((a, b) => b.reportDate - a.reportDate), [timeline.reports]);
   const reportCardById = useMemo(() => new Map(reportCards.map((item) => [item.id, item])), [reportCards]);
+  const reportById = useMemo(() => new Map(reportHistory.map((entry) => [entry.id, entry])), [reportHistory]);
+
+  const rows = useMemo(() => {
+    const items = reportHistory
+      .map((entry) => {
+        const card = reportCardById.get(entry.id);
+        if (!card) return null;
+
+        const actualDateAvailable = hasActualReportDate(entry);
+        const dateValue = actualDateAvailable ? (entry.reportDate as number) : uploadDate(entry);
+        return {
+          entry,
+          card,
+          panelName: resolvePanelShortName(entry),
+          actualDateAvailable,
+          displayDate: formatReportDate(dateValue),
+          sortDate: dateValue,
+        };
+      })
+      .filter(Boolean) as Array<{
+      entry: ReportHistoryEntry;
+      card: (typeof reportCards)[number];
+      panelName: string | null;
+      actualDateAvailable: boolean;
+      displayDate: string;
+      sortDate: number;
+    }>;
+
+    items.sort((a, b) => (sortDirection === 'desc' ? b.sortDate - a.sortDate : a.sortDate - b.sortDate));
+    return items;
+  }, [reportHistory, reportCardById, sortDirection]);
+
+  const reportCountLabel = `${rows.length} report${rows.length === 1 ? '' : 's'} on file`;
 
   useEffect(() => {
     void fetchReports();
@@ -141,7 +204,7 @@ export default function ReportsPage() {
     <ProtectedView>
       <section className="stack">
         <h1>My Report History</h1>
-        <p>These are your own reports, saved locally in your browser session.</p>
+        <p className="history-summary">{reportCountLabel}</p>
         {loadError && (
           <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
             {loadError}
@@ -150,55 +213,98 @@ export default function ReportsPage() {
 
         <BiomarkerTimelineChart reports={reportHistory} />
 
-        {reportHistory.length === 0 ? (
-          <div className="card">
-            <p>You don&apos;t have any reports yet. Please <a href="/parse">review a report</a> first.</p>
-          </div>
-        ) : (
-          <div className="card">
-            {reportHistory.map((entry) => {
-              const card = reportCardById.get(entry.id);
-              if (!card) return null;
-              return (
-              <article
-                key={entry.id}
-                className="card"
-                style={{
-                  marginBottom: '0.75rem',
-                  borderLeft: `4px solid ${card.accentColor}`,
-                }}
-              >
-                <h3>{card.displayTitle}</h3>
-                <p><small>Report date: {card.reportDateLabel}</small></p>
-                <p>{card.testCount} test results</p>
-                <p>
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      padding: '0.35rem 0.75rem',
-                      borderRadius: '999px',
-                      background: card.hasInterpretation ? '#E6F6F7' : '#E5E7EB',
-                      color: card.hasInterpretation ? '#077B82' : '#6B7280',
-                      fontSize: '0.875rem',
-                      fontWeight: 600,
-                    }}
+        <div className="report-history-table-card" role="region" aria-label="Report history table">
+          <table className="report-history-table">
+            <thead>
+              <tr>
+                <th>
+                  <button
+                    type="button"
+                    className="report-history-sort"
+                    onClick={() => setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+                    aria-label={`Sort by report date ${sortDirection === 'desc' ? 'oldest first' : 'newest first'}`}
                   >
-                    {card.hasInterpretation ? 'Interpreted' : 'No interpretation yet'}
-                  </span>
-                </p>
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <button className="nav-btn nav-btn-primary" onClick={() => (window.location.href = `/reports/${entry.id}`)}>Open Report</button>
-                  <button className="nav-btn nav-btn-outline" onClick={() => beginSharing(entry)}>Manage Sharing Preferences</button>
-                  {entry.sharingPreferences?.active && (
-                    <button className="nav-btn nav-btn-danger" onClick={() => revokeSharing(entry.id)}>Revoke Share</button>
-                  )}
-                </div>
-              </article>
-              );
-            })}
+                    <span>Report date</span>
+                    <span aria-hidden="true">{sortDirection === 'desc' ? '▾' : '▴'}</span>
+                  </button>
+                </th>
+                <th>Panel / type</th>
+                <th>Test results</th>
+                <th>Interpretation</th>
+                <th className="actions-col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr className="empty-row">
+                  <td colSpan={5}>No reports uploaded yet.</td>
+                </tr>
+              ) : (
+                rows.map(({ entry, card, panelName, actualDateAvailable, displayDate }) => (
+                  <tr key={entry.id}>
+                    <td className="date-col" style={{ boxShadow: `inset 4px 0 0 ${card.accentColor}` }}>
+                      {actualDateAvailable ? (
+                        <span className="report-date-text">{displayDate}</span>
+                      ) : (
+                        <span className="report-date-fallback" title="Actual report date unavailable">
+                          {displayDate} <span className="help-icon" aria-hidden="true">?</span>
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {panelName ? <span>{panelName}</span> : <span className="muted-cell">Unknown panel</span>}
+                    </td>
+                    <td className="results-col">{card.testCount} results</td>
+                    <td>
+                      <span className={`interp-pill ${card.hasInterpretation ? 'yes' : 'no'}`}>
+                        {card.hasInterpretation ? 'Interpreted' : 'Not interpreted'}
+                      </span>
+                    </td>
+                    <td className="actions-col">
+                      <div className="table-actions">
+                        <button className="table-btn table-btn-primary" onClick={() => (window.location.href = `/reports/${entry.id}`)}>Open</button>
+                        <button className="table-btn table-btn-ghost" onClick={() => beginSharing(entry)}>Sharing</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+
+          <div className="report-history-mobile-list" aria-label="Report history mobile list">
+            {rows.length === 0 ? (
+              <div className="mobile-empty">No reports uploaded yet.</div>
+            ) : (
+              rows.map(({ entry, card, panelName, actualDateAvailable, displayDate }) => (
+                <article key={entry.id} className="mobile-report-row" style={{ boxShadow: `inset 0 4px 0 ${card.accentColor}` }}>
+                  <div className="mobile-line-1">
+                    <div className="mobile-date-panel">
+                      {actualDateAvailable ? (
+                        <span className="mobile-date">{displayDate}</span>
+                      ) : (
+                        <span className="mobile-date muted" title="Actual report date unavailable">
+                          {displayDate} <span className="help-icon" aria-hidden="true">?</span>
+                        </span>
+                      )}
+                      <span className={`mobile-panel ${panelName ? '' : 'muted-cell'}`}>{panelName || 'Unknown panel'}</span>
+                    </div>
+                    <span className={`interp-pill ${card.hasInterpretation ? 'yes' : 'no'}`}>
+                      {card.hasInterpretation ? 'Interpreted' : 'Not interpreted'}
+                    </span>
+                  </div>
+                  <div className="mobile-line-2">
+                    <span className="results-col">{card.testCount} results</span>
+                    <div className="table-actions">
+                      <button className="table-btn table-btn-primary" onClick={() => (window.location.href = `/reports/${entry.id}`)}>Open</button>
+                      <button className="table-btn table-btn-ghost" onClick={() => beginSharing(entry)}>Sharing</button>
+                    </div>
+                  </div>
+                </article>
+              ))
+            )}
           </div>
-        )}
+        </div>
 
         {editingSharingId && (
           <div className="card" style={{ marginTop: '1.25rem' }}>

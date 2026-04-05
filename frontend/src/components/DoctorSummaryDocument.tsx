@@ -158,7 +158,7 @@ export function DoctorSummaryDocument({
           </h2>
           <p style={{ margin: 0, fontSize: '0.83rem', color: '#1e3a5f', lineHeight: 1.6 }}>{interpretationSummary}</p>
           <p style={{ margin: '0.5rem 0 0', fontSize: '0.68rem', color: '#6b7280', fontStyle: 'italic' }}>
-            AI-generated summary. Please review against patient's full clinical history.
+            AI-generated summary. Please review against patient&apos;s full clinical history.
           </p>
         </section>
       )}
@@ -177,7 +177,7 @@ export function DoctorSummaryDocument({
       {patientQuestions.length > 0 && (
         <section style={{ marginBottom: '1.25rem', background: '#fdf4ff', border: '1px solid #e9d5ff', borderRadius: '6px', padding: '0.75rem 1rem' }}>
           <h2 style={{ fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#7e22ce', margin: '0 0 0.4rem 0', fontWeight: 700 }}>
-            💬 Patient's Questions for Clinician
+            💬 Patient&apos;s Questions for Clinician
           </h2>
           <ol style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.83rem', color: '#374151', lineHeight: 1.7 }}>
             {patientQuestions.map((q, i) => (

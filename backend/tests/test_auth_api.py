@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import selectinload, sessionmaker
 
 from app.db.base import Base
-from app.db.models import AuthSession, Report, User, UserRole
+from app.db.models import AuditEvent, AuthSession, ConsentShare, Report, User, UserRole
 from app.main import create_app
 from app.services.auth import hash_password, verify_password
 from passlib.context import CryptContext
@@ -149,6 +149,49 @@ def expire_latest_session(session_factory: sessionmaker, *, email: str) -> None:
         assert auth_session is not None
         auth_session.expires_at = datetime.now(UTC) - timedelta(minutes=1)
         session.commit()
+
+
+def expire_share_for_grantee(
+    session_factory: sessionmaker,
+    *,
+    patient_email: str,
+    grantee_email: str,
+    report_id: str,
+) -> None:
+    with session_factory() as session:
+        patient = session.scalar(select(User).where(User.email == patient_email))
+        grantee = session.scalar(select(User).where(User.email == grantee_email))
+        assert patient is not None
+        assert grantee is not None
+        share = session.scalar(
+            select(ConsentShare).where(
+                ConsentShare.subject_user_id == patient.id,
+                ConsentShare.grantee_user_id == grantee.id,
+                ConsentShare.report_id == report_id,
+                ConsentShare.revoked_at.is_(None),
+            )
+        )
+        assert share is not None
+        share.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        session.commit()
+
+
+def audit_actions_for_resource(
+    session_factory: sessionmaker,
+    *,
+    resource_type: str,
+    resource_id: str,
+) -> list[str]:
+    with session_factory() as session:
+        events = session.scalars(
+            select(AuditEvent)
+            .where(
+                AuditEvent.resource_type == resource_type,
+                AuditEvent.resource_id == resource_id,
+            )
+            .order_by(AuditEvent.occurred_at.asc())
+        ).all()
+        return [event.action for event in events]
 
 
 @pytest.mark.parametrize(
@@ -430,6 +473,148 @@ def test_patient_can_share_report_via_api(auth_api: AuthApiHarness):
         headers=auth_headers(clinician_login["access_token"]),
     )
     assert allowed.status_code == 200
+
+
+def test_share_requires_recipient_scope_and_expiry(auth_api: AuthApiHarness):
+    register_user(
+        auth_api,
+        email="patient.share.required@example.com",
+        password="Password123!",
+        role="patient",
+        display_name="Patient Required Fields",
+    )
+    register_user(
+        auth_api,
+        email="clinician.share.required@example.com",
+        password="Password123!",
+        role="clinician",
+        display_name="Clinician Required Fields",
+    )
+    report_id = create_report_for_users(
+        auth_api.session_factory,
+        subject_email="patient.share.required@example.com",
+        created_by_email="patient.share.required@example.com",
+    )
+    patient_login = login_user(auth_api, email="patient.share.required@example.com", password="Password123!")
+
+    missing_scope = auth_api.client.post(
+        f"/api/v1/reports/{report_id}/share",
+        headers=auth_headers(patient_login["access_token"]),
+        json={
+            "clinician_email": "clinician.share.required@example.com",
+            "access_level": "read",
+            "expires_at": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+        },
+    )
+    assert missing_scope.status_code == 422
+
+    missing_expiry = auth_api.client.post(
+        f"/api/v1/reports/{report_id}/share",
+        headers=auth_headers(patient_login["access_token"]),
+        json={
+            "clinician_email": "clinician.share.required@example.com",
+            "scope": "report",
+            "access_level": "read",
+        },
+    )
+    assert missing_expiry.status_code == 422
+
+
+def test_share_view_revoke_and_expiry_create_audit_records(auth_api: AuthApiHarness):
+    patient_email = "patient.audit@example.com"
+    clinician_email = "clinician.audit@example.com"
+    register_user(
+        auth_api,
+        email=patient_email,
+        password="Password123!",
+        role="patient",
+        display_name="Patient Audit",
+    )
+    register_user(
+        auth_api,
+        email=clinician_email,
+        password="Password123!",
+        role="clinician",
+        display_name="Clinician Audit",
+    )
+
+    report_id = create_report_for_users(
+        auth_api.session_factory,
+        subject_email=patient_email,
+        created_by_email=patient_email,
+    )
+
+    patient_login = login_user(auth_api, email=patient_email, password="Password123!")
+    share_response = auth_api.client.post(
+        f"/api/v1/reports/{report_id}/share",
+        headers=auth_headers(patient_login["access_token"]),
+        json={
+            "clinician_email": clinician_email,
+            "scope": "report",
+            "access_level": "read",
+            "expires_at": (datetime.now(UTC) + timedelta(days=7)).isoformat(),
+        },
+    )
+    assert share_response.status_code == 201, share_response.text
+
+    clinician_login = login_user(auth_api, email=clinician_email, password="Password123!")
+    allowed = auth_api.client.get(
+        f"/api/v1/reports/{report_id}",
+        headers=auth_headers(clinician_login["access_token"]),
+    )
+    assert allowed.status_code == 200
+
+    revoke = auth_api.client.post(
+        f"/api/v1/reports/{report_id}/share/revoke",
+        headers=auth_headers(patient_login["access_token"]),
+        json={"clinician_email": clinician_email},
+    )
+    assert revoke.status_code == 204
+
+    denied_after_revoke = auth_api.client.get(
+        f"/api/v1/reports/{report_id}",
+        headers=auth_headers(clinician_login["access_token"]),
+    )
+    assert denied_after_revoke.status_code == 403
+    assert "revoked" in denied_after_revoke.json()["detail"].lower()
+
+    # Re-share, force expiry, then verify expiry denial with audit trail.
+    reshared = auth_api.client.post(
+        f"/api/v1/reports/{report_id}/share",
+        headers=auth_headers(patient_login["access_token"]),
+        json={
+            "clinician_email": clinician_email,
+            "scope": "report",
+            "access_level": "read",
+            "expires_at": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+        },
+    )
+    assert reshared.status_code == 201
+
+    expire_share_for_grantee(
+        auth_api.session_factory,
+        patient_email=patient_email,
+        grantee_email=clinician_email,
+        report_id=report_id,
+    )
+
+    denied_after_expiry = auth_api.client.get(
+        f"/api/v1/reports/{report_id}",
+        headers=auth_headers(clinician_login["access_token"]),
+    )
+    assert denied_after_expiry.status_code == 403
+    assert "expired" in denied_after_expiry.json()["detail"].lower()
+
+    actions = audit_actions_for_resource(
+        auth_api.session_factory,
+        resource_type="report",
+        resource_id=report_id,
+    )
+    assert "share.granted" in actions
+    assert "report.viewed" in actions
+    assert "share.revoked" in actions
+    assert "share.access_denied.revoked" in actions
+    assert "share.access_denied.expired" in actions
 
 
 def test_logout_revokes_the_session_and_expired_sessions_are_rejected(auth_api: AuthApiHarness):

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ProtectedView } from '@/components/ProtectedView';
 import { useAuth } from '@/store/authStore';
 import { fetchReportHistory } from '@/lib/reportHistory';
@@ -19,7 +19,7 @@ export default function ReportsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
-  async function fetchReports() {
+  const fetchReports = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -33,15 +33,11 @@ export default function ReportsPage() {
       setLoadError(err?.message || 'Failed to load report history.');
       setStatusMessage('');
     }
-  }
+  }, [user]);
 
   useEffect(() => {
     void fetchReports();
-  }, [user]);
-
-  function refresh() {
-    void fetchReports();
-  }
+  }, [fetchReports]);
 
   function beginSharing(entry: ReportHistoryEntry) {
     setEditingSharingId(entry.id);

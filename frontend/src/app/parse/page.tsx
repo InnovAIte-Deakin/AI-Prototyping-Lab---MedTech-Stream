@@ -621,6 +621,12 @@ function ThinkingCard() {
 function SummaryCard({ summary, translations }: { summary: string; translations?: Record<string, string> }) {
   const [copied, setCopied] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<string>('en');
+  const [translationError, setTranslationError] = useState<string | null>(null);
+  const [loadingTranslations, setLoadingTranslations] = useState(false);
+  const [prefetchedAll, setPrefetchedAll] = useState(false);
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+  const [dynamicTranslations, setDynamicTranslations] = useState<Record<string, string>>({});
 
   const normalizedTranslations = useMemo(() => {
     const next: Record<string, string> = { en: summary };
@@ -629,19 +635,54 @@ function SummaryCard({ summary, translations }: { summary: string; translations?
         next[code] = text.trim();
       }
     });
+    Object.entries(dynamicTranslations).forEach(([code, text]) => {
+      if (typeof text === 'string' && text.trim()) {
+        next[code] = text.trim();
+      }
+    });
     return next;
-  }, [summary, translations]);
-
-  const availableOptions = useMemo(() => {
-    return LANGUAGE_OPTIONS.filter(opt => Boolean(normalizedTranslations[opt.value]));
-  }, [normalizedTranslations]);
+  }, [summary, translations, dynamicTranslations]);
 
   useEffect(() => {
-    if (!availableOptions.find(opt => opt.value === selectedLanguage)) {
-      setSelectedLanguage('en');
-    }
+    setDynamicTranslations({});
+    setPrefetchedAll(false);
+    setSelectedLanguage('en');
+    setTranslationError(null);
     setCopied(false);
-  }, [availableOptions, selectedLanguage, summary]);
+  }, [summary]);
+
+  const fetchTranslationsIfNeeded = async (languageCode: string) => {
+    if (languageCode === 'en' || prefetchedAll) return;
+    if (normalizedTranslations[languageCode]) return;
+
+    setLoadingTranslations(true);
+    setTranslationError(null);
+    try {
+      const response = await fetch(`${backend}/api/v1/translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: summary,
+          target_language: languageCode,
+          prefetch_all: true,
+        }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Translation failed: ${response.status} ${errorText}`);
+      }
+
+      const payload = await response.json();
+      const received = (payload?.translations ?? {}) as Record<string, string>;
+      setDynamicTranslations((prev) => ({ ...prev, ...received }));
+      setPrefetchedAll(true);
+    } catch (err: any) {
+      setTranslationError(err?.message || 'Translation failed.');
+      setSelectedLanguage('en');
+    } finally {
+      setLoadingTranslations(false);
+    }
+  };
 
   const tryParse = (value: string): string | null => {
     const trimmed = (value || '').trim();
@@ -689,14 +730,20 @@ function SummaryCard({ summary, translations }: { summary: string; translations?
           aria-label="Translate summary"
           className="summary-translate-select"
           value={selectedLanguage}
-          onChange={(e) => setSelectedLanguage(e.target.value)}
+          onChange={(e) => {
+            const languageCode = e.target.value;
+            setSelectedLanguage(languageCode);
+            void fetchTranslationsIfNeeded(languageCode);
+          }}
         >
-          {availableOptions.map(opt => (
+          {LANGUAGE_OPTIONS.map(opt => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
         <button className="btn btn-outline btn-sm" onClick={onCopy}>{copied ? 'Copied' : 'Copy'}</button>
       </div>
+      {loadingTranslations && <p>Loading translation…</p>}
+      {translationError && <p>{translationError}</p>}
       {isCodeBlock ? (
         <pre className="summary-code">{displayText}</pre>
       ) : (

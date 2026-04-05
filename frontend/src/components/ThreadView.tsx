@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/store/authStore';
 
 export interface ThreadMessage {
@@ -59,7 +59,7 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded }: ThreadVie
     fetchThreads();
     const intv = setInterval(fetchThreads, 10000);
     return () => clearInterval(intv);
-  }, [reportId, accessToken, backend]);
+  }, [fetchThreads]);
 
   const handleSendReply = async (threadId: string) => {
     if (!replyText.trim()) return;

@@ -21,9 +21,10 @@ export interface ConversationThread {
 interface ThreadViewProps {
   reportId: string;
   accessToken: string;
+  onThreadsLoaded?: (threads: ConversationThread[]) => void;
 }
 
-export function ThreadView({ reportId, accessToken }: ThreadViewProps) {
+export function ThreadView({ reportId, accessToken, onThreadsLoaded }: ThreadViewProps) {
   const { user } = useAuth();
   const [threads, setThreads] = useState<ConversationThread[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,8 +44,9 @@ export function ThreadView({ reportId, accessToken }: ThreadViewProps) {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (response.ok) {
-        const data = await response.json();
+        const data: ConversationThread[] = await response.json();
         setThreads(data || []);
+        onThreadsLoaded?.(data || []);
       }
     } catch (err) {
       console.error('Failed to fetch threads', err);

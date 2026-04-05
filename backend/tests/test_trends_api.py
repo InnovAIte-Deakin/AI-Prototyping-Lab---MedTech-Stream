@@ -106,6 +106,7 @@ def create_report_with_findings(
     hemoglobin_value: float,
     hemoglobin_flag: str,
     include_singleton_biomarker: bool = False,
+    include_report_date_numeric_finding: bool = False,
 ) -> str:
     with session_factory() as session:
         factory = PersistenceFactory(session)
@@ -141,6 +142,17 @@ def create_report_with_findings(
                 flag="normal",
                 reference_low=1.0,
                 reference_high=5.0,
+            )
+
+        if include_report_date_numeric_finding:
+            factory.create_finding(
+                report=report,
+                patient=subject,
+                biomarker_key="report-date",
+                display_name="Report Date",
+                value_numeric=float(observed_at.strftime("%Y%m%d")),
+                unit=None,
+                flag="normal",
             )
 
         session.commit()
@@ -220,6 +232,46 @@ def test_single_report_returns_empty_trends(trends_api: TrendsApiHarness):
     )
     assert response.status_code == 200, response.text
     assert response.json()["trends"] == []
+
+
+def test_trends_exclude_date_like_numeric_findings(trends_api: TrendsApiHarness):
+    register_user(
+        trends_api,
+        email="patient.numericfilter@example.com",
+        password="Password123!",
+        role="patient",
+        display_name="Patient Numeric Filter",
+    )
+
+    create_report_with_findings(
+        trends_api.session_factory,
+        subject_email="patient.numericfilter@example.com",
+        created_by_email="patient.numericfilter@example.com",
+        observed_at=datetime.now(UTC) - timedelta(days=10),
+        hemoglobin_value=15.8,
+        hemoglobin_flag="high",
+        include_report_date_numeric_finding=True,
+    )
+    newer_report_id = create_report_with_findings(
+        trends_api.session_factory,
+        subject_email="patient.numericfilter@example.com",
+        created_by_email="patient.numericfilter@example.com",
+        observed_at=datetime.now(UTC) - timedelta(days=1),
+        hemoglobin_value=14.3,
+        hemoglobin_flag="normal",
+        include_report_date_numeric_finding=True,
+    )
+
+    login = login_user(trends_api, email="patient.numericfilter@example.com", password="Password123!")
+    response = trends_api.client.get(
+        f"/api/v1/reports/{newer_report_id}/trends",
+        headers=auth_headers(login["access_token"]),
+    )
+    assert response.status_code == 200, response.text
+
+    trend_names = {item["display_name"] for item in response.json()["trends"]}
+    assert "Hemoglobin" in trend_names
+    assert "Report Date" not in trend_names
 
 
 def test_clinician_trends_require_full_report_access(trends_api: TrendsApiHarness):

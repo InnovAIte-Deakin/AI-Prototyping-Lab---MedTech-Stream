@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel
 
 from app.services.ocr import extract_text_from_image_bytes, extract_text_from_pdf_bytes
-from app.services.parser import parse_text
+from app.services.parser import extract_report_date, parse_text
 
 router = APIRouter()
 
@@ -117,7 +117,9 @@ async def parse_endpoint(
             raise HTTPException(status_code=400, detail="Body must include 'text'.")
         text_content = str(payload.get("text") or "")
 
-    rows, unparsed = parse_text(text_content or "")
+    source_text = text_content or ""
+    rows, unparsed = parse_text(source_text)
+    observed_at = extract_report_date(source_text)
     # Convert dataclasses to dicts
     payload_rows = []
     for i, r in enumerate(rows, start=1):
@@ -144,6 +146,8 @@ async def parse_endpoint(
         "rows": payload_rows,
         "unparsed_lines": unparsed,
         "unparsed": [{"page": None, "text": s} for s in unparsed],
-        "meta": {},
-        "extracted_text": text_content or "",
+        "meta": {
+            "report_date": observed_at.isoformat() if observed_at else None,
+        },
+        "extracted_text": source_text,
     }

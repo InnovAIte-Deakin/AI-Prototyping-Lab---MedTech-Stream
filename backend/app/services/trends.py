@@ -9,6 +9,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import FindingFlag, Report, ReportFinding
 
 
+NON_QUANTITATIVE_MARKER_NAME = {
+    "date",
+    "report date",
+    "collection date",
+    "collected date",
+    "observation date",
+    "sample date",
+    "specimen date",
+    "reported date",
+    "dob",
+    "birth date",
+}
+
+
 @dataclass(frozen=True)
 class TrendPoint:
     report_id: str
@@ -32,6 +46,17 @@ class BiomarkerTrend:
 
 def _normalize_biomarker_key(value: str | None) -> str:
     return (value or "").strip().lower()
+
+
+def _is_quantitative_finding(finding: ReportFinding) -> bool:
+    if finding.value_numeric is None:
+        return False
+
+    name = _normalize_biomarker_key(finding.display_name or finding.biomarker_key)
+    if not name:
+        return False
+
+    return name not in NON_QUANTITATIVE_MARKER_NAME
 
 
 def _flag_severity(flag: FindingFlag) -> int:
@@ -107,7 +132,7 @@ async def build_trends_for_patient(
 
     grouped: dict[str, list[tuple[ReportFinding, Report]]] = {}
     for finding, report in rows.all():
-        if finding.value_numeric is None:
+        if not _is_quantitative_finding(finding):
             continue
         biomarker_key = _normalize_biomarker_key(finding.biomarker_key or finding.display_name)
         if not biomarker_key:

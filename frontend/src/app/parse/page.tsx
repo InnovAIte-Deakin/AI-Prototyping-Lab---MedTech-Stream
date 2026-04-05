@@ -141,16 +141,18 @@ export default function ParsePage() {
         e.userMessage = true;
         throw e;
       }
-      const data = (await res.json()) as { rows: Row[]; unparsed_lines: string[]; extracted_text?: string };
+      const data = (await res.json()) as { rows: Row[]; unparsed_lines: string[]; extracted_text?: string; meta?: { report_date?: string | null } };
       setRows(data.rows);
       setUnparsed(data.unparsed_lines);
       setExtractedText(data.extracted_text || '');
+      const extractedReportDate = data.meta?.report_date ? new Date(data.meta.report_date).getTime() : undefined;
 
       if (user) {
         try {
           const reportEntry = await createReportEntry({
             title: `Report ${new Date().toLocaleString()}`,
             source_kind: 'text',
+            observed_at: data.meta?.report_date ?? undefined,
             findings: data.rows.map((row) => ({
               test_name: row.test_name,
               value_numeric: typeof row.value === 'number' ? row.value : undefined,
@@ -168,6 +170,7 @@ export default function ParsePage() {
             addReportToHistory({
               patientEmail: user.email,
               title: `Report ${new Date().toLocaleString()}`,
+              reportDate: extractedReportDate,
               rows: data.rows,
               unparsed: data.unparsed_lines,
               extractedText: data.extracted_text || '',
@@ -179,6 +182,7 @@ export default function ParsePage() {
           addReportToHistory({
             patientEmail: user.email,
             title: `Report ${new Date().toLocaleString()}`,
+            reportDate: extractedReportDate,
             rows: data.rows,
             unparsed: data.unparsed_lines,
             extractedText: data.extracted_text || '',
@@ -188,6 +192,7 @@ export default function ParsePage() {
         addReportToHistory({
           patientEmail: 'anonymous',
           title: `Report ${new Date().toLocaleString()}`,
+          reportDate: extractedReportDate,
           rows: data.rows,
           unparsed: data.unparsed_lines,
           extractedText: data.extracted_text || '',

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 # Precompiled regexes for performance
 # Number pattern supporting either plain digits, or thousands groups, with optional decimal using '.' or ','.
@@ -60,6 +61,77 @@ ONLY_COMPARATOR = re.compile(rf"^\(?\s*(?:≤|>=|≥|<=|<|>)\s*{NUM}\s*\)?\s*$")
 BARE_PAREN = re.compile(r"^\(\s*\)?$")
 JUNK_NAME = re.compile(r"^[\s()\[\]{}·•≤≥<>]+$")
 HYPHEN_LINE = re.compile(r"^[-_·•.,\s]+$")
+
+DATE_CANDIDATE = re.compile(
+    r"(?P<date>\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4})"
+)
+
+REPORT_DATE_PRIMARY_PATTERNS = [
+    re.compile(r"\b(?:report(?:ed)?\s*date|result\s*date|test\s*date|observation\s*date)\b[^\n:]*[:\-]?\s*(?P<date>.+)$", re.IGNORECASE),
+]
+
+REPORT_DATE_SECONDARY_PATTERNS = [
+    re.compile(r"\b(?:collection\s*date|collected(?:\s*on)?|specimen\s*collected|sample\s*collected)\b[^\n:]*[:\-]?\s*(?P<date>.+)$", re.IGNORECASE),
+]
+
+
+def _parse_date_candidate(value: str) -> datetime | None:
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    cleaned = re.sub(r"\b(\d{1,2})(st|nd|rd|th)\b", r"\1", cleaned, flags=re.IGNORECASE)
+
+    formats = [
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%d/%m/%Y",
+        "%d/%m/%y",
+        "%m/%d/%Y",
+        "%m/%d/%y",
+        "%d-%m-%Y",
+        "%d-%m-%y",
+        "%m-%d-%Y",
+        "%m-%d-%y",
+        "%d %b %Y",
+        "%d %B %Y",
+        "%b %d %Y",
+        "%B %d %Y",
+        "%b %d, %Y",
+        "%B %d, %Y",
+    ]
+
+    for fmt in formats:
+        try:
+            parsed = datetime.strptime(cleaned, fmt)
+            return datetime(parsed.year, parsed.month, parsed.day, tzinfo=UTC)
+        except ValueError:
+            continue
+    return None
+
+
+def extract_report_date(text: str) -> datetime | None:
+    lines = [line.strip() for line in text.splitlines()]
+
+    for patterns in (REPORT_DATE_PRIMARY_PATTERNS, REPORT_DATE_SECONDARY_PATTERNS):
+        for line in lines:
+            if not line:
+                continue
+            if re.search(r"\bdob\b", line, re.IGNORECASE):
+                continue
+
+            for pattern in patterns:
+                match = pattern.search(line)
+                if not match:
+                    continue
+                segment = match.group("date") or ""
+                candidate_match = DATE_CANDIDATE.search(segment)
+                if not candidate_match:
+                    continue
+                parsed = _parse_date_candidate(candidate_match.group("date"))
+                if parsed is not None:
+                    return parsed
+
+    return None
 
 
 def _normalize_number_str(s: str) -> str:

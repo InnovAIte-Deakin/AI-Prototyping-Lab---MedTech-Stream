@@ -1,14 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ProtectedView } from '@/components/ProtectedView';
 import { useAuth } from '@/store/authStore';
 import { fetchReportHistory } from '@/lib/reportHistory';
 import type { ReportHistoryEntry, SharingPreferences } from '@/lib/reportHistory';
-
-function formatDate(ts: number) {
-  return new Date(ts).toLocaleString();
-}
+import { BiomarkerTimelineChart } from '@/components/BiomarkerTimelineChart';
+import { buildBiomarkerTimeline } from '@/lib/reportTimeline';
+import { resolveReportDate } from '@/lib/reportHistory';
 
 export default function ReportsPage() {
   const { user } = useAuth();
@@ -24,7 +23,8 @@ export default function ReportsPage() {
 
     try {
       const data = await fetchReportHistory();
-      setReportHistory(data);
+      setReportHistory([...data].sort((a, b) => resolveReportDate(b) - resolveReportDate(a)));
+
       setLoadError(null);
       setStatusMessage('');
     } catch (err: any) {
@@ -34,6 +34,10 @@ export default function ReportsPage() {
       setStatusMessage('');
     }
   }, [user]);
+
+  const timeline = useMemo(() => buildBiomarkerTimeline(reportHistory), [reportHistory]);
+  const reportCards = useMemo(() => [...timeline.reports].sort((a, b) => b.reportDate - a.reportDate), [timeline.reports]);
+  const reportCardById = useMemo(() => new Map(reportCards.map((item) => [item.id, item])), [reportCards]);
 
   useEffect(() => {
     void fetchReports();
@@ -144,18 +148,45 @@ export default function ReportsPage() {
           </div>
         )}
 
+        <BiomarkerTimelineChart reports={reportHistory} />
+
         {reportHistory.length === 0 ? (
           <div className="card">
             <p>You don&apos;t have any reports yet. Please <a href="/parse">review a report</a> first.</p>
           </div>
         ) : (
           <div className="card">
-            {reportHistory.map((entry) => (
-              <article key={entry.id} className="card" style={{ marginBottom: '0.75rem' }}>
-                <h3>{entry.title || 'Untitled Report'}</h3>
-                <p><small>Saved: {formatDate(entry.createdAt)}</small></p>
-                <p>Rows: {entry.rows?.length ?? 0}</p>
-                <p>Interpretation: {entry.interpretation ? 'Yes' : 'No'}</p>
+            {reportHistory.map((entry) => {
+              const card = reportCardById.get(entry.id);
+              if (!card) return null;
+              return (
+              <article
+                key={entry.id}
+                className="card"
+                style={{
+                  marginBottom: '0.75rem',
+                  borderLeft: `4px solid ${card.accentColor}`,
+                }}
+              >
+                <h3>{card.displayTitle}</h3>
+                <p><small>Report date: {card.reportDateLabel}</small></p>
+                <p>{card.testCount} test results</p>
+                <p>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '0.35rem 0.75rem',
+                      borderRadius: '999px',
+                      background: card.hasInterpretation ? '#E6F6F7' : '#E5E7EB',
+                      color: card.hasInterpretation ? '#077B82' : '#6B7280',
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {card.hasInterpretation ? 'Interpreted' : 'No interpretation yet'}
+                  </span>
+                </p>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                   <button className="nav-btn nav-btn-primary" onClick={() => (window.location.href = `/reports/${entry.id}`)}>Open Report</button>
                   <button className="nav-btn nav-btn-outline" onClick={() => beginSharing(entry)}>Manage Sharing Preferences</button>
@@ -164,7 +195,8 @@ export default function ReportsPage() {
                   )}
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
 

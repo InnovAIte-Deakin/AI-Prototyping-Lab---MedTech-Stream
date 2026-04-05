@@ -46,6 +46,7 @@ class ReportCreateFinding(BaseModel):
 class ReportCreateRequest(BaseModel):
     title: str | None = None
     source_kind: ReportSourceKind = ReportSourceKind.MANUAL
+    observed_at: datetime | None = None
     findings: list[ReportCreateFinding] = []
 
 
@@ -133,7 +134,7 @@ async def create_report(
         title=payload.title,
         source_kind=payload.source_kind,
         sharing_mode=ReportSharingMode.PRIVATE,
-        observed_at=datetime.now(UTC),
+        observed_at=payload.observed_at or datetime.now(UTC),
     )
     session.add(report)
     await session.flush()

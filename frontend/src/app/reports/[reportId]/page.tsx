@@ -5,7 +5,8 @@ import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { fetchReportById, updateReportInHistory } from '@/lib/reportHistory';
 import type { ReportHistoryEntry, SharingPreferences } from '@/lib/reportHistory';
-
+import { PatientQuestions } from '@/components/PatientQuestions';
+import { ThreadView } from '@/components/ThreadView';
 function formatDate(ts: number) {
   return new Date(ts).toLocaleString();
 }
@@ -202,6 +203,17 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
             <p>{interpretation.summary}</p>
           </div>
         )}
+
+        <PatientQuestions 
+          reportId={report.id} 
+          accessToken={localStorage.getItem('reportx_session') ? JSON.parse(localStorage.getItem('reportx_session')!)?.accessToken || '' : ''} 
+          onThreadCreated={() => {}} 
+        />
+
+        <ThreadView 
+          reportId={report.id} 
+          accessToken={localStorage.getItem('reportx_session') ? JSON.parse(localStorage.getItem('reportx_session')!)?.accessToken || '' : ''} 
+        />
 
         <div className="card">
           <h2>Sharing Preferences</h2>

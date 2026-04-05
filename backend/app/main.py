@@ -30,7 +30,7 @@ async def _run_alembic_migrations(project_root: str, timeout: int) -> None:
 
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         process.kill()
         await process.wait()
         raise RuntimeError(f'Alembic migration timed out after {timeout} seconds') from exc

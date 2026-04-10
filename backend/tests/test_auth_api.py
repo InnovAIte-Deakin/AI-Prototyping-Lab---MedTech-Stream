@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -704,7 +705,7 @@ def test_app_lifespan_runs_alembic_with_async_subprocess(auth_api: AuthApiHarnes
 
     async def fake_create_subprocess_exec(*args, **kwargs):
         called["count"] += 1
-        assert args[:3] == ("alembic", "upgrade", "head")
+        assert args[:5] == (sys.executable, "-m", "alembic", "upgrade", "head")
         return FakeProcess()
 
     monkeypatch.setenv("ALEMBIC_STARTUP_TIMEOUT_SECONDS", "5")

@@ -19,7 +19,9 @@ from app.dependencies.reports import get_accessible_report
 from app.services.reports import (
     ReportFindingCreateInput,
     ReportServiceError,
+    ClinicianSharedReportItem,
     create_report_for_user,
+    get_clinician_shared_reports,
     list_reports_for_user,
     revoke_report_share,
     share_report_with_user,
@@ -217,6 +219,63 @@ def _report_out(report: Report) -> ReportOut:
         observed_at=report.observed_at,
         findings=[_finding_out(finding) for finding in findings],
     )
+
+
+class UserOut(BaseModel):
+    """User profile output"""
+    id: str
+    email: str
+    display_name: str
+    preferred_language: str | None = None
+
+
+class ClinicianSharedReportOut(BaseModel):
+    """Clinician's view of a shared report"""
+    share_id: str
+    report_id: str
+    report: ReportOut
+    patient: UserOut
+    scope: str
+    access_level: str
+    shared_at: datetime
+    expires_at: datetime
+
+
+@router.get("/shared-reports", response_model=list[ClinicianSharedReportOut])
+async def list_clinician_shared_reports(
+    auth: AuthContext = Depends(get_current_auth_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> list[ClinicianSharedReportOut]:
+    """List all reports actively shared with the authenticated clinician."""
+    if "clinician" not in auth.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only clinicians may view shared reports",
+        )
+
+    items = await get_clinician_shared_reports(
+        session,
+        clinician_user_id=auth.user.id,
+    )
+    
+    return [
+        ClinicianSharedReportOut(
+            share_id=item.share_id,
+            report_id=item.report_id,
+            report=_report_out(item.report),
+            patient=UserOut(
+                id=item.patient.id,
+                email=item.patient.email,
+                display_name=item.patient.display_name,
+                preferred_language=item.patient.preferred_language,
+            ),
+            scope=item.scope,
+            access_level=item.access_level,
+            shared_at=item.shared_at,
+            expires_at=item.expires_at,
+        )
+        for item in items
+    ]
 
 
 @router.get("/{report_id}", response_model=ReportDetailResponse)

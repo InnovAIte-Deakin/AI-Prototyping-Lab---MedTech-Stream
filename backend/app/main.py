@@ -71,7 +71,11 @@ async def app_lifespan(app: FastAPI):
             if count > 0:
                 logging.info(f"Cleaned up {count} expired shares")
     
-    # Schedule cleanup every hour (configurable via env)
+    # CLEANUP_INTERVAL_MINUTES controls how often expired shared reports are deleted.
+    # Default: 5 minutes.
+    # Valid values: positive whole-number minutes; lower values increase scheduler and
+    # database activity, while higher values leave expired shares in place longer.
+    # For production, choose an interval that balances prompt cleanup with operational load.
     cleanup_interval = int(os.getenv('CLEANUP_INTERVAL_MINUTES', '5'))
     scheduler.add_job(
         scheduled_cleanup,

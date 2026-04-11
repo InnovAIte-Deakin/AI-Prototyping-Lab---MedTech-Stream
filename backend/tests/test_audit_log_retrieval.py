@@ -72,7 +72,10 @@ def _get_audit_log(
 
 def _parse_occurred_at(value: str) -> datetime:
     # FastAPI may emit UTC timestamps with a trailing Z.
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 def test_patient_can_retrieve_audit_log_for_own_report(consent_api: ConsentApiHarness) -> None:

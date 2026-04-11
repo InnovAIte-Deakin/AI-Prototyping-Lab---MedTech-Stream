@@ -33,6 +33,9 @@ __pycache__/
 *.egg-info/
 **/*.egg-info/
 
+# Git worktrees
+.worktrees/
+
 # Others
 coverage/
 .idea/

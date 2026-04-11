@@ -11,8 +11,9 @@ from passlib.context import CryptContext
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import selectinload, sessionmaker
 
+from app.db.base import Base
+from app.db.models import AuditEvent, AuthSession, ConsentShare, Report, User, UserRole
 import app.main as main_mod
-from app.db.models import AuthSession, Report, User, UserRole
 from app.main import create_app
 from app.services.auth import hash_password, verify_password
 from tests.factories import PersistenceFactory
@@ -149,6 +150,49 @@ def expire_latest_session(session_factory: sessionmaker, *, email: str) -> None:
         assert auth_session is not None
         auth_session.expires_at = datetime.now(UTC) - timedelta(minutes=1)
         session.commit()
+
+
+def expire_share_for_grantee(
+    session_factory: sessionmaker,
+    *,
+    patient_email: str,
+    grantee_email: str,
+    report_id: str,
+) -> None:
+    with session_factory() as session:
+        patient = session.scalar(select(User).where(User.email == patient_email))
+        grantee = session.scalar(select(User).where(User.email == grantee_email))
+        assert patient is not None
+        assert grantee is not None
+        share = session.scalar(
+            select(ConsentShare).where(
+                ConsentShare.subject_user_id == patient.id,
+                ConsentShare.grantee_user_id == grantee.id,
+                ConsentShare.report_id == report_id,
+                ConsentShare.revoked_at.is_(None),
+            )
+        )
+        assert share is not None
+        share.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        session.commit()
+
+
+def audit_actions_for_resource(
+    session_factory: sessionmaker,
+    *,
+    resource_type: str,
+    resource_id: str,
+) -> list[str]:
+    with session_factory() as session:
+        events = session.scalars(
+            select(AuditEvent)
+            .where(
+                AuditEvent.resource_type == resource_type,
+                AuditEvent.resource_id == resource_id,
+            )
+            .order_by(AuditEvent.occurred_at.asc())
+        ).all()
+        return [event.action for event in events]
 
 
 @pytest.mark.parametrize(

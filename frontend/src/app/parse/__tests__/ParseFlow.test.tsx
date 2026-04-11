@@ -40,9 +40,22 @@ describe('Parse + Interpret flow', () => {
               flags: [],
               next_steps: ['See your doctor.'],
               disclaimer: 'Educational only.',
-              translations: {
-                es: 'Resumen en español.',
-              },
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      if (url.includes('/api/v1/translate')) {
+        return new Response(
+          JSON.stringify({
+            language: 'es',
+            translation: 'Resumen en español.',
+            translations: {
+              es: 'Resumen en español.',
+              ar: 'ملخص باللغة العربية.',
+              zh: '中文总结。',
+              hi: 'हिंदी सारांश।',
+              fr: 'Résumé en français.',
             },
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -102,7 +115,9 @@ describe('Parse + Interpret flow', () => {
     // Change the translate dropdown to Español and wait for translation
     const select = screen.getByLabelText(/translate summary/i);
     fireEvent.change(select, { target: { value: 'es' } });
-    expect(screen.getByText(/Resumen en español\./i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/Resumen en español\./i)).toBeInTheDocument();
+    });
   });
 
   it('invokes updateReportInHistory after explain', async () => {

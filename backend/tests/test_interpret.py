@@ -79,13 +79,9 @@ def test_interpret_rows_prefers_llm_summary(monkeypatch):
     async def good_call(prompt: str, timeout_s: float) -> tuple[str, dict[str, Any]]:  # type: ignore[override]
         return "Stub summary from LLM", {"usage": {"total_tokens": 42}}
 
-    async def fake_translate(text: str, *, target_language: str, language_label: str):  # type: ignore[override]
-        return f"Translation {target_language}", {"ok": True}
-
     monkeypatch.setenv("OPENAI_API_KEY", "dummy")
     monkeypatch.setenv("OPENAI_USE_RESPONSES", "1")
     monkeypatch.setattr(llm_module, "_call_openai_responses", good_call)
-    monkeypatch.setattr(llm_module, "translate_summary", fake_translate)
 
     result, meta = asyncio.run(llm_module.interpret_rows(rows))
 
@@ -95,4 +91,5 @@ def test_interpret_rows_prefers_llm_summary(monkeypatch):
     assert result.next_steps == []
     assert result.flags == base.flags
     assert result.disclaimer == base.disclaimer
-    assert result.translations.get("es") == "Translation es"
+    assert result.translations == {}
+    assert meta.get("translation_meta", {}).get("skipped") == "lazy_on_demand"

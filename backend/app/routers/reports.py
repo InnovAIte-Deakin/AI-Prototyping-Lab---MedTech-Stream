@@ -16,6 +16,7 @@ from app.db.models import (
 from app.db.session import get_db_session
 from app.dependencies.auth import AuthContext, get_current_auth_context
 from app.dependencies.reports import get_accessible_report
+from app.services.trends import BiomarkerTrend, build_trends_for_patient
 from app.services.reports import (
     ReportFindingCreateInput,
     ReportServiceError,
@@ -48,6 +49,7 @@ class ReportCreateFinding(BaseModel):
 class ReportCreateRequest(BaseModel):
     title: str | None = None
     source_kind: ReportSourceKind = ReportSourceKind.MANUAL
+    observed_at: datetime | None = None
     findings: list[ReportCreateFinding] = Field(default_factory=list)
 
 
@@ -77,6 +79,7 @@ class ReportOut(BaseModel):
     title: str | None
     source_kind: str
     sharing_mode: str
+    created_at: datetime
     observed_at: datetime
     findings: list[ReportFindingOut]
 
@@ -85,6 +88,27 @@ class ReportDetailResponse(BaseModel):
     report: ReportOut
 
 
+class TrendPointOut(BaseModel):
+    report_id: str
+    observed_at: datetime
+    value: float
+    unit: str | None
+    flag: str
+
+
+class BiomarkerTrendOut(BaseModel):
+    biomarker_key: str
+    display_name: str
+    unit: str | None
+    direction: str
+    trend_note: str
+    sparkline: list[TrendPointOut]
+
+
+class ReportTrendsResponse(BaseModel):
+    report_id: str
+    subject_user_id: str
+    trends: list[BiomarkerTrendOut]
 def _raise_report_http_error(exc: ReportServiceError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
@@ -110,6 +134,7 @@ async def create_report(
         created_by_user_id=auth.user.id,
         title=payload.title,
         source_kind=payload.source_kind,
+        observed_at=payload.observed_at or datetime.now(UTC),
         findings=[
             ReportFindingCreateInput(
                 test_name=finding.test_name,
@@ -214,6 +239,7 @@ def _report_out(report: Report) -> ReportOut:
         title=report.title,
         source_kind=report.source_kind.value,
         sharing_mode=report.sharing_mode.value,
+        created_at=report.created_at,
         observed_at=report.observed_at,
         findings=[_finding_out(finding) for finding in findings],
     )
@@ -222,3 +248,71 @@ def _report_out(report: Report) -> ReportOut:
 @router.get("/{report_id}", response_model=ReportDetailResponse)
 async def get_report_endpoint(report: Report = Depends(get_accessible_report)) -> ReportDetailResponse:
     return ReportDetailResponse(report=_report_out(report))
+
+
+async def _ensure_full_report_trend_access(
+    *,
+    report: Report,
+    auth: AuthContext,
+    session: AsyncSession,
+) -> None:
+    if report.subject_user_id == auth.user.id:
+        return
+
+    now = datetime.now(UTC)
+    full_access_share = await session.scalar(
+        select(ConsentShare.id)
+        .where(
+            ConsentShare.subject_user_id == report.subject_user_id,
+            ConsentShare.grantee_user_id == auth.user.id,
+            ConsentShare.scope == ConsentScope.PATIENT,
+            ConsentShare.report_id.is_(None),
+            ConsentShare.revoked_at.is_(None),
+            ConsentShare.expires_at > now,
+        )
+        .limit(1)
+    )
+    if full_access_share is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Trend data requires full-report access for this patient",
+        )
+
+
+def _trend_out(trend: BiomarkerTrend) -> BiomarkerTrendOut:
+    return BiomarkerTrendOut(
+        biomarker_key=trend.biomarker_key,
+        display_name=trend.display_name,
+        unit=trend.unit,
+        direction=trend.direction,
+        trend_note=trend.trend_note,
+        sparkline=[
+            TrendPointOut(
+                report_id=point.report_id,
+                observed_at=point.observed_at,
+                value=point.value,
+                unit=point.unit,
+                flag=point.flag.value,
+            )
+            for point in trend.points
+        ],
+    )
+
+
+@router.get("/{report_id}/trends", response_model=ReportTrendsResponse)
+async def get_report_trends_endpoint(
+    report: Report = Depends(get_accessible_report),
+    auth: AuthContext = Depends(get_current_auth_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> ReportTrendsResponse:
+    await _ensure_full_report_trend_access(report=report, auth=auth, session=session)
+
+    trends = await build_trends_for_patient(
+        session,
+        subject_user_id=report.subject_user_id,
+    )
+    return ReportTrendsResponse(
+        report_id=report.id,
+        subject_user_id=report.subject_user_id,
+        trends=[_trend_out(item) for item in trends],
+    )

@@ -198,8 +198,10 @@ describe('Parse + Interpret flow', () => {
 
     await waitFor(() => {
       expect(screen.queryByText(/We ran into a hiccup/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/Failed to fetch/i)).not.toBeInTheDocument();
     });
+
+    expect(screen.getByText(/Saved locally only\./i)).toBeInTheDocument();
+    expect(screen.getByText(/could not save it to My Reports/i)).toBeInTheDocument();
 
     expect(createReportSpy).toHaveBeenCalled();
     createReportSpy.mockRestore();

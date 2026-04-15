@@ -55,6 +55,7 @@ export default function ParsePage() {
   const [unparsed, setUnparsed] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
   const [explaining, setExplaining] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -119,6 +120,7 @@ export default function ParsePage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setSaveWarning(null);
     setLoading(true);
     try {
       let res: Response;
@@ -179,6 +181,10 @@ export default function ParsePage() {
         } catch (entryErr: any) {
           // Keep the successful parse visible even if optional report persistence fails.
           console.error('createReportEntry failed', entryErr);
+          const detail = typeof entryErr?.message === 'string' && entryErr.message.trim()
+            ? ` ${entryErr.message}`
+            : '';
+          setSaveWarning(`Your report was parsed, but we could not save it to My Reports.${detail}`);
           addReportToHistory({
             patientEmail: user.email,
             title: `Report ${new Date().toLocaleString()}`,
@@ -252,6 +258,7 @@ export default function ParsePage() {
     setInterpretation(null);
     setCurrentReportId(null);
     setError(null);
+    setSaveWarning(null);
     setExplainError(null);
     setUploadError(null);
     const input = document.getElementById('file-upload') as HTMLInputElement | null;
@@ -465,6 +472,12 @@ export default function ParsePage() {
       {error && (
         <div className="alert alert-error">
           <strong>We ran into a hiccup.</strong> {error}
+        </div>
+      )}
+
+      {saveWarning && (
+        <div className="alert" role="status" aria-live="polite">
+          <strong>Saved locally only.</strong> {saveWarning}
         </div>
       )}
 

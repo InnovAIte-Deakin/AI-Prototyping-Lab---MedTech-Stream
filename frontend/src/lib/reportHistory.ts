@@ -212,14 +212,16 @@ export async function createReportEntry(input: {
     }
     const report = await response.json();
     const userEmail = getSessionUserEmail();
+    const createdAt = toTimestamp(report.created_at) ?? Date.now();
+    const observedAt = toTimestamp(report.observed_at) ?? createdAt;
 
     return {
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',
-      createdAt: new Date(report.created_at).getTime(),
-      savedAt: new Date(report.created_at).getTime(),
-      reportDate: new Date(report.observed_at).getTime(),
+      createdAt,
+      savedAt: createdAt,
+      reportDate: observedAt,
       panelName: resolvePanelName(report.title, report.panel_name) ?? undefined,
       rows: input.findings.map((f) => ({
         test_name: f.test_name,

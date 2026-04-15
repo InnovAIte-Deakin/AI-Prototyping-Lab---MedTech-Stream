@@ -308,6 +308,10 @@ describe('Report history and sharing preference flow', () => {
     fireEvent.change(emailInput, { target: { value: 'doc@clinic.org' } });
     fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full' } });
 
+    await waitFor(() => {
+      expect((screen.getByLabelText(/clinician email/i) as HTMLInputElement).value).toBe('doc@clinic.org');
+    });
+
     fireEvent.click(screen.getByRole('button', { name: /start sharing/i }));
 
     await waitFor(() => {
@@ -420,6 +424,43 @@ describe('Report history and sharing preference flow', () => {
     expect(screen.getByRole('img', { name: /biomarker trend chart/i })).toBeInTheDocument();
     expect(screen.getByText(/x-axis: observation date/i)).toBeInTheDocument();
     expect(screen.getByText(/y-axis: value/i)).toBeInTheDocument();
+  });
+
+  it('keeps and shows generated interpretation on report detail after reload', async () => {
+    const report = addReportToHistory({
+      patientEmail: 'patient@example.com',
+      title: 'Report With Insight',
+      rows: [
+        {
+          test_name: 'Hgb',
+          value: 13.5,
+          unit: 'g/dL',
+          reference_range: '11-15',
+          flag: 'normal',
+          confidence: 1,
+        },
+      ],
+      unparsed: [],
+      interpretation: {
+        summary: 'Your key blood markers are within expected ranges.',
+        per_test: [{ test_name: 'Hgb', explanation: 'This value is within the expected range.' }],
+        flags: [],
+        next_steps: ['Discuss routine follow-up with your clinician.'],
+        disclaimer: 'Educational only.',
+      },
+    });
+
+    render(
+      <AuthProvider>
+        <ReportDetailPage params={{ reportId: report.id }} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /interpretation/i })).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Your key blood markers are within expected ranges\./i)).toBeInTheDocument();
   });
 
   it('shows access-aware trend message when trends endpoint is forbidden', async () => {

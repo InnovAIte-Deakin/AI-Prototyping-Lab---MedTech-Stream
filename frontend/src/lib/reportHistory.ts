@@ -89,6 +89,21 @@ function mergeUniqueReports(primary: ReportHistoryEntry[], extras: ReportHistory
   return merged;
 }
 
+function overlayLocalFields(
+  backendEntry: ReportHistoryEntry,
+  localEntry?: ReportHistoryEntry,
+): ReportHistoryEntry {
+  if (!localEntry) return backendEntry;
+  return {
+    ...backendEntry,
+    interpretation: localEntry.interpretation ?? backendEntry.interpretation,
+    sharingPreferences: localEntry.sharingPreferences ?? backendEntry.sharingPreferences,
+    extractedText: localEntry.extractedText ?? backendEntry.extractedText,
+    unparsed: (localEntry.unparsed && localEntry.unparsed.length > 0) ? localEntry.unparsed : backendEntry.unparsed,
+    savedAt: localEntry.savedAt ?? backendEntry.savedAt,
+  };
+}
+
 function toTimestamp(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -165,7 +180,12 @@ export async function fetchReportHistory(): Promise<ReportHistoryEntry[]> {
       })),
       unparsed: [],
     }));
-    return mergeUniqueReports(backendHistory, localHistory);
+    const localById = new Map(localHistory.map((entry) => [entry.id, entry]));
+    const hydratedBackendHistory = backendHistory.map((entry) => overlayLocalFields(entry, localById.get(entry.id)));
+    const backendIds = new Set(hydratedBackendHistory.map((entry) => entry.id));
+    const localOnlyHistory = localHistory.filter((entry) => !backendIds.has(entry.id));
+
+    return mergeUniqueReports(hydratedBackendHistory, localOnlyHistory);
   } catch (err: any) {
     console.error('fetchReportHistory failed', err);
     if (localHistory.length > 0) {
@@ -256,13 +276,15 @@ export async function fetchReportById(reportId: string): Promise<ReportHistoryEn
     }
     const result = await response.json();
     const report = result.report;
-    return {
+    const createdAt = toTimestamp(report.created_at) ?? Date.now();
+    const observedAt = toTimestamp(report.observed_at) ?? createdAt;
+    const backendEntry: ReportHistoryEntry = {
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',
-      createdAt: new Date(report.created_at).getTime(),
-      savedAt: new Date(report.created_at).getTime(),
-      reportDate: new Date(report.observed_at).getTime(),
+      createdAt,
+      savedAt: createdAt,
+      reportDate: observedAt,
       panelName: resolvePanelName(report.title, report.panel_name) ?? undefined,
       rows: report.findings.map((f: any) => ({
         test_name: f.display_name,
@@ -274,6 +296,7 @@ export async function fetchReportById(reportId: string): Promise<ReportHistoryEn
       })),
       unparsed: [],
     };
+    return overlayLocalFields(backendEntry, getReportById(reportId));
   } catch (err: any) {
     console.error('fetchReportById failed', err);
     throw new Error(err?.message || 'Failed to fetch report detail');

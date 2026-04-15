@@ -40,7 +40,7 @@ function TestProtectedPage() {
 }
 
 describe('Auth flow', () => {
-  let fetchSpy: ReturnType<typeof vi.fn>;
+  let fetchSpy: any;
 
   beforeEach(() => {
     localStorage.clear();

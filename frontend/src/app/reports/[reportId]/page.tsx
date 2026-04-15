@@ -8,6 +8,9 @@ import type { ReportHistoryEntry, SharingPreferences } from '@/lib/reportHistory
 import { PatientQuestions } from '@/components/PatientQuestions';
 import { ThreadView, ConversationThread } from '@/components/ThreadView';
 import { DoctorSummaryDocument, type SummaryFinding, type SummaryThread } from '@/components/DoctorSummaryDocument';
+import Disclaimer from '@/components/Disclaimer';
+import { BiomarkerTrendChart } from '@/components/BiomarkerTrendChart';
+import { fetchReportTrends, type BiomarkerTrend } from '@/lib/reportTrends';
 function formatDate(ts: number) {
   return new Date(ts).toLocaleString();
 }
@@ -19,6 +22,15 @@ const defaultSharingPreferences: SharingPreferences = {
   active: false,
 };
 
+const LANGUAGE_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Español' },
+  { value: 'ar', label: 'العربية' },
+  { value: 'zh', label: '中文 (普通话)' },
+  { value: 'hi', label: 'हिन्दी' },
+  { value: 'fr', label: 'Français' },
+];
+
 export default function ReportDetailPage({ params }: { params: { reportId: string } }) {
   const { user } = useAuth();
   const [report, setReport] = useState<ReportHistoryEntry | undefined>(undefined);
@@ -27,6 +39,18 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   // FR13 state
   const [includeSummaryPDF, setIncludeSummaryPDF] = useState(false);
   const [threads, setThreads] = useState<ConversationThread[]>([]);
+
+  // Trend states
+  const [trends, setTrends] = useState<BiomarkerTrend[]>([]);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+  const [trendsError, setTrendsError] = useState<string | null>(null);
+  const [trendLanguage, setTrendLanguage] = useState('en');
+  const [loadingTrendTranslations, setLoadingTrendTranslations] = useState(false);
+  const [trendTranslationError, setTrendTranslationError] = useState<string | null>(null);
+  const [trendNoteTranslations, setTrendNoteTranslations] = useState<Record<string, Record<string, string>>>({});
+  const [prefetchedTrendLanguages, setPrefetchedTrendLanguages] = useState<Record<string, Record<string, boolean>>>({});
+  const [biomarkerFilterText, setBiomarkerFilterText] = useState('');
+  const [selectedBiomarkerKey, setSelectedBiomarkerKey] = useState('');
 
   useEffect(() => {
     async function loadReport() {
@@ -57,27 +81,123 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     setSharingPreferences(report.sharingPreferences ?? defaultSharingPreferences);
   }, [report]);
 
-  if (!user) {
-    return (
-      <ProtectedView>
-        <div>Loading...</div>
-      </ProtectedView>
-    );
-  }
-
-  if (!report) {
-    return (
-      <ProtectedView>
-        <section className="stack">
-          <h1>Report Not Found</h1>
-          <p>This report does not exist or you do not have permission to view it.</p>
-          {statusMessage && <div className="alert alert-error" style={{ marginTop: '1rem' }}>{statusMessage}</div>}
-        </section>
-      </ProtectedView>
-    );
-  }
+  useEffect(() => {
+    setTrends([]);
+    setTrendsError(null);
+    setTrendLanguage('en');
+    setTrendTranslationError(null);
+    setTrendNoteTranslations({});
+    setPrefetchedTrendLanguages({});
+    setBiomarkerFilterText('');
+    setSelectedBiomarkerKey('');
+  }, [report?.id]);
 
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+  function getAccessToken() {
+    const stored = localStorage.getItem('reportx_session');
+    if (!stored) return null;
+    try {
+      const session = JSON.parse(stored);
+      return session?.accessToken || null;
+    } catch {
+      return null;
+    }
+  }
+
+  const loadTrends = useCallback(async (reportId: string) => {
+    setTrendsLoading(true);
+    setTrendsError(null);
+    try {
+      const data = await fetchReportTrends(reportId);
+      setTrends(Array.isArray(data.trends) ? data.trends : []);
+    } catch (err: any) {
+      const message = String(err?.message || 'Unable to load trends.');
+      if (message.includes('403')) {
+        setTrendsError('Trend details require full-report sharing access for clinician views.');
+      } else {
+        setTrendsError('Unable to load trends right now.');
+      }
+      setTrends([]);
+    } finally {
+      setTrendsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!report?.id) return;
+    void loadTrends(report.id);
+  }, [report?.id, loadTrends]);
+
+  const translateTrendNotesIfNeeded = useCallback(async (languageCode: string) => {
+    if (languageCode === 'en' || trends.length === 0) return;
+
+    const withEnoughPoints = trends.filter((item) => item.sparkline.length > 1);
+    const toTranslate = withEnoughPoints.filter(
+      (item) => !trendNoteTranslations[item.biomarker_key]?.[languageCode] && !prefetchedTrendLanguages[item.biomarker_key]?.[languageCode],
+    );
+
+    if (toTranslate.length === 0) return;
+
+    setLoadingTrendTranslations(true);
+    setTrendTranslationError(null);
+
+    try {
+      const translated = await Promise.all(
+        toTranslate.map(async (item) => {
+          const response = await fetch(`${backend}/api/v1/translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: item.trend_note,
+              target_language: languageCode,
+              prefetch_all: true,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Trend note translation failed.');
+          }
+
+          const payload = await response.json();
+          const translations = (payload?.translations ?? {}) as Record<string, string>;
+          return { biomarkerKey: item.biomarker_key, translations };
+        }),
+      );
+
+      setTrendNoteTranslations((prev) => {
+        const next = { ...prev };
+        for (const item of translated) {
+          next[item.biomarkerKey] = {
+            ...(next[item.biomarkerKey] || {}),
+            ...item.translations,
+          };
+        }
+        return next;
+      });
+
+      setPrefetchedTrendLanguages((prev) => {
+        const next = { ...prev };
+        for (const item of translated) {
+          const langMap = { ...(next[item.biomarkerKey] || {}) };
+          for (const lang of Object.keys(item.translations)) {
+            langMap[lang] = true;
+          }
+          next[item.biomarkerKey] = langMap;
+        }
+        return next;
+      });
+    } catch {
+      setTrendTranslationError('Unable to translate trend notes right now. Showing English.');
+      setTrendLanguage('en');
+    } finally {
+      setLoadingTrendTranslations(false);
+    }
+  }, [backend, prefetchedTrendLanguages, trendNoteTranslations, trends]);
+
+  useEffect(() => {
+    void translateTrendNotesIfNeeded(trendLanguage);
+  }, [trendLanguage, translateTrendNotesIfNeeded]);
 
   async function updateShare() {
     if (!report) return;
@@ -86,16 +206,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
       return;
     }
 
-    const accessToken = (() => {
-      const stored = localStorage.getItem('reportx_session');
-      if (!stored) return null;
-      try {
-        const session = JSON.parse(stored);
-        return session?.accessToken || null;
-      } catch {
-        return null;
-      }
-    })();
+    const accessToken = getAccessToken();
 
     if (!accessToken) {
       setStatusMessage('Unable to find authenticated session. Please log in.');
@@ -111,7 +222,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
         },
         body: JSON.stringify({
           clinician_email: sharingPreferences.clinicianEmail,
-          scope: 'report',
+          scope: sharingPreferences.scope === 'full' ? 'patient' : 'report',
           access_level: sharingPreferences.scope === 'full' ? 'comment' : 'read',
           expires_at: new Date(sharingPreferences.expiresAt).toISOString(),
         }),
@@ -137,16 +248,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   async function revokeShare() {
     if (!report) return;
 
-    const accessToken = (() => {
-      const stored = localStorage.getItem('reportx_session');
-      if (!stored) return null;
-      try {
-        const session = JSON.parse(stored);
-        return session?.accessToken || null;
-      } catch {
-        return null;
-      }
-    })();
+    const accessToken = getAccessToken();
 
     if (!accessToken) {
       setStatusMessage('Unable to find authenticated session. Please log in.');
@@ -180,7 +282,50 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     }
   }
 
-  const interpretation = report.interpretation;
+  const interpretation = report?.interpretation;
+  const trendItems = trends.filter((item) => item.sparkline.length > 1);
+  const normalizedFilter = biomarkerFilterText.trim().toLowerCase();
+  const filteredTrendItems = trendItems.filter((item) => {
+    if (!normalizedFilter) return true;
+    const label = `${item.display_name} ${item.biomarker_key}`.toLowerCase();
+    return label.includes(normalizedFilter);
+  });
+
+  useEffect(() => {
+    if (filteredTrendItems.length === 0) {
+      setSelectedBiomarkerKey('');
+      return;
+    }
+
+    const stillExists = filteredTrendItems.some((item) => item.biomarker_key === selectedBiomarkerKey);
+    if (!stillExists) {
+      setSelectedBiomarkerKey(filteredTrendItems[0].biomarker_key);
+    }
+  }, [filteredTrendItems, selectedBiomarkerKey]);
+
+  const selectedTrend = filteredTrendItems.find((item) => item.biomarker_key === selectedBiomarkerKey)
+    || filteredTrendItems[0]
+    || null;
+
+  if (!user) {
+    return (
+      <ProtectedView>
+        <div>Loading...</div>
+      </ProtectedView>
+    );
+  }
+
+  if (!report) {
+    return (
+      <ProtectedView>
+        <section className="stack">
+          <h1>Report Not Found</h1>
+          <p>This report does not exist or you do not have permission to view it.</p>
+          {statusMessage && <div className="alert alert-error" style={{ marginTop: '1rem' }}>{statusMessage}</div>}
+        </section>
+      </ProtectedView>
+    );
+  }
 
   // --- FR13: build data for DoctorSummaryDocument ---
   const accessToken = (() => {
@@ -284,6 +429,70 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
         />
 
         <div className="card">
+          <h2>Biomarker Trends</h2>
+          {trendsLoading ? <p>Loading trends…</p> : null}
+          {!trendsLoading && trendsError ? <p>{trendsError}</p> : null}
+          {!trendsLoading && !trendsError && trendItems.length === 0 ? (
+            <p>Not enough prior report data to calculate trends yet.</p>
+          ) : null}
+          {!trendsLoading && !trendsError && trendItems.length > 0 ? (
+            <>
+              <div className="field" style={{ maxWidth: '420px' }}>
+                <label htmlFor="biomarker-filter">Filter biomarkers</label>
+                <input
+                  id="biomarker-filter"
+                  placeholder="Type biomarker name"
+                  value={biomarkerFilterText}
+                  onChange={(e) => setBiomarkerFilterText(e.target.value)}
+                />
+              </div>
+              <div className="field" style={{ maxWidth: '420px' }}>
+                <label htmlFor="biomarker-select">Biomarker</label>
+                <select
+                  id="biomarker-select"
+                  value={selectedTrend?.biomarker_key || ''}
+                  onChange={(e) => setSelectedBiomarkerKey(e.target.value)}
+                >
+                  {filteredTrendItems.map((item) => (
+                    <option key={item.biomarker_key} value={item.biomarker_key}>
+                      {item.display_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field" style={{ maxWidth: '320px' }}>
+                <label htmlFor="trend-language">Trend note language</label>
+                <select
+                  id="trend-language"
+                  value={trendLanguage}
+                  onChange={(e) => setTrendLanguage(e.target.value)}
+                >
+                  {LANGUAGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+              {loadingTrendTranslations ? <p>Loading translation…</p> : null}
+              {trendTranslationError ? <p>{trendTranslationError}</p> : null}
+              {!selectedTrend ? <p>No biomarkers match your filter.</p> : null}
+              {selectedTrend ? (
+                <>
+                  <p>{trendNoteTranslations[selectedTrend.biomarker_key]?.[trendLanguage] || selectedTrend.trend_note}</p>
+                  <BiomarkerTrendChart
+                    title={selectedTrend.display_name}
+                    unit={selectedTrend.unit}
+                    points={selectedTrend.sparkline.map((point) => ({
+                      observed_at: point.observed_at,
+                      value: point.value,
+                    }))}
+                  />
+                </>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+
+        <div className="card">
           <h2>Sharing Preferences</h2>
           <div className="field">
             <label htmlFor="clinician-email">Clinician Email</label>
@@ -331,6 +540,8 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
           {sharingPreferences.active && <button className="nav-btn nav-btn-danger" onClick={revokeShare} style={{ marginLeft: '0.5rem' }}>Revoke</button>}
           {statusMessage && <p>{statusMessage}</p>}
         </div>
+
+        <Disclaimer />
 
       </section>
     </ProtectedView>

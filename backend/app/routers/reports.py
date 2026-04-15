@@ -1,26 +1,32 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
-from sqlalchemy import select
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.db.models import (
     ConsentAccessLevel,
     ConsentScope,
-    ConsentShare,
     Report,
     ReportFinding,
-    ReportSharingMode,
     ReportSourceKind,
-    User,
 )
 from app.db.session import get_db_session
 from app.dependencies.auth import AuthContext, get_current_auth_context
 from app.dependencies.reports import get_accessible_report
+from app.services.trends import BiomarkerTrend, build_trends_for_patient
+from app.services.reports import (
+    ReportFindingCreateInput,
+    ReportServiceError,
+    ClinicianSharedReportItem,
+    create_report_for_user,
+    get_clinician_shared_reports,
+    list_reports_for_user,
+    revoke_report_share,
+    share_report_with_user,
+)
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -45,7 +51,8 @@ class ReportCreateFinding(BaseModel):
 class ReportCreateRequest(BaseModel):
     title: str | None = None
     source_kind: ReportSourceKind = ReportSourceKind.MANUAL
-    findings: list[ReportCreateFinding] = []
+    observed_at: datetime | None = None
+    findings: list[ReportCreateFinding] = Field(default_factory=list)
 
 
 class ReportCreateResponse(BaseModel):
@@ -74,6 +81,7 @@ class ReportOut(BaseModel):
     title: str | None
     source_kind: str
     sharing_mode: str
+    created_at: datetime
     observed_at: datetime
     findings: list[ReportFindingOut]
 
@@ -82,18 +90,37 @@ class ReportDetailResponse(BaseModel):
     report: ReportOut
 
 
+class TrendPointOut(BaseModel):
+    report_id: str
+    observed_at: datetime
+    value: float
+    unit: str | None
+    flag: str
+
+
+class BiomarkerTrendOut(BaseModel):
+    biomarker_key: str
+    display_name: str
+    unit: str | None
+    direction: str
+    trend_note: str
+    sparkline: list[TrendPointOut]
+
+
+class ReportTrendsResponse(BaseModel):
+    report_id: str
+    subject_user_id: str
+    trends: list[BiomarkerTrendOut]
+def _raise_report_http_error(exc: ReportServiceError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+
 @router.get("", response_model=list[ReportOut])
 async def list_reports(
     auth: AuthContext = Depends(get_current_auth_context),
     session: AsyncSession = Depends(get_db_session),
-) -> list[Report]:
-    reports = await session.execute(
-        select(Report)
-        .where(Report.subject_user_id == auth.user.id)
-        .order_by(Report.created_at.desc())
-        .options(selectinload(Report.findings))
-    )
-    rows = reports.scalars().all()
+) -> list[ReportOut]:
+    rows = await list_reports_for_user(session, subject_user_id=auth.user.id)
     return [_report_out(report) for report in rows]
 
 
@@ -103,33 +130,26 @@ async def create_report(
     auth: AuthContext = Depends(get_current_auth_context),
     session: AsyncSession = Depends(get_db_session),
 ) -> ReportCreateResponse:
-    report = Report(
+    report = await create_report_for_user(
+        session,
         subject_user_id=auth.user.id,
         created_by_user_id=auth.user.id,
         title=payload.title,
         source_kind=payload.source_kind,
-        sharing_mode=ReportSharingMode.PRIVATE,
-        observed_at=datetime.now(UTC),
+        observed_at=payload.observed_at or datetime.now(UTC),
+        findings=[
+            ReportFindingCreateInput(
+                test_name=finding.test_name,
+                value_numeric=finding.value_numeric,
+                value_text=finding.value_text,
+                unit=finding.unit,
+                reference_range=finding.reference_range,
+                flag=finding.flag,
+                confidence=finding.confidence,
+            )
+            for finding in payload.findings
+        ],
     )
-    session.add(report)
-    await session.flush()
-
-    for idx, finding in enumerate(payload.findings, start=1):
-        entity = ReportFinding(
-            report_id=report.id,
-            biomarker_key=finding.test_name,
-            display_name=finding.test_name,
-            value_numeric=finding.value_numeric,
-            value_text=finding.value_text,
-            unit=finding.unit,
-            flag=finding.flag or 'unknown',
-            reference_range_text=finding.reference_range,
-            position=idx,
-        )
-        session.add(entity)
-
-    await session.commit()
-    await session.refresh(report)
 
     return ReportCreateResponse(
         id=report.id,
@@ -155,58 +175,25 @@ async def share_report(
     auth: AuthContext = Depends(get_current_auth_context),
     session: AsyncSession = Depends(get_db_session),
 ) -> ReportShareResponse:
-    if report.subject_user_id != auth.user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only report owner may grant sharing")
-
-    if payload.expires_at <= datetime.now(UTC):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="expires_at must be in the future")
-
-    grantee = await session.scalar(select(User).where(User.email == payload.clinician_email))
-    if grantee is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clinician user not found")
-
-    if grantee.id == auth.user.id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot share with yourself")
-
-    existing_share = await session.scalar(
-        select(ConsentShare)
-        .where(
-            ConsentShare.subject_user_id == report.subject_user_id,
-            ConsentShare.grantee_user_id == grantee.id,
-            ConsentShare.report_id == (report.id if payload.scope == ConsentScope.REPORT else None),
-            ConsentShare.scope == payload.scope,
-        )
-    )
-
-    if existing_share is not None:
-        existing_share.access_level = payload.access_level
-        existing_share.expires_at = payload.expires_at
-        existing_share.revoked_at = None
-        share = existing_share
-    else:
-        share = ConsentShare(
-            subject_user_id=report.subject_user_id,
-            grantee_user_id=grantee.id,
-            granted_by_user_id=auth.user.id,
-            report_id=(report.id if payload.scope == ConsentScope.REPORT else None),
+    try:
+        result = await share_report_with_user(
+            session,
+            report=report,
+            owner_user_id=auth.user.id,
+            clinician_email=str(payload.clinician_email),
             scope=payload.scope,
             access_level=payload.access_level,
             expires_at=payload.expires_at,
         )
-        session.add(share)
-
-    report.sharing_mode = ReportSharingMode.SHARED
-    session.add(report)
-
-    await session.commit()
-    await session.refresh(share)
+    except ReportServiceError as exc:
+        _raise_report_http_error(exc)
 
     return ReportShareResponse(
-        id=share.id,
-        clinician_email=grantee.email,
-        scope=share.scope.value,
-        access_level=share.access_level.value,
-        expires_at=share.expires_at,
+        id=result.share.id,
+        clinician_email=result.grantee.email,
+        scope=result.share.scope.value,
+        access_level=result.share.access_level.value,
+        expires_at=result.share.expires_at,
     )
 
 
@@ -221,28 +208,15 @@ async def revoke_share(
     auth: AuthContext = Depends(get_current_auth_context),
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
-    if report.subject_user_id != auth.user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only report owner may revoke sharing")
-
-    grantee = await session.scalar(select(User).where(User.email == payload.clinician_email))
-    if grantee is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clinician user not found")
-
-    share = await session.scalar(
-        select(ConsentShare)
-        .where(
-            ConsentShare.subject_user_id == report.subject_user_id,
-            ConsentShare.grantee_user_id == grantee.id,
-            ConsentShare.report_id == report.id,
-            ConsentShare.revoked_at.is_(None),
+    try:
+        await revoke_report_share(
+            session,
+            report=report,
+            owner_user_id=auth.user.id,
+            clinician_email=str(payload.clinician_email),
         )
-    )
-
-    if share is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active share found")
-
-    share.revoked_at = datetime.now(UTC)
-    await session.commit()
+    except ReportServiceError as exc:
+        _raise_report_http_error(exc)
 
 
 def _finding_out(finding: ReportFinding) -> ReportFindingOut:
@@ -267,11 +241,137 @@ def _report_out(report: Report) -> ReportOut:
         title=report.title,
         source_kind=report.source_kind.value,
         sharing_mode=report.sharing_mode.value,
+        created_at=report.created_at,
         observed_at=report.observed_at,
         findings=[_finding_out(finding) for finding in findings],
     )
 
 
+class UserOut(BaseModel):
+    """User profile output"""
+    id: str
+    email: str
+    display_name: str
+    preferred_language: str | None = None
+
+
+class ClinicianSharedReportOut(BaseModel):
+    """Clinician's view of a shared report"""
+    share_id: str
+    report_id: str
+    report: ReportOut
+    patient: UserOut
+    scope: str
+    access_level: str
+    shared_at: datetime
+    expires_at: datetime
+
+
+@router.get("/shared-reports", response_model=list[ClinicianSharedReportOut])
+async def list_clinician_shared_reports(
+    auth: AuthContext = Depends(get_current_auth_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> list[ClinicianSharedReportOut]:
+    """List all reports actively shared with the authenticated clinician."""
+    if "clinician" not in auth.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only clinicians may view shared reports",
+        )
+
+    items = await get_clinician_shared_reports(
+        session,
+        clinician_user_id=auth.user.id,
+    )
+    
+    return [
+        ClinicianSharedReportOut(
+            share_id=item.share_id,
+            report_id=item.report_id,
+            report=_report_out(item.report),
+            patient=UserOut(
+                id=item.patient.id,
+                email=item.patient.email,
+                display_name=item.patient.display_name,
+                preferred_language=item.patient.preferred_language,
+            ),
+            scope=item.scope,
+            access_level=item.access_level,
+            shared_at=item.shared_at,
+            expires_at=item.expires_at,
+        )
+        for item in items
+    ]
+
+
 @router.get("/{report_id}", response_model=ReportDetailResponse)
 async def get_report_endpoint(report: Report = Depends(get_accessible_report)) -> ReportDetailResponse:
     return ReportDetailResponse(report=_report_out(report))
+
+
+async def _ensure_full_report_trend_access(
+    *,
+    report: Report,
+    auth: AuthContext,
+    session: AsyncSession,
+) -> None:
+    if report.subject_user_id == auth.user.id:
+        return
+
+    now = datetime.now(UTC)
+    full_access_share = await session.scalar(
+        select(ConsentShare.id)
+        .where(
+            ConsentShare.subject_user_id == report.subject_user_id,
+            ConsentShare.grantee_user_id == auth.user.id,
+            ConsentShare.scope == ConsentScope.PATIENT,
+            ConsentShare.report_id.is_(None),
+            ConsentShare.revoked_at.is_(None),
+            ConsentShare.expires_at > now,
+        )
+        .limit(1)
+    )
+    if full_access_share is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Trend data requires full-report access for this patient",
+        )
+
+
+def _trend_out(trend: BiomarkerTrend) -> BiomarkerTrendOut:
+    return BiomarkerTrendOut(
+        biomarker_key=trend.biomarker_key,
+        display_name=trend.display_name,
+        unit=trend.unit,
+        direction=trend.direction,
+        trend_note=trend.trend_note,
+        sparkline=[
+            TrendPointOut(
+                report_id=point.report_id,
+                observed_at=point.observed_at,
+                value=point.value,
+                unit=point.unit,
+                flag=point.flag.value,
+            )
+            for point in trend.points
+        ],
+    )
+
+
+@router.get("/{report_id}/trends", response_model=ReportTrendsResponse)
+async def get_report_trends_endpoint(
+    report: Report = Depends(get_accessible_report),
+    auth: AuthContext = Depends(get_current_auth_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> ReportTrendsResponse:
+    await _ensure_full_report_trend_access(report=report, auth=auth, session=session)
+
+    trends = await build_trends_for_patient(
+        session,
+        subject_user_id=report.subject_user_id,
+    )
+    return ReportTrendsResponse(
+        report_id=report.id,
+        subject_user_id=report.subject_user_id,
+        trends=[_trend_out(item) for item in trends],
+    )

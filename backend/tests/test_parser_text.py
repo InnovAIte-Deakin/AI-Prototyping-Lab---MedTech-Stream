@@ -1,4 +1,4 @@
-from app.services.parser import parse_text
+from app.services.parser import extract_report_date, parse_text
 
 
 def test_parse_numeric_range_and_units():
@@ -44,3 +44,32 @@ def test_confidence_scoring():
     row = rows[0]
     # test_name, value, unit, reference_range, flag => often all present
     assert 0.8 <= row.confidence <= 1.0
+
+
+def test_extract_report_date_prefers_report_date_field():
+    text = """
+    Patient: Jane Doe
+    Collection Date: 03/03/2026
+    Report Date: 05/03/2026
+    ALT 29 U/L 10-40
+    """.strip()
+
+    parsed = extract_report_date(text)
+    assert parsed is not None
+    assert parsed.year == 2026
+    assert parsed.month == 3
+    assert parsed.day == 5
+
+
+def test_extract_report_date_ignores_dob_and_uses_collection_when_needed():
+    text = """
+    DOB: 05/01/1990
+    Specimen Collected: 2026-04-01
+    AST 31 U/L 10-40
+    """.strip()
+
+    parsed = extract_report_date(text)
+    assert parsed is not None
+    assert parsed.year == 2026
+    assert parsed.month == 4
+    assert parsed.day == 1

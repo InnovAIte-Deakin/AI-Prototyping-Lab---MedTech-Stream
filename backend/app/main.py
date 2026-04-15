@@ -1,10 +1,12 @@
 import asyncio
 import logging
 import os
+import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -12,6 +14,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import Response
 
 from .db.session import build_database_manager
+from .routers.audit import router as audit_router
 from .routers.auth import router as auth_router
 from .routers.health import router as health_router
 from .routers.interpret import router as interpret_router
@@ -19,11 +22,16 @@ from .routers.parse import router as parse_router
 from .routers.reports import router as reports_router
 from .routers.threads import router as threads_router
 from .routers.translate import router as translate_router
+from .services.reports import cleanup_expired_shares
 
 
 async def _run_alembic_migrations(project_root: str, timeout: int) -> None:
     process = await asyncio.create_subprocess_exec(
-        'alembic', 'upgrade', 'head',
+        sys.executable,
+        '-m',
+        'alembic',
+        'upgrade',
+        'head',
         cwd=project_root,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -31,7 +39,7 @@ async def _run_alembic_migrations(project_root: str, timeout: int) -> None:
 
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         process.kill()
         await process.wait()
         raise RuntimeError(f'Alembic migration timed out after {timeout} seconds') from exc
@@ -54,9 +62,36 @@ async def app_lifespan(app: FastAPI):
         logging.exception('Failed to apply migrations on startup')
         raise
 
+    # Start background scheduler for cleanup jobs
+    scheduler = AsyncIOScheduler()
+    
+    async def scheduled_cleanup():
+        """Wrapper to execute cleanup with a database session."""
+        async with app.state.database.session_factory() as session:
+            count = await cleanup_expired_shares(session)
+            if count > 0:
+                logging.info(f"Cleaned up {count} expired shares")
+    
+    # CLEANUP_INTERVAL_MINUTES controls how often expired shared reports are deleted.
+    # Default: 5 minutes.
+    # Valid values: positive whole-number minutes; lower values increase scheduler and
+    # database activity, while higher values leave expired shares in place longer.
+    # For production, choose an interval that balances prompt cleanup with operational load.
+    cleanup_interval = int(os.getenv('CLEANUP_INTERVAL_MINUTES', '5'))
+    scheduler.add_job(
+        scheduled_cleanup,
+        'interval',
+        minutes=cleanup_interval,
+        id='cleanup-expired-shares',
+        name='Cleanup expired shares',
+    )
+    scheduler.start()
+    app.state.scheduler = scheduler
+
     try:
         yield
     finally:
+        scheduler.shutdown()
         await app.state.database.dispose()
 
 
@@ -178,6 +213,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(parse_router, prefix="/api/v1")
     app.include_router(interpret_router, prefix="/api/v1")
+    app.include_router(audit_router, prefix="/api/v1")
     app.include_router(reports_router, prefix="/api/v1")
     app.include_router(threads_router, prefix="/api/v1")
     app.include_router(translate_router, prefix="/api/v1")

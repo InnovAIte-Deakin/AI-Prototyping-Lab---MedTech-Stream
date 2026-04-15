@@ -496,38 +496,8 @@ async def interpret_rows(rows: list[ParsedRowIn]) -> tuple[InterpretationOut, di
                 meta["finish_reason"] = call["finish_reason"]
             if "status" in call:
                 meta["status"] = call["status"]
-        summary_text = parsed.summary.strip()
-        translations: dict[str, str] = {}
-        translation_meta: dict[str, Any] = {}
-        api_key_present = bool(os.getenv("OPENAI_API_KEY", "").strip())
-        if summary_text and api_key_present and TRANSLATION_TARGETS:
-            async def _translate(code: str, label: str) -> tuple[str, str | None, dict[str, Any] | None]:
-                try:
-                    text, tmeta = await translate_summary(summary_text, target_language=code, language_label=label)
-                    return code, text, tmeta
-                except Exception as exc:  # pragma: no cover - defensive
-                    return code, None, {"ok": False, "error": {"message": str(exc)}}
-
-            tasks = [_translate(code, label) for code, label in TRANSLATION_TARGETS.items()]
-            results = await asyncio.gather(*tasks, return_exceptions=False)
-            for code, text, tmeta in results:
-                if tmeta:
-                    translation_meta[code] = {
-                        k: tmeta.get(k)
-                        for k in ("ok", "status", "error", "duration_ms")
-                        if k in tmeta
-                    }
-                if text:
-                    translations[code] = text
-            if translations:
-                parsed = parsed.model_copy(update={"translations": translations})
-                meta["translations"] = sorted(translations.keys())
-        else:
-            if not api_key_present:
-                meta["translations"] = []
-                meta.setdefault("translation_meta", {})["skipped"] = "missing_api_key"
-        if translation_meta:
-            meta.setdefault("translation_meta", {}).update(translation_meta)
+        meta["translations"] = []
+        meta.setdefault("translation_meta", {})["skipped"] = "lazy_on_demand"
         _log_ok = {
             "event": "llm_call",
             "endpoint": meta.get("endpoint"),

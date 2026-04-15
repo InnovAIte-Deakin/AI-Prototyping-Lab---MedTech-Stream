@@ -196,6 +196,315 @@ input:focus-visible, textarea:focus-visible {
   /* Show full content; allow natural height */
 }
 
+/* Biomarker timeline chart */
+.biomarker-timeline-card {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  padding: 24px;
+  border: 1px solid var(--border);
+}
+
+.biomarker-timeline-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.biomarker-timeline-filter {
+  max-width: 420px;
+}
+
+.biomarker-timeline-filter input {
+  width: 100%;
+}
+
+.biomarker-timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.biomarker-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.4rem 0.75rem;
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.biomarker-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.biomarker-pill.is-inactive {
+  opacity: 0.5;
+}
+
+.biomarker-pill__swatch {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.biomarker-timeline-shell {
+  height: 320px;
+  position: relative;
+}
+
+.biomarker-timeline-empty {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 14px;
+  padding: 1rem;
+}
+
+.history-summary {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.report-history-table-card {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.report-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: none;
+}
+
+.report-history-table thead tr {
+  height: 40px;
+  background: #f9fafb;
+}
+
+.report-history-table th {
+  padding: 0 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  border: none;
+}
+
+.report-history-sort {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  color: inherit;
+}
+
+.report-history-table tbody tr {
+  height: 52px;
+  font-size: 14px;
+  color: #111827;
+}
+
+.report-history-table tbody tr:nth-child(odd) {
+  background: #ffffff;
+}
+
+.report-history-table tbody tr:nth-child(even) {
+  background: #f9fafb;
+}
+
+.report-history-table tbody tr:hover {
+  background: #f0fdfa;
+}
+
+.report-history-table tbody tr:first-child td {
+  border-top: 1px solid #f0f0f0;
+}
+
+.report-history-table td {
+  padding: 0 16px;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: middle;
+}
+
+.report-history-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.report-history-table .date-col {
+  font-weight: 500;
+}
+
+.report-history-table .results-col {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.report-history-table .actions-col {
+  text-align: right;
+  padding-right: 12px;
+}
+
+.report-date-fallback {
+  color: #6b7280;
+}
+
+.help-icon {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #6b7280;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.muted-cell {
+  color: #6b7280;
+}
+
+.interp-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.interp-pill.yes {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.interp-pill.no {
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
+.table-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.table-btn {
+  height: 32px;
+  border-radius: 6px;
+  font-size: 13px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  min-width: 72px;
+  line-height: 1;
+}
+
+.table-btn-primary {
+  background: var(--brand);
+  color: #ffffff;
+}
+
+.table-btn-ghost {
+  background: transparent;
+  border-color: #d1d5db;
+  color: #374151;
+}
+
+.empty-row td {
+  height: 80px;
+  text-align: center;
+  font-size: 14px;
+  color: #9ca3af;
+  border-bottom: none;
+}
+
+.report-history-mobile-list {
+  display: none;
+}
+
+.mobile-report-row {
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #ffffff;
+}
+
+.mobile-line-1,
+.mobile-line-2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mobile-line-2 {
+  margin-top: 8px;
+}
+
+.mobile-date-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mobile-date {
+  font-weight: 600;
+  color: #111827;
+  font-size: 14px;
+}
+
+.mobile-panel {
+  font-size: 13px;
+  color: #111827;
+}
+
+.mobile-empty {
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .biomarker-timeline-shell {
+    height: 220px;
+  }
+
+  .report-history-table {
+    display: none;
+  }
+
+  .report-history-mobile-list {
+    display: block;
+  }
+}
+
 /* Header + layout */
 .header {
   background: linear-gradient(180deg, rgba(8,152,160,.12), transparent);

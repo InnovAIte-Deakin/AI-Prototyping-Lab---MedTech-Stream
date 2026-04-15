@@ -20,6 +20,9 @@ export type ReportHistoryEntry = {
   id: string;
   patientEmail: string;
   createdAt: number;
+  savedAt?: number;
+  reportDate?: number;
+  panelName?: string;
   title: string;
   rows: ParsedRow[];
   unparsed: string[];
@@ -29,6 +32,7 @@ export type ReportHistoryEntry = {
 };
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+const warnedMissingReportDate = new Set<string>();
 
 const isBrowser = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
@@ -59,6 +63,48 @@ function getSessionUserEmail(): string {
   return getStoredSession()?.user?.email || '';
 }
 
+function toTimestamp(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+function isGenericReportTitle(title: string | null | undefined): boolean {
+  if (!title) return true;
+  const normalized = title.trim();
+  if (!normalized) return true;
+  return /^report\s+\d/i.test(normalized) || /\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}/.test(normalized);
+}
+
+function resolvePanelName(title: string | null | undefined, panelName?: string | null): string | null {
+  const explicit = panelName?.trim();
+  if (explicit) return explicit;
+  const candidate = title?.trim();
+  if (candidate && !isGenericReportTitle(candidate)) return candidate;
+  return null;
+}
+
+export function resolveReportDate(entry: Pick<ReportHistoryEntry, 'id' | 'createdAt'> & Partial<Pick<ReportHistoryEntry, 'savedAt' | 'reportDate'>>): number {
+  const explicit = toTimestamp(entry.reportDate);
+  if (explicit !== null) return explicit;
+
+  const fallback = toTimestamp(entry.savedAt) ?? toTimestamp(entry.createdAt) ?? Date.now();
+  if (entry.id && !warnedMissingReportDate.has(entry.id)) {
+    warnedMissingReportDate.add(entry.id);
+    console.warn(`Report ${entry.id} is missing reportDate; falling back to savedAt/createdAt.`);
+  }
+  return fallback;
+}
+
+export function resolveReportPanelName(entry: Pick<ReportHistoryEntry, 'title'> & Partial<Pick<ReportHistoryEntry, 'panelName'>>): string | null {
+  return resolvePanelName(entry.title, entry.panelName);
+}
+
 export async function fetchReportHistory(): Promise<ReportHistoryEntry[]> {
   const token = getAuthToken();
   if (!token) {
@@ -78,7 +124,10 @@ export async function fetchReportHistory(): Promise<ReportHistoryEntry[]> {
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',
-      createdAt: new Date(report.observed_at).getTime(),
+      createdAt: new Date(report.created_at).getTime(),
+      savedAt: new Date(report.created_at).getTime(),
+      reportDate: new Date(report.observed_at).getTime(),
+      panelName: resolvePanelName(report.title, report.panel_name) ?? undefined,
       rows: report.findings.map((f: any) => ({
         test_name: f.display_name,
         value: f.value_numeric ?? f.value_text ?? '',
@@ -98,6 +147,7 @@ export async function fetchReportHistory(): Promise<ReportHistoryEntry[]> {
 export async function createReportEntry(input: {
   title?: string | null;
   source_kind?: string;
+  observed_at?: string;
   findings: Array<{ test_name: string; value_numeric?: number | null; value_text?: string | null; unit?: string | null; reference_range?: string | null; flag?: string | null }>; 
 }): Promise<ReportHistoryEntry | null> {
   const token = getAuthToken();
@@ -114,6 +164,7 @@ export async function createReportEntry(input: {
       body: JSON.stringify({
         title: input.title,
         source_kind: input.source_kind || 'manual',
+        observed_at: input.observed_at,
         findings: input.findings.map((f) => ({
           test_name: f.test_name,
           value_numeric: f.value_numeric,
@@ -135,7 +186,10 @@ export async function createReportEntry(input: {
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',
-      createdAt: new Date(report.observed_at).getTime(),
+      createdAt: new Date(report.created_at).getTime(),
+      savedAt: new Date(report.created_at).getTime(),
+      reportDate: new Date(report.observed_at).getTime(),
+      panelName: resolvePanelName(report.title, report.panel_name) ?? undefined,
       rows: input.findings.map((f) => ({
         test_name: f.test_name,
         value: f.value_numeric ?? f.value_text ?? '',
@@ -173,7 +227,10 @@ export async function fetchReportById(reportId: string): Promise<ReportHistoryEn
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',
-      createdAt: new Date(report.observed_at).getTime(),
+      createdAt: new Date(report.created_at).getTime(),
+      savedAt: new Date(report.created_at).getTime(),
+      reportDate: new Date(report.observed_at).getTime(),
+      panelName: resolvePanelName(report.title, report.panel_name) ?? undefined,
       rows: report.findings.map((f: any) => ({
         test_name: f.display_name,
         value: f.value_numeric ?? f.value_text ?? '',
@@ -251,6 +308,9 @@ export function addReportToHistory(payload: Omit<ReportHistoryEntry, 'id' | 'cre
     unparsed: Array.isArray(payload.unparsed) ? payload.unparsed : [],
     id: `${payload.patientEmail}-${now}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: now,
+    savedAt: payload.savedAt ?? now,
+    reportDate: payload.reportDate ?? now,
+    panelName: payload.panelName ?? undefined,
   };
   saveAll([entry, ...existing]);
   return entry;

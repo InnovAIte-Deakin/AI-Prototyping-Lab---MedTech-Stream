@@ -177,8 +177,8 @@ export default function ParsePage() {
             });
           }
         } catch (entryErr: any) {
-          // API failure should still allow local caching in the UX path, but avoid dupes.
-          setError(entryErr?.message || 'Saved locally but failed to persist report remotely.');
+          // Keep the successful parse visible even if optional report persistence fails.
+          console.error('createReportEntry failed', entryErr);
           addReportToHistory({
             patientEmail: user.email,
             title: `Report ${new Date().toLocaleString()}`,

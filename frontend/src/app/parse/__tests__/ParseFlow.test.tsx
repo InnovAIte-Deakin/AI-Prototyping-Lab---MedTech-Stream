@@ -168,4 +168,40 @@ describe('Parse + Interpret flow', () => {
     createReportSpy.mockRestore();
     updateReportSpy.mockRestore();
   });
+
+  it('keeps the parsed result visible when report persistence fails', async () => {
+    const createReportSpy = vi
+      .spyOn(reportHistory, 'createReportEntry')
+      .mockRejectedValue(new Error('Failed to fetch'));
+
+    localStorage.setItem('reportx_session', JSON.stringify({
+      user: { id: '1', email: 'a@b.com', role: 'patient', displayName: 'A' },
+      accessToken: 'access-token',
+      accessTokenExpiresAt: Date.now() + 100000,
+      refreshToken: 'refresh-token',
+      refreshTokenExpiresAt: Date.now() + 1000000,
+    }));
+
+    render(
+      <AuthProvider>
+        <ParsePage />
+      </AuthProvider>
+    );
+
+    const textarea = screen.getByRole('textbox');
+    fireEvent.change(textarea, { target: { value: 'Hemoglobin 13.5 g/dL (11-15)' } });
+
+    const parseBtn = screen.getByRole('button', { name: /review/i });
+    fireEvent.submit(parseBtn.closest('form') as HTMLFormElement);
+
+    await screen.findByText('Hemoglobin');
+
+    await waitFor(() => {
+      expect(screen.queryByText(/We ran into a hiccup/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Failed to fetch/i)).not.toBeInTheDocument();
+    });
+
+    expect(createReportSpy).toHaveBeenCalled();
+    createReportSpy.mockRestore();
+  });
 });

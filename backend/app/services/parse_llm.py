@@ -31,6 +31,30 @@ class LabResultRow(BaseModel):
     flag: Literal["H", "L"] | None = None
 
 
+LAB_ROWS_JSON_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "rows": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "test_name": {"type": "string"},
+                    "result": {"type": "string"},
+                    "unit": {"type": "string"},
+                    "reference_range": {"type": "string"},
+                    "flag": {"type": ["string", "null"]},
+                },
+                "required": ["test_name", "result", "unit", "reference_range", "flag"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["rows"],
+    "additionalProperties": False,
+}
+
+
 SYSTEM_PROMPT = (
     "You extract ONLY pathology/lab test result rows from report text. "
     "Return JSON only with no markdown and no commentary. "
@@ -87,6 +111,39 @@ def _strip_json_fences(text: str) -> str:
     return cleaned.strip()
 
 
+def _try_parse_json_payload(text: str) -> Any | None:
+    """Best-effort parse for model output that may wrap JSON in extra text.
+
+    We first try the full string. If that fails, attempt to parse the broadest
+    array/object slices found in the text.
+    """
+    candidates: list[str] = []
+    cleaned = (text or "").strip()
+    if cleaned:
+        candidates.append(cleaned)
+
+    arr_start = cleaned.find("[")
+    arr_end = cleaned.rfind("]")
+    if arr_start != -1 and arr_end != -1 and arr_end > arr_start:
+        candidates.append(cleaned[arr_start : arr_end + 1].strip())
+
+    obj_start = cleaned.find("{")
+    obj_end = cleaned.rfind("}")
+    if obj_start != -1 and obj_end != -1 and obj_end > obj_start:
+        candidates.append(cleaned[obj_start : obj_end + 1].strip())
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
 def _should_exclude_row(row: LabResultRow) -> bool:
     name = (row.test_name or "").strip()
     result = (row.result or "").strip()
@@ -114,13 +171,12 @@ def _should_exclude_row(row: LabResultRow) -> bool:
 
 def _load_rows_from_json(raw: str) -> list[LabResultRow]:
     cleaned = _strip_json_fences(raw)
-    try:
-        payload = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
+    payload = _try_parse_json_payload(cleaned)
+    if payload is None:
         raise ParseExtractionError(
             "Malformed JSON from extraction model. Please retry parsing this report.",
             status_code=502,
-        ) from exc
+        )
 
     if isinstance(payload, dict):
         rows_raw = payload.get("rows")
@@ -203,6 +259,15 @@ def _run_openai_extraction(text: str) -> str:
     response = client.responses.create(
         model=model,
         instructions=SYSTEM_PROMPT,
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": "lab_result_rows",
+                "description": "Extracted lab result rows from a pathology report.",
+                "schema": LAB_ROWS_JSON_SCHEMA,
+                "strict": True,
+            }
+        },
         input=[
             {
                 "role": "user",
@@ -216,6 +281,7 @@ def _run_openai_extraction(text: str) -> str:
             }
         ],
         max_output_tokens=_max_tokens(),
+        temperature=0,
     )
 
     out_text = getattr(response, "output_text", None)

@@ -146,6 +146,49 @@ describe('Report history and sharing preference flow', () => {
     expect(screen.getAllByRole('button', { name: /^sharing$/i }).length).toBeGreaterThan(0);
   });
 
+  it('includes a locally saved parsed report in My Reports', async () => {
+    addReportToHistory({
+      patientEmail: 'patient@example.com',
+      title: 'Report from Parse',
+      reportDate: Date.parse('2026-04-15T10:00:00Z'),
+      rows: [
+        {
+          test_name: 'Hemoglobin',
+          value: 13.5,
+          unit: 'g/dL',
+          reference_range: '11.0-15.0',
+          flag: 'normal',
+          confidence: 1,
+        },
+      ],
+      unparsed: [],
+      extractedText: 'Hemoglobin 13.5 g/dL 11.0-15.0',
+    });
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/v1/reports')) {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    render(
+      <AuthProvider>
+        <ReportsPage />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('1 report on file')).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByRole('button', { name: /^open$/i }).length).toBeGreaterThan(0);
+  });
+
   it('shows one timeline trend graph on history page with all uploaded report dates on x-axis', async () => {
     const d1 = '2026-01-05T00:00:00Z';
     const d2 = '2026-02-05T00:00:00Z';

@@ -63,6 +63,32 @@ function getSessionUserEmail(): string {
   return getStoredSession()?.user?.email || '';
 }
 
+function fingerprintReport(entry: Pick<ReportHistoryEntry, 'title' | 'rows'> & Partial<Pick<ReportHistoryEntry, 'reportDate'>>): string {
+  return JSON.stringify({
+    title: (entry.title || '').trim().toLowerCase(),
+    reportDate: toTimestamp(entry.reportDate) ?? null,
+    rows: (entry.rows || []).map((row) => ({
+      test_name: row.test_name,
+      value: row.value,
+      unit: row.unit ?? null,
+      reference_range: row.reference_range ?? null,
+      flag: row.flag ?? null,
+    })),
+  });
+}
+
+function mergeUniqueReports(primary: ReportHistoryEntry[], extras: ReportHistoryEntry[]): ReportHistoryEntry[] {
+  const seen = new Set(primary.map(fingerprintReport));
+  const merged = [...primary];
+  for (const item of extras) {
+    const key = fingerprintReport(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
+  }
+  return merged;
+}
+
 function toTimestamp(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -111,6 +137,7 @@ export async function fetchReportHistory(): Promise<ReportHistoryEntry[]> {
     throw new Error('User is not authenticated.');
   }
   const userEmail = getSessionUserEmail();
+  const localHistory = userEmail ? getReportHistoryForUser(userEmail) : [];
   try {
     const response = await fetch(`${BACKEND_URL}/api/v1/reports`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -120,7 +147,7 @@ export async function fetchReportHistory(): Promise<ReportHistoryEntry[]> {
       throw new Error(`Unexpected response when fetching report history: ${response.status} ${errorText}`);
     }
     const data = await response.json();
-    return data.map((report: any) => ({
+    const backendHistory = data.map((report: any) => ({
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',
@@ -138,8 +165,12 @@ export async function fetchReportHistory(): Promise<ReportHistoryEntry[]> {
       })),
       unparsed: [],
     }));
+    return mergeUniqueReports(backendHistory, localHistory);
   } catch (err: any) {
     console.error('fetchReportHistory failed', err);
+    if (localHistory.length > 0) {
+      return localHistory;
+    }
     throw new Error(err?.message || 'Failed to fetch report history');
   }
 }

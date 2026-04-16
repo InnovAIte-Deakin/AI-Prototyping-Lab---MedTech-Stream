@@ -162,7 +162,7 @@ export async function fetchReportHistory(): Promise<ReportHistoryEntry[]> {
       throw new Error(`Unexpected response when fetching report history: ${response.status} ${errorText}`);
     }
     const data = await response.json();
-    const backendHistory = data.map((report: any) => ({
+    const backendHistory: ReportHistoryEntry[] = (data as any[]).map((report: any): ReportHistoryEntry => ({
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',

@@ -972,22 +972,22 @@ button:hover {
 
 /* Print styles — FR13 Doctor-Ready PDF Summary */
 @media print {
-  /* Hide all page chrome */
-  body > *:not(#__next):not(#doctor-summary-print-target) {
-    display: none !important;
+  body * {
+    visibility: hidden;
   }
-
-  /* Hide everything inside Next.js root EXCEPT the print target wrapper */
-  #__next > *,
-  header, nav, footer,
-  .header, .footer, .no-print,
-  [class*="navbar"], [class*="sidebar"] {
-    display: none !important;
+  
+  #doctor-summary-print-target, 
+  #doctor-summary-print-target * {
+    visibility: visible;
   }
-
-  /* Reveal and reset the print target */
+  
   #doctor-summary-print-target {
-    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
   }
 
   /* The summary document itself */

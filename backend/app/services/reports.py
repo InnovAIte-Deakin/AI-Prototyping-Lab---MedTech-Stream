@@ -86,6 +86,7 @@ async def create_report_for_user(
     title: str | None,
     source_kind: ReportSourceKind,
     findings: list[ReportFindingCreateInput],
+    observed_at: datetime | None = None,
 ) -> Report:
     report = Report(
         subject_user_id=subject_user_id,
@@ -93,7 +94,7 @@ async def create_report_for_user(
         title=title,
         source_kind=source_kind,
         sharing_mode=ReportSharingMode.PRIVATE,
-        observed_at=datetime.now(UTC),
+        observed_at=observed_at or datetime.now(UTC),
     )
     session.add(report)
     await session.flush()

@@ -1,91 +1,90 @@
-import pytest
-import httpx
-from datetime import datetime, UTC
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import Report, ReportSourceKind, ReportSharingMode, User, ConversationThread, ThreadMessage, ThreadStatus, MessageKind
+"""Core thread endpoints — create, post messages, list, question prompts."""
 
-@pytest.fixture
-async def sample_report(db_session: AsyncSession, mock_user: User) -> Report:
-    report = Report(
-        subject_user_id=mock_user.id,
-        created_by_user_id=mock_user.id,
-        title="Test Labs",
-        source_kind=ReportSourceKind.MANUAL,
-        sharing_mode=ReportSharingMode.PRIVATE,
-        observed_at=datetime.now(UTC),
-    )
-    db_session.add(report)
-    await db_session.commit()
-    await db_session.refresh(report)
-    return report
+from __future__ import annotations
 
-@pytest.mark.asyncio
-async def test_create_and_list_threads(
-    async_client: httpx.AsyncClient, 
-    sample_report: Report,
-    auth_headers: dict[str, str]
-):
-    # 1. Create a thread
-    resp = await async_client.post(
-        f"/api/v1/reports/{sample_report.id}/threads",
+from tests.support.consent_api import (
+    ConsentApiHarness,
+    auth_headers,
+    consent_api,
+    login,
+    seed_report,
+    seed_user,
+)
+
+
+def test_create_and_list_threads(consent_api: ConsentApiHarness) -> None:
+    patient_email = "threads-core-patient@example.com"
+    with consent_api.session_factory() as session:
+        patient = seed_user(session, email=patient_email, role="patient")
+        report = seed_report(
+            session,
+            subject_email=patient.email,
+            created_by_email=patient.email,
+        )
+
+    token = login(consent_api, email=patient_email)
+    headers = auth_headers(token)
+
+    create_resp = consent_api.client.post(
+        f"/api/v1/reports/{report.id}/threads",
+        headers=headers,
         json={"initial_message": "What does my glucose mean?", "title": "Glucose question"},
-        headers=auth_headers
     )
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["title"] == "Glucose question"
-    assert len(data["messages"]) == 1
-    thread_id = data["id"]
-    
-    # 2. Add clinician template message
-    resp = await async_client.post(
+    assert create_resp.status_code == 201, create_resp.text
+    thread_id = create_resp.json()["id"]
+    assert create_resp.json()["title"] == "Glucose question"
+    assert len(create_resp.json()["messages"]) == 1
+
+    template_resp = consent_api.client.post(
         f"/api/v1/threads/{thread_id}/messages",
+        headers=headers,
         json={
             "template_payload": {
                 "meaning": "Your glucose is slightly high but ok.",
                 "urgency": "routine",
-                "action": "Monitor diet."
+                "action": "Monitor diet.",
             }
         },
-        headers=auth_headers
     )
-    assert resp.status_code == 201
-    msg_data = resp.json()
-    assert msg_data["kind"] == "template"
-    
-    # 3. Add text response
-    resp = await async_client.post(
+    assert template_resp.status_code == 201, template_resp.text
+    assert template_resp.json()["kind"] == "template"
+
+    text_resp = consent_api.client.post(
         f"/api/v1/threads/{thread_id}/messages",
+        headers=headers,
         json={"body": "Thank you doctor!"},
-        headers=auth_headers
     )
-    assert resp.status_code == 201
-    msg_data = resp.json()
-    assert msg_data["kind"] == "text"
-    assert msg_data["body"] == "Thank you doctor!"
-    
-    # 4. List threads
-    resp = await async_client.get(
-        f"/api/v1/reports/{sample_report.id}/threads",
-        headers=auth_headers
+    assert text_resp.status_code == 201, text_resp.text
+    assert text_resp.json()["kind"] == "text"
+    assert text_resp.json()["body"] == "Thank you doctor!"
+
+    listing = consent_api.client.get(
+        f"/api/v1/reports/{report.id}/threads",
+        headers=headers,
     )
-    assert resp.status_code == 200
-    threads = resp.json()
+    assert listing.status_code == 200, listing.text
+    threads = listing.json()
     assert len(threads) == 1
     assert len(threads[0]["messages"]) == 3
 
-@pytest.mark.asyncio
-async def test_get_question_prompts(
-    async_client: httpx.AsyncClient, 
-    sample_report: Report,
-    auth_headers: dict[str, str]
-):
-    resp = await async_client.get(
-        f"/api/v1/reports/{sample_report.id}/question-prompts",
-        headers=auth_headers
+
+def test_get_question_prompts(consent_api: ConsentApiHarness) -> None:
+    patient_email = "prompts-patient@example.com"
+    with consent_api.session_factory() as session:
+        patient = seed_user(session, email=patient_email, role="patient")
+        report = seed_report(
+            session,
+            subject_email=patient.email,
+            created_by_email=patient.email,
+        )
+
+    token = login(consent_api, email=patient_email)
+    resp = consent_api.client.get(
+        f"/api/v1/reports/{report.id}/question-prompts",
+        headers=auth_headers(token),
     )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "prompts" in data
-    assert isinstance(data["prompts"], list)
-    assert len(data["prompts"]) >= 2
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "prompts" in body
+    assert isinstance(body["prompts"], list)
+    assert len(body["prompts"]) >= 2

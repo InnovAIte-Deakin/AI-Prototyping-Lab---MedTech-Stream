@@ -25,10 +25,30 @@ const defaultSharingPreferences: SharingPreferences = {
 };
 
 const SHARE_BADGE: Record<ShareLifecycleState, { label: string; color: string; background: string; border: string }> = {
-  active: { label: 'Active', color: '#047857', background: '#ecfdf5', border: '#a7f3d0' },
-  expired: { label: 'Expired', color: '#9a3412', background: '#fff7ed', border: '#fed7aa' },
-  revoked: { label: 'Revoked', color: '#b91c1c', background: '#fef2f2', border: '#fecaca' },
-  inactive: { label: 'Not shared', color: '#374151', background: '#f9fafb', border: '#e5e7eb' },
+  active: {
+    label: 'Active',
+    color: 'oklch(from var(--ok) calc(l - 0.15) c h)',
+    background: 'var(--ok-100)',
+    border: 'oklch(from var(--ok) l c h / 0.3)',
+  },
+  expired: {
+    label: 'Expired',
+    color: 'oklch(from var(--warn) calc(l - 0.25) c h)',
+    background: 'var(--warn-100)',
+    border: 'oklch(from var(--warn) l c h / 0.3)',
+  },
+  revoked: {
+    label: 'Revoked',
+    color: 'oklch(from var(--alert) calc(l - 0.15) c h)',
+    background: 'var(--alert-100)',
+    border: 'oklch(from var(--alert) l c h / 0.3)',
+  },
+  inactive: {
+    label: 'Not shared',
+    color: 'var(--ink-mute)',
+    background: 'var(--surface-inset)',
+    border: 'var(--border)',
+  },
 };
 
 const LANGUAGE_OPTIONS = [

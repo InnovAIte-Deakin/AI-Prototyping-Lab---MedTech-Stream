@@ -98,7 +98,7 @@ describe('AuditLogTimeline', () => {
 
     render(<AuditLogTimeline reportId="report-1" />);
     await waitFor(() => {
-      expect(screen.getByText(/no sharing activity/i)).toBeInTheDocument();
+      expect(screen.getByText(/no one has touched this report/i)).toBeInTheDocument();
     });
   });
 });

@@ -85,6 +85,7 @@ async def create_report_for_user(
     created_by_user_id: str,
     title: str | None,
     source_kind: ReportSourceKind,
+    observed_at: datetime,
     findings: list[ReportFindingCreateInput],
 ) -> Report:
     report = Report(
@@ -93,7 +94,7 @@ async def create_report_for_user(
         title=title,
         source_kind=source_kind,
         sharing_mode=ReportSharingMode.PRIVATE,
-        observed_at=datetime.now(UTC),
+        observed_at=observed_at,
     )
     session.add(report)
     await session.flush()
@@ -525,5 +526,4 @@ async def cleanup_expired_shares(session: AsyncSession) -> int:
     
     await session.commit()
     return cleaned_count
-
 

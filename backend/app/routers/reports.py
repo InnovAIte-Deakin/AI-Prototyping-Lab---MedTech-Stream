@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
+    ConsentShare,
     ConsentAccessLevel,
     ConsentScope,
     Report,
@@ -96,6 +98,8 @@ class TrendPointOut(BaseModel):
     value: float
     unit: str | None
     flag: str
+    reference_low: float | None
+    reference_high: float | None
 
 
 class BiomarkerTrendOut(BaseModel):
@@ -111,6 +115,8 @@ class ReportTrendsResponse(BaseModel):
     report_id: str
     subject_user_id: str
     trends: list[BiomarkerTrendOut]
+
+
 def _raise_report_http_error(exc: ReportServiceError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
@@ -352,6 +358,8 @@ def _trend_out(trend: BiomarkerTrend) -> BiomarkerTrendOut:
                 value=point.value,
                 unit=point.unit,
                 flag=point.flag.value,
+                reference_low=point.reference_low,
+                reference_high=point.reference_high,
             )
             for point in trend.points
         ],

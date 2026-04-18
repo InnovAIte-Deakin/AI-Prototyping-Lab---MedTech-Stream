@@ -970,19 +970,52 @@ button:hover {
   border-radius: 8px;
 }
 
-/* Print styles */
+/* Print styles — FR13 Doctor-Ready PDF Summary */
 @media print {
-  body {
-    background: #fff;
-    color: #000;
-  }
-  .no-print {
+  /* Hide all page chrome */
+  body > *:not(#__next):not(#doctor-summary-print-target) {
     display: none !important;
   }
-  .doctor-summary {
-    border: none;
-    box-shadow: none;
+
+  /* Hide everything inside Next.js root EXCEPT the print target wrapper */
+  #__next > *,
+  header, nav, footer,
+  .header, .footer, .no-print,
+  [class*="navbar"], [class*="sidebar"] {
+    display: none !important;
   }
+
+  /* Reveal and reset the print target */
+  #doctor-summary-print-target {
+    display: block !important;
+  }
+
+  /* The summary document itself */
+  .doctor-summary-print {
+    display: block !important;
+    font-family: 'Inter', Arial, sans-serif;
+    font-size: 11pt;
+    color: #000;
+    background: #fff;
+    padding: 1.5cm 2cm;
+    margin: 0;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Force page break to have all content visible */
+  @page {
+    size: A4 portrait;
+    margin: 1.5cm 2cm;
+  }
+
+  /* Tables should not break mid-row */
+  table { page-break-inside: auto; }
+  tr { page-break-inside: avoid; }
+
+  /* Remove link underlines artifacts in print */
+  a { text-decoration: none; color: inherit; }
 }
 
 @keyframes spin {

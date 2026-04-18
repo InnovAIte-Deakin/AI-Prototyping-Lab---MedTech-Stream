@@ -1,14 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { fetchReportById, updateReportInHistory } from '@/lib/reportHistory';
 import type { ReportHistoryEntry, SharingPreferences } from '@/lib/reportHistory';
+import { PatientQuestions } from '@/components/PatientQuestions';
+import { ThreadView, ConversationThread } from '@/components/ThreadView';
+import { DoctorSummaryDocument, type SummaryFinding, type SummaryThread } from '@/components/DoctorSummaryDocument';
 import Disclaimer from '@/components/Disclaimer';
 import { BiomarkerTrendChart } from '@/components/BiomarkerTrendChart';
 import { fetchReportTrends, type BiomarkerTrend } from '@/lib/reportTrends';
-
 function formatDate(ts: number) {
   return new Date(ts).toLocaleString();
 }
@@ -34,6 +36,11 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   const [report, setReport] = useState<ReportHistoryEntry | undefined>(undefined);
   const [sharingPreferences, setSharingPreferences] = useState<SharingPreferences>(defaultSharingPreferences);
   const [statusMessage, setStatusMessage] = useState('');
+  // FR13 state
+  const [includeSummaryPDF, setIncludeSummaryPDF] = useState(false);
+  const [threads, setThreads] = useState<ConversationThread[]>([]);
+
+  // Trend states
   const [trends, setTrends] = useState<BiomarkerTrend[]>([]);
   const [trendsLoading, setTrendsLoading] = useState(false);
   const [trendsError, setTrendsError] = useState<string | null>(null);
@@ -320,10 +327,73 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     );
   }
 
+  // --- FR13: build data for DoctorSummaryDocument ---
+  const accessToken = (() => {
+    if (typeof window === 'undefined') return '';
+    const stored = localStorage.getItem('reportx_session');
+    if (!stored) return '';
+    try { return JSON.parse(stored)?.accessToken || ''; } catch { return ''; }
+  })();
+
+  const allFindingsForPDF: SummaryFinding[] = report.rows.map((r) => ({
+    test_name: r.test_name,
+    value: String(r.value ?? ''),
+    unit: r.unit || undefined,
+    flag: r.flag || 'unknown',
+    reference_range: r.reference_range || undefined,
+  }));
+
+  const flaggedFindings = allFindingsForPDF.filter(
+    (f) => ['high', 'low', 'abnormal'].includes(f.flag.toLowerCase())
+  );
+
+  const threadSummaries: SummaryThread[] = threads.map((t) => ({
+    title: t.title,
+    patientQuestions: t.messages
+      .filter((m) => m.kind === 'text')
+      .map((m) => m.body)
+      .slice(0, 5),
+  }));
+
+  const handleExportPDF = () => {
+    window.print();
+  };
+
+  const handleShareWithPDF = async () => {
+    await updateShare();
+    if (includeSummaryPDF) {
+      setTimeout(() => window.print(), 400);
+    }
+  };
+
   return (
     <ProtectedView>
+      {/* FR13 — hidden print-only wrapper, revealed only via @media print */}
+      <div id="doctor-summary-print-target" style={{ display: 'none' }}>
+        <DoctorSummaryDocument
+          reportTitle={report.title || 'Lab Results Summary'}
+          reportDate={formatDate(report.createdAt)}
+          patientName={user?.displayName || user?.email || 'Patient'}
+          flaggedFindings={flaggedFindings}
+          allFindings={allFindingsForPDF}
+          interpretationSummary={interpretation?.summary}
+          trendNotes={undefined}
+          threads={threadSummaries}
+        />
+      </div>
+
       <section className="stack">
-        <h1>{report.title || 'Report Detail'}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+          <h1 style={{ margin: 0 }}>{report.title || 'Report Detail'}</h1>
+          <button
+            id="export-doctor-summary-btn"
+            className="nav-btn nav-btn-primary"
+            onClick={handleExportPDF}
+            title="Export a doctor-ready one-page PDF summary — generated locally, never stored on server"
+          >
+            📄 Export Doctor Summary
+          </button>
+        </div>
         <p>Saved: {formatDate(report.createdAt)}</p>
         <p>Rows: {report.rows.length}</p>
         <p>Interpretation: {interpretation ? 'Available' : 'Not completed yet'}</p>
@@ -345,6 +415,18 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
             <p>{interpretation.summary}</p>
           </div>
         )}
+
+        <PatientQuestions
+          reportId={report.id}
+          accessToken={accessToken}
+          onThreadCreated={() => {}}
+        />
+
+        <ThreadView
+          reportId={report.id}
+          accessToken={accessToken}
+          onThreadsLoaded={setThreads}
+        />
 
         <div className="card">
           <h2>Biomarker Trends</h2>
@@ -440,7 +522,21 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
               onChange={(e) => setSharingPreferences({ ...sharingPreferences, expiresAt: new Date(e.target.value).getTime() })}
             />
           </div>
-          <button className="nav-btn nav-btn-primary" onClick={updateShare}>{sharingPreferences.active ? 'Update Share' : 'Start Sharing'}</button>
+          {/* FR13 — include doctor-ready summary PDF when sharing */}
+          <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#f0fdf4', padding: '0.75rem', borderRadius: '8px', border: '1px solid #bbf7d0', marginBottom: '0.5rem' }}>
+            <input
+              id="include-summary-pdf"
+              type="checkbox"
+              checked={includeSummaryPDF}
+              onChange={(e) => setIncludeSummaryPDF(e.target.checked)}
+              style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
+            />
+            <label htmlFor="include-summary-pdf" style={{ cursor: 'pointer', fontSize: '0.9rem', color: '#15803d', fontWeight: 500 }}>
+              📄 Also download Doctor-Ready Summary PDF
+              <span style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', fontWeight: 400 }}>Generated locally in your browser — never stored on server</span>
+            </label>
+          </div>
+          <button id="share-report-btn" className="nav-btn nav-btn-primary" onClick={handleShareWithPDF}>{sharingPreferences.active ? 'Update Share' : 'Start Sharing'}</button>
           {sharingPreferences.active && <button className="nav-btn nav-btn-danger" onClick={revokeShare} style={{ marginLeft: '0.5rem' }}>Revoke</button>}
           {statusMessage && <p>{statusMessage}</p>}
         </div>

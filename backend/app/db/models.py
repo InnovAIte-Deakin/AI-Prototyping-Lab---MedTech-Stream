@@ -306,6 +306,9 @@ class ReportFinding(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     report: Mapped[Report] = relationship(back_populates="findings")
+    anchored_threads: Mapped[list[ConversationThread]] = relationship(
+        back_populates="anchor_finding",
+    )
     biomarker_observation: Mapped[BiomarkerObservation] = relationship(
         back_populates="finding",
         cascade="all, delete-orphan",
@@ -390,6 +393,10 @@ class ConversationThread(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     subject_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     report_id: Mapped[str | None] = mapped_column(ForeignKey("reports.id", ondelete="SET NULL"), nullable=True)
+    anchor_finding_id: Mapped[str | None] = mapped_column(
+        ForeignKey("report_findings.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[ThreadStatus] = mapped_column(
         enum_column(ThreadStatus, name="thread_status"),
@@ -407,6 +414,7 @@ class ConversationThread(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         foreign_keys=[created_by_user_id],
     )
     report: Mapped[Report | None] = relationship(back_populates="threads")
+    anchor_finding: Mapped[ReportFinding | None] = relationship(back_populates="anchored_threads")
     participants: Mapped[list[ThreadParticipant]] = relationship(
         back_populates="thread",
         cascade="all, delete-orphan",

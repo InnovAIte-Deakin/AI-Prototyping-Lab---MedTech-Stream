@@ -11,19 +11,17 @@
 }
 
 .parse-header h1 {
-  font-size: 2.5rem;
+  font-family: var(--font-display);
+  font-size: var(--text-display-md);
   font-weight: 800;
-  color: var(--ink);
-  margin: 0 0 0.5rem 0;
-  background: linear-gradient(135deg, var(--brand), var(--accent));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--on-surface);
+  margin: 0 0 var(--space-2) 0;
+  line-height: 1.1;
 }
 
 .parse-subtitle {
-  font-size: 1.125rem;
-  color: var(--muted-ink);
+  font-size: var(--text-body-lg);
+  color: var(--on-surface-muted);
   margin: 0;
   max-width: 600px;
   margin-left: auto;
@@ -35,11 +33,10 @@
 }
 
 .upload-form {
-  background: var(--ui-elev);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 2rem;
-  box-shadow: var(--shadow-md);
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-xl);
+  padding: var(--space-8);
+  box-shadow: var(--shadow-lg);
 }
 
 .input-methods {
@@ -63,14 +60,13 @@
 .method-icon {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, var(--brand), var(--accent));
-  border-radius: 12px;
+  background: var(--primary-fixed);
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--primary);
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(8, 152, 160, 0.2);
 }
 
 .method-header h3 {
@@ -117,19 +113,19 @@
 /* File Upload Zone */
 .file-upload-zone {
   position: relative;
-  border: 2px dashed var(--border);
-  border-radius: 16px;
-  background: var(--ui-muted);
-  transition: all 0.3s ease;
+  border: 2px dashed var(--outline-variant);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-low);
+  transition: all var(--transition-base);
   overflow: hidden;
 }
 
 .file-upload-zone:hover,
 .file-upload-zone.drag-over {
-  border-color: var(--brand);
-  background: var(--brand-100);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(8, 152, 160, 0.15);
+  border-color: var(--primary);
+  background: var(--primary-fixed);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 .file-input {

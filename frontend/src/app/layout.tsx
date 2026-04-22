@@ -17,8 +17,19 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <AuthProvider>
           <Header />
           <main id="main" className="container">{children}</main>
-          <footer className="container footer">
-            <div>© {new Date().getFullYear()} ReportX — Educational only, not medical advice.</div>
+          <footer className="footer">
+            <div className="footer-inner">
+              <div>
+                <strong>ReportX</strong>
+                <br />
+                <span>&copy; {new Date().getFullYear()} ReportX Clinical Excellence</span>
+              </div>
+              <div className="footer-links">
+                <a href="/privacy">Privacy</a>
+                <a href="/terms">Terms</a>
+                <a href="/contact">Contact</a>
+              </div>
+            </div>
           </footer>
         </AuthProvider>
       </body>

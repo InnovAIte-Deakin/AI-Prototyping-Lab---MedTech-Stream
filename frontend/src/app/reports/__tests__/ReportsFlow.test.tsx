@@ -13,9 +13,9 @@ describe('Report history and sharing preference flow', () => {
     localStorage.setItem('reportx_session', JSON.stringify({
       user: { id: '1', email: 'patient@example.com', role: 'patient', displayName: 'Patient' },
       accessToken: 'access-token',
-      accessTokenExpiresAt: Date.now() + 100000,
+      accessTokenExpiresAt: Date.now() + 3600000,
       refreshToken: 'refresh-token',
-      refreshTokenExpiresAt: Date.now() + 1000000,
+      refreshTokenExpiresAt: Date.now() + 7200000,
     }));
 
     global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -80,6 +80,15 @@ describe('Report history and sharing preference flow', () => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
+      if (url.includes('/api/v1/reports/') && url.endsWith('/threads')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/api/v1/reports/') && url.endsWith('/question-prompts')) {
+        return new Response(JSON.stringify({ prompts: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/api/v1/reports/') && url.endsWith('/audit')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (url.includes('/api/v1/reports/') && !url.includes('/share')) {
         // report detail endpoint
         const reportId = url.split('/').pop();
@@ -142,8 +151,9 @@ describe('Report history and sharing preference flow', () => {
     });
 
     expect(screen.queryByText('Report B')).toBeNull();
-    expect(screen.getAllByRole('button', { name: /^open$/i }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: /^sharing$/i }).length).toBeGreaterThan(0);
+    // Desktop table uses icon buttons with aria-labels; mobile list uses text buttons
+    expect(screen.getAllByLabelText(/open report|^open$/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText(/share report|^sharing$/i).length).toBeGreaterThan(0);
   });
 
   it('shows one timeline trend graph on history page with all uploaded report dates on x-axis', async () => {
@@ -394,6 +404,26 @@ describe('Report history and sharing preference flow', () => {
         return new Response('Forbidden', { status: 403 });
       }
 
+      if (url.includes('/api/v1/reports/') && url.endsWith('/threads')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/question-prompts')) {
+        return new Response(JSON.stringify({ prompts: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/audit')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/share')) {
+        return new Response(JSON.stringify({ id: 'share-1' }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/share/revoke')) {
+        return new Response(null, { status: 204 });
+      }
+
       if (url.includes('/api/v1/reports/') && !url.includes('/share')) {
         const reportId = url.split('/').pop();
         return new Response(JSON.stringify({
@@ -408,14 +438,6 @@ describe('Report history and sharing preference flow', () => {
             findings: [],
           },
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-
-      if (url.includes('/api/v1/reports/') && url.endsWith('/share')) {
-        return new Response(JSON.stringify({ id: 'share-1' }), { status: 201, headers: { 'Content-Type': 'application/json' } });
-      }
-
-      if (url.includes('/api/v1/reports/') && url.endsWith('/share/revoke')) {
-        return new Response(null, { status: 204 });
       }
 
       return new Response(null, { status: 404 });

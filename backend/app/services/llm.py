@@ -16,7 +16,7 @@ class ParsedRowIn(BaseModel):
     value: float | str
     unit: str | None = None
     reference_range: str | None = None
-    flag: str | None = Field(default=None, pattern=r"^(low|high|normal|abnormal)$")
+    flag: str | None = Field(default=None, pattern=r"^(low|high|normal|abnormal|unknown)$")
     confidence: float
 
 

@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { fetchReportById, updateReportInHistory } from '@/lib/reportHistory';
-import type { ReportHistoryEntry, SharingPreferences } from '@/lib/reportHistory';
+import type { ReportHistoryEntry, SharingPreferences, Interpretation } from '@/lib/reportHistory';
 import { PatientQuestions } from '@/components/PatientQuestions';
 import { ThreadView, ConversationThread } from '@/components/ThreadView';
 import { DoctorSummaryDocument, type SummaryFinding, type SummaryThread } from '@/components/DoctorSummaryDocument';
@@ -39,6 +39,8 @@ const LANGUAGE_OPTIONS = [
   { value: 'fr', label: 'Français' },
 ];
 
+type ChatMessage = { role: 'user' | 'ai'; text: string };
+
 export default function ReportDetailPage({ params }: { params: { reportId: string } }) {
   const { user } = useAuth();
   const [report, setReport] = useState<ReportHistoryEntry | undefined>(undefined);
@@ -60,6 +62,16 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   const [prefetchedTrendLanguages, setPrefetchedTrendLanguages] = useState<Record<string, Record<string, boolean>>>({});
   const [biomarkerFilterText, setBiomarkerFilterText] = useState('');
   const [selectedBiomarkerKey, setSelectedBiomarkerKey] = useState('');
+
+  // Interpretation panel state
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [isInterpreting, setIsInterpreting] = useState(false);
+  const [interpretError, setInterpretError] = useState<string | null>(null);
+  const [localInterpretation, setLocalInterpretation] = useState<Interpretation | undefined>(undefined);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function loadReport() {
@@ -88,6 +100,9 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   useEffect(() => {
     if (!report) return;
     setSharingPreferences(report.sharingPreferences ?? defaultSharingPreferences);
+    if (report.interpretation) {
+      setLocalInterpretation(report.interpretation);
+    }
   }, [report]);
 
   useEffect(() => {
@@ -100,6 +115,11 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     setBiomarkerFilterText('');
     setSelectedBiomarkerKey('');
   }, [report?.id]);
+
+  // Scroll chat to bottom on new messages
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -208,6 +228,84 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     void translateTrendNotesIfNeeded(trendLanguage);
   }, [trendLanguage, translateTrendNotesIfNeeded]);
 
+  // ── Interpretation trigger ──
+  async function triggerInterpretation() {
+    setIsPanelOpen(true);
+    const alreadyHave = localInterpretation || report?.interpretation;
+    if (alreadyHave || isInterpreting || !report) return;
+
+    setIsInterpreting(true);
+    setInterpretError(null);
+    try {
+      const response = await fetch(`${backend}/api/v1/interpret`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rows: report.rows.map((row) => ({
+            test_name: row.test_name,
+            value: row.value,
+            unit: row.unit ?? null,
+            reference_range: row.reference_range ?? null,
+            // 'unknown' is a valid DB enum value but not a clinically meaningful
+            // flag for interpretation — normalise to null so the backend accepts it.
+            flag: (row.flag && row.flag !== 'unknown') ? row.flag : null,
+            confidence: row.confidence,
+          })),
+        }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to generate interpretation.');
+      }
+      const data = await response.json();
+      const interp = data.interpretation as Interpretation;
+      setLocalInterpretation(interp);
+      updateReportInHistory(report.id, { interpretation: interp });
+      setReport((prev) => (prev ? { ...prev, interpretation: interp } : prev));
+    } catch (err: any) {
+      setInterpretError(err?.message || 'Unable to generate interpretation. Please try again.');
+    } finally {
+      setIsInterpreting(false);
+    }
+  }
+
+  // ── Chat send ──
+  async function sendChatMessage() {
+    const text = chatInput.trim();
+    if (!text || isSendingChat) return;
+    setChatInput('');
+    setChatMessages((prev) => [...prev, { role: 'user', text }]);
+    setIsSendingChat(true);
+    try {
+      const activeInterp = localInterpretation || report?.interpretation;
+      const response = await fetch(`${backend}/api/v1/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: text,
+          interpretation_context: activeInterp?.summary || '',
+          rows: (report?.rows || []).map((row) => ({
+            test_name: row.test_name,
+            value: row.value,
+            unit: row.unit ?? null,
+            reference_range: row.reference_range ?? null,
+            flag: (row.flag && row.flag !== 'unknown') ? row.flag : null,
+            confidence: row.confidence,
+          })),
+        }),
+      });
+      if (!response.ok) throw new Error('Chat request failed.');
+      const data = await response.json();
+      setChatMessages((prev) => [...prev, { role: 'ai', text: data.answer || 'No response received.' }]);
+    } catch {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'ai', text: 'Sorry, I could not answer that right now. Please try again or consult your clinician.' },
+      ]);
+    } finally {
+      setIsSendingChat(false);
+    }
+  }
+
   async function updateShare() {
     if (!report) return;
     if (!sharingPreferences.clinicianEmail) {
@@ -293,7 +391,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     }
   }
 
-  const interpretation = report?.interpretation;
+  const activeInterp = localInterpretation || report?.interpretation;
   const trendItems = trends.filter((item) => item.sparkline.length > 1);
   const normalizedFilter = biomarkerFilterText.trim().toLowerCase();
   const filteredTrendItems = trendItems.filter((item) => {
@@ -428,9 +526,14 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
               <span className="meta-chip-label">Results</span>
               {report.rows.length} {report.rows.length === 1 ? 'test' : 'tests'}
             </span>
-            <span className={`meta-chip${interpretation ? ' chip-success' : ''}`}>
-              {interpretation ? '✓ Interpreted' : 'Awaiting interpretation'}
-            </span>
+            <button
+              type="button"
+              className={`meta-chip meta-chip-btn${activeInterp ? ' chip-success' : ''}`}
+              onClick={() => void triggerInterpretation()}
+              title={activeInterp ? 'View AI interpretation panel' : 'Generate AI interpretation'}
+            >
+              {activeInterp ? '✓ Interpreted — View' : '⚡ Generate Interpretation'}
+            </button>
           </div>
         </div>
 
@@ -485,8 +588,8 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
           </div>
         </div>
 
-        {/* ── Interpretation card ── */}
-        {interpretation && (
+        {/* ── Interpretation card (shown inline if already interpreted) ── */}
+        {activeInterp && (
           <div className="report-section-card">
             <div className="card-section-header">
               <div className="card-section-header-inner">
@@ -504,9 +607,17 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
                   <p className="card-section-subtitle">A plain-language summary to help you prepare for your next clinical conversation</p>
                 </div>
               </div>
+              <button
+                type="button"
+                className="nav-btn nav-btn-outline"
+                style={{ fontSize: '0.8rem', padding: '0.4rem 0.875rem' }}
+                onClick={() => void triggerInterpretation()}
+              >
+                Open AI chat
+              </button>
             </div>
             <div className="card-section-body">
-              <p className="interpretation-body">{interpretation.summary}</p>
+              <p className="interpretation-body">{activeInterp.summary}</p>
             </div>
           </div>
         )}
@@ -605,6 +716,147 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
         <Disclaimer />
 
       </div>
+
+      {/* ── Interpretation Sidebar Panel ── */}
+      {isPanelOpen && (
+        <aside className="interp-sidebar" role="complementary" aria-label="AI Interpretation Panel">
+
+          {/* Header */}
+          <div className="interp-sidebar-header">
+            <div className="card-section-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+            </div>
+            <div className="interp-sidebar-text">
+              <p className="interp-sidebar-title">AI Interpretation</p>
+              <p className="interp-sidebar-subtitle">Plain-language explanation · Ask follow-up questions below</p>
+            </div>
+            <button
+              type="button"
+              className="interp-close-btn"
+              onClick={() => setIsPanelOpen(false)}
+              aria-label="Close interpretation panel"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Scrollable body */}
+          <div className="interp-sidebar-body">
+            {isInterpreting && (
+              <div className="interp-loading">
+                <div className="interp-spinner" />
+                <p>Generating your interpretation…</p>
+              </div>
+            )}
+
+            {interpretError && !isInterpreting && (
+              <p className="interp-error">{interpretError}</p>
+            )}
+
+            {activeInterp && !isInterpreting && (
+              <>
+                <div className="interp-section">
+                  <p className="interp-section-label">Summary</p>
+                  <p className="interp-text">{activeInterp.summary}</p>
+                </div>
+
+                {activeInterp.flags && activeInterp.flags.length > 0 && (
+                  <div className="interp-section">
+                    <p className="interp-section-label">Flagged Results</p>
+                    <ul className="interp-flags-list">
+                      {activeInterp.flags.map((flag, i) => (
+                        <li key={i} className="interp-flag-item">
+                          <span className={`rd-flag flag-${flag.severity}`}>{flag.severity}</span>
+                          <span><strong>{flag.test_name}</strong> — {flag.note}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {activeInterp.next_steps && activeInterp.next_steps.length > 0 && (
+                  <div className="interp-section">
+                    <p className="interp-section-label">Next Steps</p>
+                    <ol className="interp-steps-list">
+                      {activeInterp.next_steps.map((step, i) => (
+                        <li key={i}>{step}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {activeInterp.disclaimer && (
+                  <p className="interp-disclaimer">{activeInterp.disclaimer}</p>
+                )}
+              </>
+            )}
+
+            {!activeInterp && !isInterpreting && !interpretError && (
+              <div className="interp-loading">
+                <p style={{ textAlign: 'center', color: 'var(--muted-ink)', fontSize: '0.875rem' }}>
+                  Click the button above to generate your AI interpretation.
+                </p>
+              </div>
+            )}
+
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Chat section */}
+          <div className="interp-chat">
+            <div className="interp-chat-header">Ask a follow-up question</div>
+
+            <div className="interp-chat-messages">
+              {chatMessages.length === 0 && (
+                <p className="interp-chat-empty">
+                  Ask anything about your results or this explanation.
+                </p>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`chat-bubble chat-bubble-${msg.role}`}>
+                  <p>{msg.text}</p>
+                </div>
+              ))}
+              {isSendingChat && (
+                <div className="chat-bubble chat-bubble-ai chat-bubble-loading">
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                </div>
+              )}
+            </div>
+
+            <div className="interp-chat-compose">
+              <textarea
+                className="interp-chat-input"
+                placeholder="Ask about your results…"
+                value={chatInput}
+                rows={2}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    void sendChatMessage();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="interp-send-btn"
+                onClick={() => void sendChatMessage()}
+                disabled={!chatInput.trim() || isSendingChat}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+
+        </aside>
+      )}
     </ProtectedView>
   );
 }

@@ -332,7 +332,7 @@ export function isParsedRow(row: any): row is ParsedRow {
     (typeof row.value === 'string' || typeof row.value === 'number') &&
     (typeof row.unit === 'string' || row.unit === null || row.unit === undefined) &&
     (typeof row.reference_range === 'string' || row.reference_range === null || row.reference_range === undefined) &&
-    (row.flag === 'low' || row.flag === 'high' || row.flag === 'normal' || row.flag === 'abnormal' || row.flag === null || row.flag === undefined) &&
+    (row.flag === 'low' || row.flag === 'high' || row.flag === 'normal' || row.flag === 'abnormal' || row.flag === 'unknown' || row.flag === null || row.flag === undefined) &&
     typeof row.confidence === 'number'
   );
 }

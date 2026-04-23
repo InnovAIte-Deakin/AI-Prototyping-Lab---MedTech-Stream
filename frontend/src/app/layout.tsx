@@ -2,6 +2,7 @@ import './globals.css';
 import '../../styles/header.css';
 import '../../styles/parse.css';
 import '../../styles/report-detail.css';
+import '../../styles/auth.css';
 import type { ReactNode } from 'react';
 import Header from '@/components/Header';
 import { AuthProvider } from '@/store/authStore';

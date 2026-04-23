@@ -1,0 +1,390 @@
+Sprint 2 team task sheet for AI-agent execution
+Date: 2026-04-23
+Branch: sprint-2-sheet
+Product: ReportX MedTech Stream
+
+How this sheet is designed
+These tasks are intentionally synchronized. They share API contracts, state conventions, audit requirements, and test expectations so each team member can pick one task and execute it with minimal overlap conflicts.
+Each task has:
+1) Task objective
+2) Current product context
+3) Implementation prompt to give directly to an AI coding agent
+4) Success criteria (functional)
+5) Success criteria (tests and quality checks)
+6) Integration notes with other tasks
+
+Cross-task alignment rules for all agents
+Use these standards in every task:
+- Keep compatibility with existing Next.js frontend and FastAPI backend architecture.
+- Reuse existing auth/session patterns in frontend/src/store/authStore.tsx and backend auth dependencies.
+- Reuse existing Notification model and /api/v1/notifications endpoints whenever possible.
+- Use role-safe behavior: patient, caregiver, clinician.
+- Add or update API tests under backend/tests and frontend tests under frontend/src/**/__tests__.
+- Do not break existing report-sharing, threads, trends, and audit log flows.
+- Every new endpoint must enforce authentication and authorization.
+- Every user-visible async action must have loading, success, and clear error states.
+
+Task 1: Forgot Password and Reset Password end-to-end
+Task objective
+Implement secure forgot-password and reset-password flows so users can recover account access.
+
+Current product context
+- Auth currently supports register, login, refresh, logout, me.
+- No password reset token lifecycle exists yet.
+- There is a relational data model and migrations already in place.
+
+Prompt to give AI agent
+You are implementing production-grade password recovery for ReportX.
+Scope:
+1) Backend:
+   - Add password reset request endpoint and confirm reset endpoint under /api/v1/auth.
+   - Implement reset token generation, storage, expiry, one-time use, and invalidation on success.
+   - Prevent user enumeration: request endpoint should return generic success for both existing and non-existing emails.
+   - Add rate-limiting guard logic at minimum via token issuance cooldown per account.
+   - Record audit metadata for reset request and reset completion events.
+2) Data model and migration:
+   - Add the minimal table/fields needed for reset tokens with issued_at, expires_at, consumed_at, and requester metadata.
+3) Frontend:
+   - Add forgot-password page and reset-password page under auth routes.
+   - Implement forms with validation and robust user feedback.
+   - Support token from URL query param and invalid/expired token handling UX.
+4) Tests:
+   - Backend tests for request behavior, reset success, expired token, replay token, invalid token, and enumeration-safe response.
+   - Frontend tests for form validation and success/error rendering.
+Constraints:
+- Keep existing auth flows unchanged for login/register/refresh.
+- Use existing password hashing/auth service patterns.
+
+Success criteria (functional)
+- User can submit email to request reset and receives non-enumerating confirmation response.
+- User can set a new password using a valid token exactly once.
+- Expired or consumed tokens are rejected with clear client-safe error.
+- Old password no longer works; new password works immediately.
+
+Success criteria (tests and checks)
+- New backend tests pass for all reset lifecycle scenarios.
+- Existing auth tests continue passing.
+- Frontend tests cover forgot and reset pages including invalid token state.
+
+Integration notes
+- Task 3 notifications should later hook into reset success/security events if desired.
+
+Task 2: Clinician shared report workspace and detail view hardening
+Task objective
+Improve the clinician experience for viewing shared reports so access is clear, scoped, and reliable.
+
+Current product context
+- Backend includes /api/v1/reports/shared-reports endpoint for clinicians.
+- Report detail and trends endpoints already enforce access via sharing model.
+- Frontend has report pages and thread components but clinician-specific shared-report UX can be improved.
+
+Prompt to give AI agent
+You are implementing a clinician-focused shared report workspace in ReportX.
+Scope:
+1) Frontend:
+   - Add a dedicated clinician page showing shared reports list with patient name, report date, scope, access level, expires_at, and status badge.
+   - Add filters: active, expired, revoked (if available), and search by patient/report title.
+   - Add direct navigation into report detail with clear banner that data is shared access.
+2) Backend:
+   - Ensure shared-reports endpoint returns all fields needed for clinician UX (including clear expiry/access metadata).
+   - If needed, add sorting/pagination parameters with safe defaults.
+3) Authorization UX:
+   - If clinician lacks required scope for trends or full details, render graceful restricted-view messaging.
+4) Tests:
+   - Backend tests for clinician-only enforcement and response shape.
+   - Frontend tests for loading list, filtering, empty state, restricted state.
+Constraints:
+- Do not expose reports unrelated to the authenticated clinician.
+- Preserve patient ownership and consent constraints.
+
+Success criteria (functional)
+- Authenticated clinician sees only currently shared reports assigned to them.
+- Clinician can open report detail and understand exactly what access level they have.
+- Expired shares appear clearly as expired and block unauthorized access.
+
+Success criteria (tests and checks)
+- Existing clinician endpoints tests remain green.
+- New tests validate list/filter/scope behavior and restricted messaging.
+
+Integration notes
+- Task 3 notifications should deep-link to this clinician shared-report workspace.
+
+Task 3: Notifications upgrade for shared reports and thread messages for all users
+Task objective
+Deliver coherent in-app notifications for report sharing and messaging events across patient, caregiver, and clinician users.
+
+Current product context
+- Notifications table and endpoints exist.
+- Thread replies already generate notifications.
+- Share/revoke events can be expanded and normalized.
+
+Prompt to give AI agent
+You are building a cross-role notification system refinement for ReportX.
+Scope:
+1) Event model:
+   - Standardize notification kinds for: report_shared, report_share_revoked, report_share_expiring_soon, thread_reply.
+   - Add payload contract versioning to keep frontend resilient.
+2) Event creation:
+   - On report share creation: notify clinician recipient and optionally patient owner confirmation.
+   - On revocation: notify affected clinician.
+   - On thread message: keep existing behavior and ensure actor does not self-notify.
+3) API and frontend:
+   - Extend notification list UI with type badges, relative timestamps, deep links, and mark-as-read action.
+   - Add unread counter badge in global header for authenticated users.
+   - Add polling or lightweight refresh strategy.
+4) Tests:
+   - Backend tests validating event emission and authorization on read transitions.
+   - Frontend tests for rendering, unread badge updates, and mark-as-read flow.
+Constraints:
+- Ensure notification endpoints remain user-scoped.
+- Keep payloads free of sensitive unnecessary content.
+
+Success criteria (functional)
+- Users receive notifications for sharing and messaging actions relevant to them.
+- Users can see unread count and mark items read.
+- Deep links take users to correct report/thread context.
+
+Success criteria (tests and checks)
+- New notification tests pass without breaking existing thread/report tests.
+- UI tests prove unread badge count reacts to mark-as-read.
+
+Integration notes
+- Coordinate with Task 2 for clinician route link targets.
+- Coordinate with Task 4 for consistent UI styling.
+
+Task 4: Frontend improvement sweep (design consistency, navigation clarity, role-aware UX)
+Task objective
+Make targeted frontend improvements that raise usability and polish without destabilizing core flows.
+
+Current product context
+- Multiple pages exist with mixed styling patterns and legacy components.
+- Auth, reports, report detail, parse, and workbench flows coexist.
+
+Prompt to give AI agent
+You are delivering a low-risk frontend quality sweep for ReportX.
+Scope:
+1) UI consistency:
+   - Normalize spacing, typography, and button/input styles across auth, reports, and report-detail pages.
+   - Reduce inline style usage where practical and migrate to shared classes/components.
+2) Navigation and role awareness:
+   - Improve header navigation for patient/clinician workflows.
+   - Show/hide links by role and auth state with clear active-page indication.
+3) Async UX:
+   - Ensure every async interaction has visible loading and error feedback.
+4) Accessibility:
+   - Add missing labels/aria attributes for key interactive controls.
+   - Verify keyboard navigation for auth forms and report actions.
+5) Tests:
+   - Update/add frontend tests for navigation visibility by role and improved accessibility labels.
+Constraints:
+- Avoid large visual redesign; prioritize incremental improvements.
+- Keep all existing business behavior intact.
+
+Success criteria (functional)
+- UI feels consistent across major pages.
+- Role-specific routes and actions are easier to discover.
+- Error/loading behavior is predictable in all key screens.
+
+Success criteria (tests and checks)
+- Existing frontend tests still pass.
+- Added tests cover role-aware navigation and accessibility improvements.
+
+Integration notes
+- Works best after Task 2 and Task 3 define final navigation targets and notification entry points.
+
+Task 5: Backend authorization hardening and policy centralization
+Task objective
+Reduce authorization drift by centralizing policy checks for reports, threads, trends, and notifications.
+
+Current product context
+- Access checks are spread across dependencies, routers, and service functions.
+- Sharing scopes and role behavior are present but could diverge over time.
+
+Prompt to give AI agent
+You are implementing authorization hardening for ReportX backend.
+Scope:
+1) Create policy helper layer or service module for reusable permission checks.
+2) Refactor endpoints to use centralized checks for:
+   - report read/write
+   - share/revoke
+   - thread view/post
+   - trend view
+   - notification read
+3) Ensure consistent status codes and detail messages for forbidden vs not-found where appropriate.
+4) Add tests for boundary cases (expired share, revoked share, wrong role, wrong report).
+Constraints:
+- No behavior regression for currently passing tests.
+- Keep API contracts stable unless absolutely necessary.
+
+Success criteria (functional)
+- Authorization logic is consistent and easier to reason about.
+- No endpoint bypass through inconsistent checks.
+
+Success criteria (tests and checks)
+- New policy-focused tests added.
+- Existing authorization-related tests continue passing.
+
+Integration notes
+- Supports reliability for Tasks 2, 3, and 8.
+
+Task 6: Reliability and observability improvements for async and error paths
+Task objective
+Strengthen operational reliability: request tracing, actionable logs, and resilient frontend handling.
+
+Current product context
+- Request ID middleware exists.
+- Some frontend error handling is present but inconsistent.
+
+Prompt to give AI agent
+You are implementing reliability and observability upgrades for ReportX.
+Scope:
+1) Backend:
+   - Ensure critical write actions log structured events with request/user/report/thread identifiers (without sensitive content).
+   - Standardize error response shape for major API errors.
+2) Frontend:
+   - Normalize error parsing helper and display friendly messages consistently.
+   - Preserve developer diagnostics in console without leaking secrets.
+3) Tests:
+   - Add targeted tests for standardized error payload handling in frontend utilities.
+   - Add backend tests for expected error contract on representative failure paths.
+Constraints:
+- Do not add noisy logs with PHI.
+
+Success criteria (functional)
+- Failures are easier to debug and safer to display.
+- Users receive consistent error messaging.
+
+Success criteria (tests and checks)
+- New tests enforce standardized error shape usage.
+
+Integration notes
+- Benefits all product areas; lowest conflict if implemented with small utility additions.
+
+Task 7: Data lifecycle and cleanup jobs (shares, sessions, notifications hygiene)
+Task objective
+Ensure expired artifacts are cleaned or ignored consistently to keep data integrity and performance healthy.
+
+Current product context
+- Expiry enforcement tests exist for share access.
+- Additional cleanup cadence can improve consistency.
+
+Prompt to give AI agent
+You are implementing lifecycle cleanup robustness in ReportX backend.
+Scope:
+1) Add or improve cleanup routines for:
+   - expired shares
+   - expired auth sessions/refresh tokens
+   - stale notifications retention policy (optional configurable)
+2) Ensure queries exclude expired/revoked artifacts by default where needed.
+3) Add deterministic tests for cleanup behavior and idempotency.
+Constraints:
+- Keep cleanup safe and non-destructive where auditability is required.
+
+Success criteria (functional)
+- Expired records do not appear as active in product behavior.
+- Cleanup can run repeatedly without side effects.
+
+Success criteria (tests and checks)
+- Cleanup tests pass and verify idempotent execution.
+
+Integration notes
+- Coordinate with Task 1 token expiry semantics and Task 3 notification behavior.
+
+Task 8: API contract documentation and typed frontend client consolidation
+Task objective
+Reduce frontend/backend drift by formalizing API contracts and consolidating typed fetch wrappers.
+
+Current product context
+- API calls are spread in multiple files with repeated fetch logic.
+- Error handling and response typing vary by module.
+
+Prompt to give AI agent
+You are building API contract and client consistency for ReportX.
+Scope:
+1) Create/expand a typed API client layer in frontend/lib for auth, reports, threads, notifications.
+2) Standardize token injection and error translation in one place.
+3) Add/update backend schema docs or endpoint contract notes in docs/plans.
+4) Add unit tests for the frontend API client wrappers.
+Constraints:
+- Avoid changing endpoint URLs or payloads unless coordinated.
+
+Success criteria (functional)
+- Frontend network calls are easier to maintain and less repetitive.
+- Contract mismatches are reduced through shared types and tests.
+
+Success criteria (tests and checks)
+- Wrapper tests pass and cover error mapping.
+
+Integration notes
+- This task is a force multiplier for Tasks 2, 3, 4.
+
+Task 9: Report creation/import quality and validation improvements
+Task objective
+Improve quality of data entering persistent reports from parse results.
+
+Current product context
+- Reports can be created with findings and used by trends, sharing, and threads.
+- Data normalization for biomarker naming and units is partially present.
+
+Prompt to give AI agent
+You are improving report ingestion quality for ReportX.
+Scope:
+1) Strengthen validation for findings payload (numeric/text value rules, units, ranges, confidence bounds).
+2) Improve normalization consistency for biomarker key generation and duplicate handling.
+3) Add user-facing feedback when input rows are partially invalid.
+4) Extend tests for edge-case payloads and normalization behavior.
+Constraints:
+- Preserve backward compatibility for existing valid payloads.
+
+Success criteria (functional)
+- Invalid finding payloads fail fast with clear errors.
+- Valid findings normalize consistently and support trend continuity.
+
+Success criteria (tests and checks)
+- New tests prove handling of mixed valid/invalid rows and naming edge cases.
+
+Integration notes
+- Enhances downstream trend quality for existing clinician/patient views.
+
+Task 10: CI quality gate and developer workflow hardening
+Task objective
+Raise delivery confidence with a practical CI gate aligned to project realities.
+
+Current product context
+- CI workflow file exists but may be inactive/commented.
+- Backend and frontend each have test suites and lint/type tooling.
+
+Prompt to give AI agent
+You are implementing pragmatic CI quality gates for ReportX.
+Scope:
+1) Enable or modernize GitHub Actions workflow for:
+   - backend tests
+   - frontend tests
+   - lightweight lint/type checks
+2) Add caching and parallelism where safe.
+3) Document local pre-PR commands in README or docs.
+4) Ensure workflow is deterministic and not dependent on external secrets for core checks.
+Constraints:
+- Keep runtime reasonable to encourage adoption.
+
+Success criteria (functional)
+- Pull requests get automated pass/fail feedback for core quality checks.
+- Contributors can reproduce CI checks locally.
+
+Success criteria (tests and checks)
+- Workflow runs successfully on branch with current codebase.
+
+Integration notes
+- Recommended final task after feature tasks stabilize.
+
+Execution order recommendation for synchronization
+Wave 1 foundation: Task 5 and Task 8
+Wave 2 product features: Task 1, Task 2, Task 3
+Wave 3 polish and resilience: Task 4, Task 6, Task 7, Task 9
+Wave 4 release confidence: Task 10
+
+Definition of done for the whole sprint sheet
+- Each task branch includes code + tests + brief implementation notes.
+- No task regresses baseline auth/report/share/thread behavior.
+- Notification and shared-report links are consistent across frontend routes.
+- QA can run the documented checks and validate acceptance behavior end-to-end.

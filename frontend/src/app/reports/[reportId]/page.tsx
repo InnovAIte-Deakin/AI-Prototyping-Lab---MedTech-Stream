@@ -13,6 +13,9 @@ import { BiomarkerTrendChart } from '@/components/BiomarkerTrendChart';
 import { fetchReportTrends, type BiomarkerTrend } from '@/lib/reportTrends';
 import { AuditLogTimeline } from '@/components/AuditLogTimeline';
 import { shareStateFrom, type ShareLifecycleState } from '@/lib/auditLog';
+import { Badge } from '@/components/ui/Badge';
+import { SharingPreferencesPanel } from '@/components/SharingPreferencesPanel';
+
 function formatDate(ts: number) {
   return new Date(ts).toLocaleString();
 }
@@ -24,20 +27,13 @@ const defaultSharingPreferences: SharingPreferences = {
   active: false,
 };
 
-const SHARE_BADGE: Record<ShareLifecycleState, { label: string; color: string; background: string; border: string }> = {
-  active: { label: 'Active', color: '#047857', background: '#ecfdf5', border: '#a7f3d0' },
-  expired: { label: 'Expired', color: '#9a3412', background: '#fff7ed', border: '#fed7aa' },
-  revoked: { label: 'Revoked', color: '#b91c1c', background: '#fef2f2', border: '#fecaca' },
-  inactive: { label: 'Not shared', color: '#374151', background: '#f9fafb', border: '#e5e7eb' },
-};
-
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
-  { value: 'es', label: 'Español' },
+  { value: 'es', label: 'Espanol' },
   { value: 'ar', label: 'العربية' },
   { value: 'zh', label: '中文 (普通话)' },
   { value: 'hi', label: 'हिन्दी' },
-  { value: 'fr', label: 'Français' },
+  { value: 'fr', label: 'Francais' },
 ];
 
 export default function ReportDetailPage({ params }: { params: { reportId: string } }) {
@@ -45,10 +41,10 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   const [report, setReport] = useState<ReportHistoryEntry | undefined>(undefined);
   const [sharingPreferences, setSharingPreferences] = useState<SharingPreferences>(defaultSharingPreferences);
   const [statusMessage, setStatusMessage] = useState('');
-  // FR13 state
   const [includeSummaryPDF, setIncludeSummaryPDF] = useState(false);
   const [threads, setThreads] = useState<ConversationThread[]>([]);
   const [auditReloadToken, setAuditReloadToken] = useState(0);
+  const [sharingPanelOpen, setSharingPanelOpen] = useState(false);
 
   // Trend states
   const [trends, setTrends] = useState<BiomarkerTrend[]>([]);
@@ -108,8 +104,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     const stored = localStorage.getItem('reportx_session');
     if (!stored) return null;
     try {
-      const session = JSON.parse(stored);
-      return session?.accessToken || null;
+      return JSON.parse(stored)?.accessToken || null;
     } catch {
       return null;
     }
@@ -141,58 +136,36 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
 
   const translateTrendNotesIfNeeded = useCallback(async (languageCode: string) => {
     if (languageCode === 'en' || trends.length === 0) return;
-
     const withEnoughPoints = trends.filter((item) => item.sparkline.length > 1);
     const toTranslate = withEnoughPoints.filter(
       (item) => !trendNoteTranslations[item.biomarker_key]?.[languageCode] && !prefetchedTrendLanguages[item.biomarker_key]?.[languageCode],
     );
-
     if (toTranslate.length === 0) return;
-
     setLoadingTrendTranslations(true);
     setTrendTranslationError(null);
-
     try {
       const translated = await Promise.all(
         toTranslate.map(async (item) => {
           const response = await fetch(`${backend}/api/v1/translate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: item.trend_note,
-              target_language: languageCode,
-              prefetch_all: true,
-            }),
+            body: JSON.stringify({ text: item.trend_note, target_language: languageCode, prefetch_all: true }),
           });
-
-          if (!response.ok) {
-            throw new Error('Trend note translation failed.');
-          }
-
+          if (!response.ok) throw new Error('Trend note translation failed.');
           const payload = await response.json();
-          const translations = (payload?.translations ?? {}) as Record<string, string>;
-          return { biomarkerKey: item.biomarker_key, translations };
+          return { biomarkerKey: item.biomarker_key, translations: (payload?.translations ?? {}) as Record<string, string> };
         }),
       );
-
       setTrendNoteTranslations((prev) => {
         const next = { ...prev };
-        for (const item of translated) {
-          next[item.biomarkerKey] = {
-            ...(next[item.biomarkerKey] || {}),
-            ...item.translations,
-          };
-        }
+        for (const item of translated) { next[item.biomarkerKey] = { ...(next[item.biomarkerKey] || {}), ...item.translations }; }
         return next;
       });
-
       setPrefetchedTrendLanguages((prev) => {
         const next = { ...prev };
         for (const item of translated) {
           const langMap = { ...(next[item.biomarkerKey] || {}) };
-          for (const lang of Object.keys(item.translations)) {
-            langMap[lang] = true;
-          }
+          for (const lang of Object.keys(item.translations)) langMap[lang] = true;
           next[item.biomarkerKey] = langMap;
         }
         return next;
@@ -215,21 +188,15 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
       setStatusMessage('Please provide clinician email for sharing.');
       return;
     }
-
     const accessToken = getAccessToken();
-
     if (!accessToken) {
       setStatusMessage('Unable to find authenticated session. Please log in.');
       return;
     }
-
     try {
       const response = await fetch(`${backend}/api/v1/reports/${report.id}/share`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({
           clinician_email: sharingPreferences.clinicianEmail,
           scope: sharingPreferences.scope === 'full' ? 'patient' : 'report',
@@ -237,52 +204,40 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
           expires_at: new Date(sharingPreferences.expiresAt).toISOString(),
         }),
       });
-
       if (!response.ok) {
         const error = await response.json().catch(() => null);
-        const message = error?.detail || 'Failed to update sharing preferences.';
-        setStatusMessage(message);
+        setStatusMessage(error?.detail || 'Failed to update sharing preferences.');
         return;
       }
-
       const updatedPrefs: SharingPreferences = { ...sharingPreferences, active: true };
       setSharingPreferences(updatedPrefs);
       updateReportInHistory(report.id, { sharingPreferences: updatedPrefs });
       setReport({ ...report, sharingPreferences: updatedPrefs });
       setStatusMessage('Sharing preferences updated.');
       setAuditReloadToken((n) => n + 1);
-    } catch (err) {
+    } catch {
       setStatusMessage('Unable to save sharing preferences. Please try again.');
     }
   }
 
   async function revokeShare() {
     if (!report) return;
-
     const accessToken = getAccessToken();
-
     if (!accessToken) {
       setStatusMessage('Unable to find authenticated session. Please log in.');
       return;
     }
-
     try {
       const response = await fetch(`${backend}/api/v1/reports/${report.id}/share/revoke`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({ clinician_email: sharingPreferences.clinicianEmail }),
       });
-
       if (!response.ok) {
         const error = await response.json().catch(() => null);
-        const message = error?.detail || 'Failed to revoke sharing preferences.';
-        setStatusMessage(message);
+        setStatusMessage(error?.detail || 'Failed to revoke sharing preferences.');
         return;
       }
-
       const resetPrefs: SharingPreferences = { ...defaultSharingPreferences, expiresAt: Date.now() };
       setSharingPreferences(resetPrefs);
       updateReportInHistory(report.id, { sharingPreferences: resetPrefs });
@@ -299,36 +254,23 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   const normalizedFilter = biomarkerFilterText.trim().toLowerCase();
   const filteredTrendItems = trendItems.filter((item) => {
     if (!normalizedFilter) return true;
-    const label = `${item.display_name} ${item.biomarker_key}`.toLowerCase();
-    return label.includes(normalizedFilter);
+    return `${item.display_name} ${item.biomarker_key}`.toLowerCase().includes(normalizedFilter);
   });
 
   useEffect(() => {
-    if (filteredTrendItems.length === 0) {
-      setSelectedBiomarkerKey('');
-      return;
-    }
-
+    if (filteredTrendItems.length === 0) { setSelectedBiomarkerKey(''); return; }
     const stillExists = filteredTrendItems.some((item) => item.biomarker_key === selectedBiomarkerKey);
-    if (!stillExists) {
-      setSelectedBiomarkerKey(filteredTrendItems[0].biomarker_key);
-    }
+    if (!stillExists) setSelectedBiomarkerKey(filteredTrendItems[0].biomarker_key);
   }, [filteredTrendItems, selectedBiomarkerKey]);
 
-  const selectedTrend = filteredTrendItems.find((item) => item.biomarker_key === selectedBiomarkerKey)
-    || filteredTrendItems[0]
-    || null;
+  const selectedTrend = filteredTrendItems.find((item) => item.biomarker_key === selectedBiomarkerKey) || filteredTrendItems[0] || null;
 
   const shareState: ShareLifecycleState = shareStateFrom(
     { active: sharingPreferences.active, expiresAt: sharingPreferences.expiresAt },
   );
 
   if (!user) {
-    return (
-      <ProtectedView>
-        <div>Loading...</div>
-      </ProtectedView>
-    );
+    return (<ProtectedView><div>Loading...</div></ProtectedView>);
   }
 
   if (!report) {
@@ -343,7 +285,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     );
   }
 
-  // --- FR13: build data for DoctorSummaryDocument ---
+  // FR13 data
   const accessToken = (() => {
     if (typeof window === 'undefined') return '';
     const stored = localStorage.getItem('reportx_session');
@@ -363,28 +305,38 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     (f) => ['high', 'low', 'abnormal'].includes(f.flag.toLowerCase())
   );
 
-  const threadSummaries: SummaryThread[] = threads.map((t) => ({
+  const threadSummaries: SummaryThread[] = (Array.isArray(threads) ? threads : []).map((t) => ({
     title: t.title,
-    patientQuestions: t.messages
-      .filter((m) => m.kind === 'text')
-      .map((m) => m.body)
-      .slice(0, 5),
+    patientQuestions: t.messages.filter((m) => m.kind === 'text').map((m) => m.body).slice(0, 5),
   }));
 
-  const handleExportPDF = () => {
-    window.print();
-  };
+  const handleExportPDF = () => { window.print(); };
 
   const handleShareWithPDF = async () => {
     await updateShare();
-    if (includeSummaryPDF) {
-      setTimeout(() => window.print(), 400);
-    }
+    if (includeSummaryPDF) setTimeout(() => window.print(), 400);
   };
+
+  // Count flagged results
+  const flaggedCount = report.rows.filter((r) => r.flag === 'high' || r.flag === 'low' || r.flag === 'abnormal').length;
+  const normalCount = report.rows.length - flaggedCount;
+
+  // Resolve flag badge variant
+  function flagBadgeVariant(flag: string | null | undefined): 'high' | 'low' | 'optimal' | 'attention' | 'normal' {
+    if (!flag || flag === 'normal') return 'optimal';
+    if (flag === 'high') return 'high';
+    if (flag === 'low') return 'low';
+    return 'attention';
+  }
+
+  function flagBadgeLabel(flag: string | null | undefined): string {
+    if (!flag || flag === 'normal') return 'OPTIMAL';
+    return flag.toUpperCase();
+  }
 
   return (
     <ProtectedView>
-      {/* FR13 — hidden print-only wrapper, revealed only via @media print */}
+      {/* FR13 print target */}
       <div id="doctor-summary-print-target" style={{ display: 'none' }}>
         <DoctorSummaryDocument
           reportTitle={report.title || 'Lab Results Summary'}
@@ -399,196 +351,303 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
       </div>
 
       <section className="stack">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-          <h1 style={{ margin: 0 }}>{report.title || 'Report Detail'}</h1>
-          <button
-            id="export-doctor-summary-btn"
-            className="nav-btn nav-btn-primary"
-            onClick={handleExportPDF}
-            title="Export a doctor-ready one-page PDF summary — generated locally, never stored on server"
-          >
-            📄 Export Doctor Summary
-          </button>
-        </div>
-        <p>Saved: {formatDate(report.createdAt)}</p>
-        <p>Rows: {report.rows.length}</p>
-        <p>Interpretation: {interpretation ? 'Available' : 'Not completed yet'}</p>
+        {/* Breadcrumb */}
+        <nav className="report-breadcrumb">
+          <a href="/reports">Reports</a>
+          <span className="report-breadcrumb-sep" aria-hidden="true">&gt;</span>
+          <span>{report.title || 'Report Detail'}</span>
+        </nav>
 
-        <div className="card">
-          <h2>Report Data</h2>
-          <ul>
-            {report.rows.map((row, idx) => (
-              <li key={`${row.test_name}-${idx}`}>
-                {row.test_name}: {row.value} {row.unit || ''} ({row.reference_range || '?'}), flag={row.flag || 'unknown'}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {interpretation && (
-          <div className="card">
-            <h2>Interpretation</h2>
-            <p>{interpretation.summary}</p>
+        {/* Report header */}
+        <div className="report-header">
+          <div>
+            <h1 style={{ margin: 0 }}>{report.title || 'Report Detail'}</h1>
+            <p className="report-header-meta">
+              Patient: {user?.displayName || user?.email || 'Patient'} &bull; Date: {formatDate(report.createdAt)}
+            </p>
           </div>
-        )}
+          <div className="report-header-actions">
+            <button
+              type="button"
+              className="btn btn-outline btn-md"
+              onClick={() => setSharingPanelOpen(true)}
+              aria-label="Share Report"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.4rem' }}>
+                <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+              </svg>
+              Share Report
+            </button>
+            <button
+              id="export-doctor-summary-btn"
+              type="button"
+              className="btn btn-primary btn-md"
+              onClick={handleExportPDF}
+              title="Export a doctor-ready one-page PDF summary"
+              aria-label="Export PDF"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.4rem' }}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7,10 12,15 17,10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Export PDF
+            </button>
+          </div>
+        </div>
 
-        <PatientQuestions
-          reportId={report.id}
-          accessToken={accessToken}
-          onThreadCreated={() => {}}
-        />
+        {/* Main content: two-column layout */}
+        <div className="report-layout">
+          {/* Left column */}
+          <div>
+            {/* Clinical Summary */}
+            <div className="clinical-summary-card">
+              <div className="clinical-summary-header">
+                <h2>Clinical Summary</h2>
+                {interpretation && (
+                  <span className="ai-badge">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                    </svg>
+                    AI Analysis Ready
+                  </span>
+                )}
+              </div>
 
-        <ThreadView
-          reportId={report.id}
-          accessToken={accessToken}
-          onThreadsLoaded={setThreads}
-        />
+              {interpretation ? (
+                <p style={{ lineHeight: 1.7, color: 'var(--on-surface)' }}>{interpretation.summary}</p>
+              ) : (
+                <p style={{ color: 'var(--on-surface-muted)' }}>
+                  No AI analysis available yet. Click &ldquo;Review My Report&rdquo; to generate an interpretation.
+                </p>
+              )}
 
-        <div className="card">
-          <h2>Biomarker Trends</h2>
-          {trendsLoading ? <p>Loading trends…</p> : null}
-          {!trendsLoading && trendsError ? <p>{trendsError}</p> : null}
-          {!trendsLoading && !trendsError && trendItems.length === 0 ? (
-            <p>Not enough prior report data to calculate trends yet.</p>
-          ) : null}
-          {!trendsLoading && !trendsError && trendItems.length > 0 ? (
-            <>
-              <div className="field" style={{ maxWidth: '420px' }}>
-                <label htmlFor="biomarker-filter">Filter biomarkers</label>
-                <input
-                  id="biomarker-filter"
-                  placeholder="Type biomarker name"
-                  value={biomarkerFilterText}
-                  onChange={(e) => setBiomarkerFilterText(e.target.value)}
-                />
+              {/* Status indicators */}
+              <div className="status-indicators">
+                <div className="status-indicator status-indicator--success">
+                  <svg className="status-indicator-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22,4 12,14.01 9,11.01" />
+                  </svg>
+                  <div>
+                    <div className="status-indicator-label">Critical Markers</div>
+                    <div>{normalCount > 0 ? 'Normal Range' : 'No data'}</div>
+                  </div>
+                </div>
+                {flaggedCount > 0 && (
+                  <div className="status-indicator status-indicator--warning">
+                    <svg className="status-indicator-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                      <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <div>
+                      <div className="status-indicator-label">Action Required</div>
+                      <div>{flaggedCount} flagged result{flaggedCount > 1 ? 's' : ''}</div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="field" style={{ maxWidth: '420px' }}>
-                <label htmlFor="biomarker-select">Biomarker</label>
-                <select
-                  id="biomarker-select"
-                  value={selectedTrend?.biomarker_key || ''}
-                  onChange={(e) => setSelectedBiomarkerKey(e.target.value)}
-                >
-                  {filteredTrendItems.map((item) => (
-                    <option key={item.biomarker_key} value={item.biomarker_key}>
-                      {item.display_name}
-                    </option>
-                  ))}
-                </select>
+            </div>
+
+            {/* Lab Results & Biomarkers */}
+            <div className="card" style={{ padding: 'var(--space-6)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
+                <h2>Lab Results &amp; Biomarkers</h2>
               </div>
-              <div className="field" style={{ maxWidth: '320px' }}>
-                <label htmlFor="trend-language">Trend note language</label>
-                <select
-                  id="trend-language"
-                  value={trendLanguage}
-                  onChange={(e) => setTrendLanguage(e.target.value)}
-                >
-                  {LANGUAGE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </div>
-              {loadingTrendTranslations ? <p>Loading translation…</p> : null}
-              {trendTranslationError ? <p>{trendTranslationError}</p> : null}
-              {!selectedTrend ? <p>No biomarkers match your filter.</p> : null}
-              {selectedTrend ? (
+
+              {report.rows.length > 0 ? (
+                <table className="lab-table">
+                  <thead>
+                    <tr>
+                      <th>Biomarker</th>
+                      <th>Result</th>
+                      <th>Reference Range</th>
+                      <th style={{ textAlign: 'right' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.rows.map((row, idx) => {
+                      const isFlagged = row.flag === 'high' || row.flag === 'low' || row.flag === 'abnormal';
+                      return (
+                        <tr key={`${row.test_name}-${idx}`} className={isFlagged ? 'lab-row-flagged' : ''}>
+                          <td>
+                            <div className="biomarker-name">{row.test_name}</div>
+                          </td>
+                          <td>
+                            <span className={`result-value${isFlagged ? ' flagged' : ''}`}>
+                              {String(row.value)}
+                            </span>
+                            {row.unit && <span className="result-unit">{row.unit}</span>}
+                          </td>
+                          <td style={{ color: 'var(--on-surface-muted)' }}>{row.reference_range || '—'}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <Badge variant={flagBadgeVariant(row.flag)}>
+                              {flagBadgeLabel(row.flag)}
+                            </Badge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <p style={{ color: 'var(--on-surface-muted)' }}>No lab results available.</p>
+              )}
+            </div>
+
+            {/* Biomarker Trends */}
+            <div className="card" style={{ padding: 'var(--space-6)' }}>
+              <h2>Biomarker Trends</h2>
+              {trendsLoading ? <p>Loading trends...</p> : null}
+              {!trendsLoading && trendsError ? <p>{trendsError}</p> : null}
+              {!trendsLoading && !trendsError && trendItems.length === 0 ? (
+                <p style={{ color: 'var(--on-surface-muted)' }}>Not enough prior report data to calculate trends yet.</p>
+              ) : null}
+              {!trendsLoading && !trendsError && trendItems.length > 0 ? (
                 <>
-                  <p>{trendNoteTranslations[selectedTrend.biomarker_key]?.[trendLanguage] || selectedTrend.trend_note}</p>
-                  <BiomarkerTrendChart
-                    title={selectedTrend.display_name}
-                    unit={selectedTrend.unit}
-                    points={selectedTrend.sparkline.map((point) => ({
-                      observed_at: point.observed_at,
-                      value: point.value,
-                    }))}
-                  />
+                  <div className="field" style={{ maxWidth: '420px' }}>
+                    <label htmlFor="biomarker-filter">Filter biomarkers</label>
+                    <input id="biomarker-filter" placeholder="Type biomarker name" value={biomarkerFilterText} onChange={(e) => setBiomarkerFilterText(e.target.value)} />
+                  </div>
+                  <div className="field" style={{ maxWidth: '420px' }}>
+                    <label htmlFor="biomarker-select">Biomarker</label>
+                    <select id="biomarker-select" value={selectedTrend?.biomarker_key || ''} onChange={(e) => setSelectedBiomarkerKey(e.target.value)}>
+                      {filteredTrendItems.map((item) => (<option key={item.biomarker_key} value={item.biomarker_key}>{item.display_name}</option>))}
+                    </select>
+                  </div>
+                  <div className="field" style={{ maxWidth: '320px' }}>
+                    <label htmlFor="trend-language">Trend note language</label>
+                    <select id="trend-language" value={trendLanguage} onChange={(e) => setTrendLanguage(e.target.value)}>
+                      {LANGUAGE_OPTIONS.map((option) => (<option key={option.value} value={option.value}>{option.label}</option>))}
+                    </select>
+                  </div>
+                  {loadingTrendTranslations ? <p>Loading translation...</p> : null}
+                  {trendTranslationError ? <p>{trendTranslationError}</p> : null}
+                  {!selectedTrend ? <p>No biomarkers match your filter.</p> : null}
+                  {selectedTrend ? (
+                    <>
+                      <p>{trendNoteTranslations[selectedTrend.biomarker_key]?.[trendLanguage] || selectedTrend.trend_note}</p>
+                      <BiomarkerTrendChart
+                        title={selectedTrend.display_name}
+                        unit={selectedTrend.unit}
+                        points={selectedTrend.sparkline.map((point) => ({ observed_at: point.observed_at, value: point.value }))}
+                      />
+                    </>
+                  ) : null}
                 </>
               ) : null}
-            </>
-          ) : null}
+            </div>
+
+            {/* Patient Questions */}
+            <PatientQuestions reportId={report.id} accessToken={accessToken} onThreadCreated={() => {}} />
+
+            <AuditLogTimeline reportId={report.id} reloadToken={auditReloadToken} />
+            <Disclaimer />
+          </div>
+
+          {/* Right column — sidebar */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            {/* Sharing Preferences sidebar card */}
+            <div className="sharing-sidebar" data-testid="sharing-card" data-share-state={shareState}>
+              <div className="sharing-sidebar-title">Sharing Preferences</div>
+              <div className="field">
+                <label htmlFor="clinician-email">Clinician Email</label>
+                <input
+                  id="clinician-email"
+                  className="input"
+                  value={sharingPreferences.clinicianEmail}
+                  onChange={(e) => setSharingPreferences({ ...sharingPreferences, clinicianEmail: e.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="share-scope">Scope</label>
+                <select
+                  id="share-scope"
+                  className="input"
+                  value={sharingPreferences.scope}
+                  onChange={(e) => setSharingPreferences({ ...sharingPreferences, scope: e.target.value as 'summary' | 'full' })}
+                >
+                  <option value="summary">Summary only</option>
+                  <option value="full">Full report</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="share-expiry">Expiry</label>
+                <input
+                  id="share-expiry"
+                  type="datetime-local"
+                  className="input"
+                  value={new Date(sharingPreferences.expiresAt).toISOString().slice(0, 16)}
+                  onChange={(e) => setSharingPreferences({ ...sharingPreferences, expiresAt: new Date(e.target.value).getTime() })}
+                />
+              </div>
+              {/* FR13 include doctor summary PDF */}
+              <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'var(--success-container)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginTop: 'var(--space-2)' }}>
+                <input
+                  id="include-summary-pdf"
+                  type="checkbox"
+                  checked={includeSummaryPDF}
+                  onChange={(e) => setIncludeSummaryPDF(e.target.checked)}
+                  style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
+                />
+                <label htmlFor="include-summary-pdf" style={{ cursor: 'pointer', fontSize: 'var(--text-body-sm)', fontWeight: 500 }}>
+                  Include Doctor-Ready Summary PDF
+                  <span style={{ display: 'block', fontSize: 'var(--text-body-sm)', color: 'var(--on-surface-muted)', fontWeight: 400 }}>
+                    Generated locally — never stored on server
+                  </span>
+                </label>
+              </div>
+              <button id="share-report-btn" className="btn btn-primary btn-md" style={{ width: '100%', marginTop: 'var(--space-3)' }} onClick={handleShareWithPDF}>
+                {sharingPreferences.active ? 'Update Share' : 'Start Sharing'}
+              </button>
+              {sharingPreferences.active && (
+                <button className="btn btn-danger btn-md" onClick={revokeShare} style={{ width: '100%', marginTop: 'var(--space-2)' }}>
+                  Revoke
+                </button>
+              )}
+              {statusMessage && <p style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-body-sm)', textAlign: 'center' }}>{statusMessage}</p>}
+            </div>
+
+            {/* Thread View / Intelligence Panel */}
+            <div className="intelligence-panel">
+              <div className="intelligence-panel-header">
+                <div className="intelligence-panel-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600 }}>Intelligence Panel</div>
+                  <div style={{ fontSize: 'var(--text-body-sm)', color: 'var(--on-surface-muted)' }}>Contextual Analysis Assistant</div>
+                </div>
+              </div>
+              <ThreadView
+                reportId={report.id}
+                accessToken={accessToken}
+                onThreadsLoaded={setThreads}
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="card" data-testid="sharing-card" data-share-state={shareState}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-            <h2 style={{ margin: 0 }}>Sharing Preferences</h2>
-            <span
-              data-testid="share-state-badge"
-              style={{
-                padding: '0.2rem 0.6rem',
-                borderRadius: '999px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                letterSpacing: '0.04em',
-                textTransform: 'uppercase',
-                color: SHARE_BADGE[shareState].color,
-                background: SHARE_BADGE[shareState].background,
-                border: `1px solid ${SHARE_BADGE[shareState].border}`,
-              }}
-            >
-              {SHARE_BADGE[shareState].label}
-            </span>
-          </div>
-          {shareState === 'expired' ? (
-            <p role="status" data-testid="share-expired-message" style={{ color: '#9a3412', marginTop: '0.5rem' }}>
-              This share has expired. Clinician access was removed automatically.
-            </p>
-          ) : null}
-          {shareState === 'revoked' ? (
-            <p role="status" data-testid="share-revoked-message" style={{ color: '#b91c1c', marginTop: '0.5rem' }}>
-              This share was revoked. Clinician access is no longer allowed.
-            </p>
-          ) : null}
-          <div className="field">
-            <label htmlFor="clinician-email">Clinician Email</label>
-            <input
-              id="clinician-email"
-              value={sharingPreferences.clinicianEmail}
-              onChange={(e) => setSharingPreferences({ ...sharingPreferences, clinicianEmail: e.target.value })}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="share-scope">Scope</label>
-            <select
-              id="share-scope"
-              value={sharingPreferences.scope}
-              onChange={(e) => setSharingPreferences({ ...sharingPreferences, scope: e.target.value as 'summary' | 'full' })}
-            >
-              <option value="summary">Summary only</option>
-              <option value="full">Full report</option>
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="share-expiry">Expiry</label>
-            <input
-              id="share-expiry"
-              type="datetime-local"
-              value={new Date(sharingPreferences.expiresAt).toISOString().slice(0, 16)}
-              onChange={(e) => setSharingPreferences({ ...sharingPreferences, expiresAt: new Date(e.target.value).getTime() })}
-            />
-          </div>
-          {/* FR13 — include doctor-ready summary PDF when sharing */}
-          <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#f0fdf4', padding: '0.75rem', borderRadius: '8px', border: '1px solid #bbf7d0', marginBottom: '0.5rem' }}>
-            <input
-              id="include-summary-pdf"
-              type="checkbox"
-              checked={includeSummaryPDF}
-              onChange={(e) => setIncludeSummaryPDF(e.target.checked)}
-              style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
-            />
-            <label htmlFor="include-summary-pdf" style={{ cursor: 'pointer', fontSize: '0.9rem', color: '#15803d', fontWeight: 500 }}>
-              📄 Also download Doctor-Ready Summary PDF
-              <span style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', fontWeight: 400 }}>Generated locally in your browser — never stored on server</span>
-            </label>
-          </div>
-          <button id="share-report-btn" className="nav-btn nav-btn-primary" onClick={handleShareWithPDF}>{sharingPreferences.active ? 'Update Share' : 'Start Sharing'}</button>
-          {sharingPreferences.active && <button className="nav-btn nav-btn-danger" onClick={revokeShare} style={{ marginLeft: '0.5rem' }}>Revoke</button>}
-          {statusMessage && <p>{statusMessage}</p>}
-        </div>
-
-        <AuditLogTimeline reportId={report.id} reloadToken={auditReloadToken} />
-
-        <Disclaimer />
-
+        {/* Sharing Panel (slide-in) */}
+        <SharingPreferencesPanel
+          open={sharingPanelOpen}
+          onClose={() => setSharingPanelOpen(false)}
+          onShare={handleShareWithPDF}
+          onRevoke={revokeShare}
+          clinicianEmail={sharingPreferences.clinicianEmail}
+          onClinicianEmailChange={(e) => setSharingPreferences({ ...sharingPreferences, clinicianEmail: e.target.value })}
+          scope={sharingPreferences.scope}
+          onScopeChange={(e) => setSharingPreferences({ ...sharingPreferences, scope: e.target.value as 'summary' | 'full' })}
+          expiresAt={sharingPreferences.expiresAt}
+          onExpiresAtChange={(e) => setSharingPreferences({ ...sharingPreferences, expiresAt: new Date(e.target.value).getTime() })}
+          shareActive={sharingPreferences.active}
+          statusMessage={statusMessage}
+        />
       </section>
     </ProtectedView>
   );

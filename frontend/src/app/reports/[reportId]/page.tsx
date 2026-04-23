@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { fetchReportById, updateReportInHistory } from '@/lib/reportHistory';
-import type { ReportHistoryEntry, SharingPreferences, Interpretation } from '@/lib/reportHistory';
+import type { ReportHistoryEntry, SharingPreferences, Interpretation, ChatMessage } from '@/lib/reportHistory';
 import { PatientQuestions } from '@/components/PatientQuestions';
 import { ThreadView, ConversationThread } from '@/components/ThreadView';
 import { DoctorSummaryDocument, type SummaryFinding, type SummaryThread } from '@/components/DoctorSummaryDocument';
@@ -38,8 +38,6 @@ const LANGUAGE_OPTIONS = [
   { value: 'hi', label: 'हिन्दी' },
   { value: 'fr', label: 'Français' },
 ];
-
-type ChatMessage = { role: 'user' | 'ai'; text: string };
 
 export default function ReportDetailPage({ params }: { params: { reportId: string } }) {
   const { user } = useAuth();
@@ -104,6 +102,11 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
       setLocalInterpretation(report.interpretation);
     }
   }, [report]);
+
+  // Restore saved chat thread when navigating to a report that has prior messages
+  useEffect(() => {
+    setChatMessages(report?.chatMessages ?? []);
+  }, [report?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setTrends([]);
@@ -261,6 +264,15 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
       setLocalInterpretation(interp);
       updateReportInHistory(report.id, { interpretation: interp });
       setReport((prev) => (prev ? { ...prev, interpretation: interp } : prev));
+      // Persist to backend so interpretation survives page refresh
+      const token = getAccessToken();
+      if (token) {
+        fetch(`${backend}/api/v1/reports/${report.id}/interpretation`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ interpretation: interp }),
+        }).catch(() => { /* non-critical — in-memory store still has it */ });
+      }
     } catch (err: any) {
       setInterpretError(err?.message || 'Unable to generate interpretation. Please try again.');
     } finally {
@@ -271,19 +283,21 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   // ── Chat send ──
   async function sendChatMessage() {
     const text = chatInput.trim();
-    if (!text || isSendingChat) return;
+    if (!text || isSendingChat || !report) return;
     setChatInput('');
-    setChatMessages((prev) => [...prev, { role: 'user', text }]);
+    const userMsg: ChatMessage = { role: 'user', text };
+    const withUser: ChatMessage[] = [...chatMessages, userMsg];
+    setChatMessages(withUser);
     setIsSendingChat(true);
     try {
-      const activeInterp = localInterpretation || report?.interpretation;
+      const activeInterp = localInterpretation || report.interpretation;
       const response = await fetch(`${backend}/api/v1/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: text,
           interpretation_context: activeInterp?.summary || '',
-          rows: (report?.rows || []).map((row) => ({
+          rows: report.rows.map((row) => ({
             test_name: row.test_name,
             value: row.value,
             unit: row.unit ?? null,
@@ -295,12 +309,17 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
       });
       if (!response.ok) throw new Error('Chat request failed.');
       const data = await response.json();
-      setChatMessages((prev) => [...prev, { role: 'ai', text: data.answer || 'No response received.' }]);
+      const aiMsg: ChatMessage = { role: 'ai', text: data.answer || 'No response received.' };
+      const updated: ChatMessage[] = [...withUser, aiMsg];
+      setChatMessages(updated);
+      updateReportInHistory(report.id, { chatMessages: updated });
+      setReport((prev) => prev ? { ...prev, chatMessages: updated } : prev);
     } catch {
-      setChatMessages((prev) => [
-        ...prev,
-        { role: 'ai', text: 'Sorry, I could not answer that right now. Please try again or consult your clinician.' },
-      ]);
+      const errMsg: ChatMessage = { role: 'ai', text: 'Sorry, I could not answer that right now. Please try again or consult your clinician.' };
+      const updated: ChatMessage[] = [...withUser, errMsg];
+      setChatMessages(updated);
+      updateReportInHistory(report.id, { chatMessages: updated });
+      setReport((prev) => prev ? { ...prev, chatMessages: updated } : prev);
     } finally {
       setIsSendingChat(false);
     }
@@ -503,7 +522,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
           patientName={user?.displayName || user?.email || 'Patient'}
           flaggedFindings={flaggedFindings}
           allFindings={allFindingsForPDF}
-          interpretationSummary={interpretation?.summary}
+          interpretationSummary={activeInterp?.summary}
           trendNotes={undefined}
           threads={threadSummaries}
         />

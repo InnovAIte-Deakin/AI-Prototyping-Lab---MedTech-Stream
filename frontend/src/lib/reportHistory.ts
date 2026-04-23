@@ -16,6 +16,8 @@ export type Interpretation = {
   translations?: Record<string, string>;
 };
 
+export type ChatMessage = { role: 'user' | 'ai'; text: string };
+
 export type ReportHistoryEntry = {
   id: string;
   patientEmail: string;
@@ -28,6 +30,7 @@ export type ReportHistoryEntry = {
   unparsed: string[];
   extractedText?: string;
   interpretation?: Interpretation;
+  chatMessages?: ChatMessage[];
   sharingPreferences?: SharingPreferences;
 };
 
@@ -97,6 +100,7 @@ function overlayLocalFields(
   return {
     ...backendEntry,
     interpretation: localEntry.interpretation ?? backendEntry.interpretation,
+    chatMessages: localEntry.chatMessages?.length ? localEntry.chatMessages : backendEntry.chatMessages,
     sharingPreferences: localEntry.sharingPreferences ?? backendEntry.sharingPreferences,
     extractedText: localEntry.extractedText ?? backendEntry.extractedText,
     unparsed: (localEntry.unparsed && localEntry.unparsed.length > 0) ? localEntry.unparsed : backendEntry.unparsed,
@@ -295,6 +299,7 @@ export async function fetchReportById(reportId: string): Promise<ReportHistoryEn
         confidence: 1,
       })),
       unparsed: [],
+      interpretation: report.interpretation ?? undefined,
     };
     return overlayLocalFields(backendEntry, getReportById(reportId));
   } catch (err: any) {

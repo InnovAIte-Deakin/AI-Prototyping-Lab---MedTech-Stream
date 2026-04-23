@@ -4,7 +4,7 @@ export type ParsedRow = {
   value: number | string;
   unit?: string | null;
   reference_range?: string | null;
-  flag?: 'low' | 'high' | 'normal' | 'abnormal' | null;
+  flag?: 'low' | 'high' | 'normal' | 'abnormal' | 'unknown' | null;
   confidence: number;
   // Optional traceability
   page?: number;

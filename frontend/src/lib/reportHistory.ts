@@ -16,6 +16,8 @@ export type Interpretation = {
   translations?: Record<string, string>;
 };
 
+export type ChatMessage = { role: 'user' | 'ai'; text: string };
+
 export type ReportHistoryEntry = {
   id: string;
   patientEmail: string;
@@ -28,6 +30,7 @@ export type ReportHistoryEntry = {
   unparsed: string[];
   extractedText?: string;
   interpretation?: Interpretation;
+  chatMessages?: ChatMessage[];
   sharingPreferences?: SharingPreferences;
 };
 
@@ -61,6 +64,48 @@ function getAuthToken(): string | null {
 
 function getSessionUserEmail(): string {
   return getStoredSession()?.user?.email || '';
+}
+
+function fingerprintReport(entry: Pick<ReportHistoryEntry, 'title' | 'rows'> & Partial<Pick<ReportHistoryEntry, 'reportDate'>>): string {
+  return JSON.stringify({
+    title: (entry.title || '').trim().toLowerCase(),
+    reportDate: toTimestamp(entry.reportDate) ?? null,
+    rows: (entry.rows || []).map((row) => ({
+      test_name: row.test_name,
+      value: row.value,
+      unit: row.unit ?? null,
+      reference_range: row.reference_range ?? null,
+      flag: row.flag ?? null,
+    })),
+  });
+}
+
+function mergeUniqueReports(primary: ReportHistoryEntry[], extras: ReportHistoryEntry[]): ReportHistoryEntry[] {
+  const seen = new Set(primary.map(fingerprintReport));
+  const merged = [...primary];
+  for (const item of extras) {
+    const key = fingerprintReport(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
+  }
+  return merged;
+}
+
+function overlayLocalFields(
+  backendEntry: ReportHistoryEntry,
+  localEntry?: ReportHistoryEntry,
+): ReportHistoryEntry {
+  if (!localEntry) return backendEntry;
+  return {
+    ...backendEntry,
+    interpretation: localEntry.interpretation ?? backendEntry.interpretation,
+    chatMessages: localEntry.chatMessages?.length ? localEntry.chatMessages : backendEntry.chatMessages,
+    sharingPreferences: localEntry.sharingPreferences ?? backendEntry.sharingPreferences,
+    extractedText: localEntry.extractedText ?? backendEntry.extractedText,
+    unparsed: (localEntry.unparsed && localEntry.unparsed.length > 0) ? localEntry.unparsed : backendEntry.unparsed,
+    savedAt: localEntry.savedAt ?? backendEntry.savedAt,
+  };
 }
 
 function toTimestamp(value: unknown): number | null {
@@ -111,6 +156,7 @@ export async function fetchReportHistory(): Promise<ReportHistoryEntry[]> {
     throw new Error('User is not authenticated.');
   }
   const userEmail = getSessionUserEmail();
+  const localHistory = userEmail ? getReportHistoryForUser(userEmail) : [];
   try {
     const response = await fetch(`${BACKEND_URL}/api/v1/reports`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -120,7 +166,7 @@ export async function fetchReportHistory(): Promise<ReportHistoryEntry[]> {
       throw new Error(`Unexpected response when fetching report history: ${response.status} ${errorText}`);
     }
     const data = await response.json();
-    return data.map((report: any) => ({
+    const backendHistory: ReportHistoryEntry[] = (data as any[]).map((report: any): ReportHistoryEntry => ({
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',
@@ -138,8 +184,17 @@ export async function fetchReportHistory(): Promise<ReportHistoryEntry[]> {
       })),
       unparsed: [],
     }));
+    const localById = new Map(localHistory.map((entry) => [entry.id, entry]));
+    const hydratedBackendHistory = backendHistory.map((entry) => overlayLocalFields(entry, localById.get(entry.id)));
+    const backendIds = new Set(hydratedBackendHistory.map((entry) => entry.id));
+    const localOnlyHistory = localHistory.filter((entry) => !backendIds.has(entry.id));
+
+    return mergeUniqueReports(hydratedBackendHistory, localOnlyHistory);
   } catch (err: any) {
     console.error('fetchReportHistory failed', err);
+    if (localHistory.length > 0) {
+      return localHistory;
+    }
     throw new Error(err?.message || 'Failed to fetch report history');
   }
 }
@@ -181,14 +236,16 @@ export async function createReportEntry(input: {
     }
     const report = await response.json();
     const userEmail = getSessionUserEmail();
+    const createdAt = toTimestamp(report.created_at) ?? Date.now();
+    const observedAt = toTimestamp(report.observed_at) ?? createdAt;
 
     return {
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',
-      createdAt: new Date(report.created_at).getTime(),
-      savedAt: new Date(report.created_at).getTime(),
-      reportDate: new Date(report.observed_at).getTime(),
+      createdAt,
+      savedAt: createdAt,
+      reportDate: observedAt,
       panelName: resolvePanelName(report.title, report.panel_name) ?? undefined,
       rows: input.findings.map((f) => ({
         test_name: f.test_name,
@@ -223,13 +280,15 @@ export async function fetchReportById(reportId: string): Promise<ReportHistoryEn
     }
     const result = await response.json();
     const report = result.report;
-    return {
+    const createdAt = toTimestamp(report.created_at) ?? Date.now();
+    const observedAt = toTimestamp(report.observed_at) ?? createdAt;
+    const backendEntry: ReportHistoryEntry = {
       id: report.id,
       patientEmail: userEmail,
       title: report.title || 'Untitled Report',
-      createdAt: new Date(report.created_at).getTime(),
-      savedAt: new Date(report.created_at).getTime(),
-      reportDate: new Date(report.observed_at).getTime(),
+      createdAt,
+      savedAt: createdAt,
+      reportDate: observedAt,
       panelName: resolvePanelName(report.title, report.panel_name) ?? undefined,
       rows: report.findings.map((f: any) => ({
         test_name: f.display_name,
@@ -240,7 +299,9 @@ export async function fetchReportById(reportId: string): Promise<ReportHistoryEn
         confidence: 1,
       })),
       unparsed: [],
+      interpretation: report.interpretation ?? undefined,
     };
+    return overlayLocalFields(backendEntry, getReportById(reportId));
   } catch (err: any) {
     console.error('fetchReportById failed', err);
     throw new Error(err?.message || 'Failed to fetch report detail');
@@ -276,7 +337,7 @@ export function isParsedRow(row: any): row is ParsedRow {
     (typeof row.value === 'string' || typeof row.value === 'number') &&
     (typeof row.unit === 'string' || row.unit === null || row.unit === undefined) &&
     (typeof row.reference_range === 'string' || row.reference_range === null || row.reference_range === undefined) &&
-    (row.flag === 'low' || row.flag === 'high' || row.flag === 'normal' || row.flag === 'abnormal' || row.flag === null || row.flag === undefined) &&
+    (row.flag === 'low' || row.flag === 'high' || row.flag === 'normal' || row.flag === 'abnormal' || row.flag === 'unknown' || row.flag === null || row.flag === undefined) &&
     typeof row.confidence === 'number'
   );
 }

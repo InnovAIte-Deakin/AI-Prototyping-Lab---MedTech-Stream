@@ -68,6 +68,43 @@ def test_interpret_repair_on_malformed(monkeypatch):
     # No extra context behavior required in the simple version
 
 
+def test_interpret_accepts_unknown_flag(monkeypatch):
+    """Reproduces the 422 that fires when a patient clicks Generate Interpretation
+    on a report whose findings were stored with flag='unknown' in the DB.
+
+    FindingFlag.UNKNOWN exists in the DB enum but was missing from ParsedRowIn's
+    pattern, so any report with an unknown-flagged finding returned 422 and
+    displayed "Failed to generate interpretation." in the sidebar panel.
+    """
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    client = TestClient(app)
+    rows = [
+        {
+            "test_name": "Alanine Aminotransferase (ALT)",
+            "value": 48,
+            "unit": "U/L",
+            "reference_range": "7.0-45.0",
+            "flag": "unknown",
+            "confidence": 1.0,
+        },
+        {
+            "test_name": "Haemoglobin",
+            "value": 13.2,
+            "unit": "g/dL",
+            "reference_range": "12.0-15.5",
+            "flag": "normal",
+            "confidence": 1.0,
+        },
+    ]
+    resp = client.post("/api/v1/interpret", json={"rows": rows})
+    assert resp.status_code == 200, (
+        f"Expected 200 but got {resp.status_code}: {resp.text}\n"
+        "This confirms the 422 bug: flag='unknown' is a valid DB value but "
+        "was not accepted by ParsedRowIn's flag pattern."
+    )
+    validate_interpretation_payload(resp.json())
+
+
 def test_interpret_rows_prefers_llm_summary(monkeypatch):
     from app.services import llm as llm_module
 

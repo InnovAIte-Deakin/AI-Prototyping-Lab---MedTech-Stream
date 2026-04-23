@@ -254,6 +254,8 @@ class Report(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    interpretation_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    chat_history_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     subject_user: Mapped[User] = relationship(
         back_populates="subject_reports",

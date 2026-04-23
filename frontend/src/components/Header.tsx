@@ -4,77 +4,107 @@ import React from 'react';
 import { useAuth } from '@/store/authStore';
 import ThemeToggle from './ThemeToggle';
 
+/**
+ * Redesigned navigation bar matching Figma spec.
+ * - Logo left ("ReportX" in primary blue)
+ * - Center nav links with active underline
+ * - Right: primary CTA pill + avatar + theme toggle
+ * - Role-aware: patient vs clinician vs unauthenticated
+ */
 export default function Header() {
   const { user, status, logout } = useAuth();
+
+  const isAuth = status === 'authenticated' && user;
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+
+  const navLink = (href: string, label: string) => {
+    const isActive = currentPath === href || currentPath.startsWith(href + '/');
+    return (
+      <li key={href}>
+        <button
+          onClick={() => (window.location.href = href)}
+          className={`nav-link${isActive ? ' active' : ''}`}
+          type="button"
+        >
+          {label}
+        </button>
+      </li>
+    );
+  };
+
+  // Build center nav items based on role
+  const centerLinks: { href: string; label: string }[] = [];
+  if (isAuth) {
+    centerLinks.push({ href: '/reports', label: 'My Reports' });
+  }
+  centerLinks.push({ href: '/health', label: 'Health Check' });
+
+  // User initials for avatar
+  const initials = user?.email
+    ? user.email.charAt(0).toUpperCase()
+    : '?';
 
   return (
     <>
       <a href="#main" className="skip-link">Skip to content</a>
 
-      <header className="modern-header">
-        <div className="header-container">
-          <div className="logo-section">
-            <a href="/" className="logo">
-              <div className="logo-icon">Rx</div>
-              ReportX
-            </a>
-          </div>
+      <header className="nav-header">
+        <div className="nav-header-inner">
+          {/* Logo */}
+          <a href="/" className="nav-logo">
+            <div className="nav-logo-icon">Rx</div>
+            ReportX
+          </a>
 
-          <nav className="nav-section" aria-label="Primary navigation">
-            <ul className="nav-buttons">
-              <li>
+          {/* Center nav */}
+          <ul className="nav-center">
+            {centerLinks.map((link) => navLink(link.href, link.label))}
+          </ul>
+
+          {/* Right actions */}
+          <div className="nav-right">
+            <button
+              onClick={() => (window.location.href = '/parse')}
+              className="nav-cta"
+              type="button"
+            >
+              Review My Report
+            </button>
+
+            {isAuth ? (
+              <>
+                <div className="nav-avatar" title={`${user.email} (${user.role})`}>
+                  {initials}
+                </div>
                 <button
-                  onClick={() => window.location.href = '/parse'}
-                  className="nav-btn nav-btn-primary"
+                  onClick={logout}
+                  className="nav-link"
                   type="button"
                 >
-                  Review My Report
+                  Logout
                 </button>
-              </li>
-              <li>
-                <button                  onClick={() => window.location.href = '/reports'}
-                  className="nav-btn nav-btn-outline"
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => (window.location.href = '/auth/login')}
+                  className="nav-link"
                   type="button"
                 >
-                  My Reports
+                  Login
                 </button>
-              </li>
-              <li>
-                <button                  onClick={() => window.location.href = '/health'}
-                  className="nav-btn nav-btn-outline"
+                <button
+                  onClick={() => (window.location.href = '/auth/register')}
+                  className="nav-link"
                   type="button"
                 >
-                  Health Check
+                  Sign Up
                 </button>
-              </li>
-              {status === 'authenticated' && user ? (
-                <>
-                  <li>
-                    <button
-                      onClick={logout}
-                      className="nav-btn nav-btn-outline"
-                      type="button"
-                    >
-                      Logout
-                    </button>
-                  </li>
-                  <li style={{ display: 'flex', alignItems: 'center', marginLeft: '0.5rem' }}>
-                    <small style={{ color: '#555' }}>{user.email} ({user.role})</small>
-                  </li>
-                </>
-              ) : (
-                <>
-                  <li>
-                    <button onClick={() => (window.location.href = '/auth/login')} className="nav-btn nav-btn-outline" type="button">Login</button>
-                  </li>
-                  <li>
-                    <button onClick={() => (window.location.href = '/auth/register')} className="nav-btn nav-btn-outline" type="button">Register</button>
-                  </li>
-                </>
-              )}
-            </ul>
+              </>
+            )}
+
             <ThemeToggle />
-          </nav>
+          </div>
         </div>
       </header>
     </>

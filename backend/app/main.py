@@ -20,6 +20,7 @@ from .routers.health import router as health_router
 from .routers.interpret import router as interpret_router
 from .routers.parse import router as parse_router
 from .routers.reports import router as reports_router
+from .routers.notifications import router as notifications_router
 from .routers.threads import router as threads_router
 from .routers.translate import router as translate_router
 from .services.reports import cleanup_expired_shares
@@ -216,6 +217,7 @@ def create_app() -> FastAPI:
     app.include_router(audit_router, prefix="/api/v1")
     app.include_router(reports_router, prefix="/api/v1")
     app.include_router(threads_router, prefix="/api/v1")
+    app.include_router(notifications_router, prefix="/api/v1")
     app.include_router(translate_router, prefix="/api/v1")
 
     @app.get("/", include_in_schema=False)

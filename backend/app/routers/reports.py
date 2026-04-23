@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
     ConsentAccessLevel,
     ConsentScope,
+    ConsentShare,
     Report,
     ReportFinding,
     ReportSourceKind,
@@ -16,17 +18,16 @@ from app.db.models import (
 from app.db.session import get_db_session
 from app.dependencies.auth import AuthContext, get_current_auth_context
 from app.dependencies.reports import get_accessible_report
-from app.services.trends import BiomarkerTrend, build_trends_for_patient
 from app.services.reports import (
     ReportFindingCreateInput,
     ReportServiceError,
-    ClinicianSharedReportItem,
     create_report_for_user,
     get_clinician_shared_reports,
     list_reports_for_user,
     revoke_report_share,
     share_report_with_user,
 )
+from app.services.trends import BiomarkerTrend, build_trends_for_patient
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 

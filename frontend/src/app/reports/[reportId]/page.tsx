@@ -11,6 +11,8 @@ import { DoctorSummaryDocument, type SummaryFinding, type SummaryThread } from '
 import Disclaimer from '@/components/Disclaimer';
 import { BiomarkerTrendChart } from '@/components/BiomarkerTrendChart';
 import { fetchReportTrends, type BiomarkerTrend } from '@/lib/reportTrends';
+import { AuditLogTimeline } from '@/components/AuditLogTimeline';
+import { shareStateFrom, type ShareLifecycleState } from '@/lib/auditLog';
 function formatDate(ts: number) {
   return new Date(ts).toLocaleString();
 }
@@ -20,6 +22,13 @@ const defaultSharingPreferences: SharingPreferences = {
   scope: 'summary',
   expiresAt: Date.now() + 86400000,
   active: false,
+};
+
+const SHARE_BADGE: Record<ShareLifecycleState, { label: string; color: string; background: string; border: string }> = {
+  active: { label: 'Active', color: '#047857', background: '#ecfdf5', border: '#a7f3d0' },
+  expired: { label: 'Expired', color: '#9a3412', background: '#fff7ed', border: '#fed7aa' },
+  revoked: { label: 'Revoked', color: '#b91c1c', background: '#fef2f2', border: '#fecaca' },
+  inactive: { label: 'Not shared', color: '#374151', background: '#f9fafb', border: '#e5e7eb' },
 };
 
 const LANGUAGE_OPTIONS = [
@@ -39,6 +48,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   // FR13 state
   const [includeSummaryPDF, setIncludeSummaryPDF] = useState(false);
   const [threads, setThreads] = useState<ConversationThread[]>([]);
+  const [auditReloadToken, setAuditReloadToken] = useState(0);
 
   // Trend states
   const [trends, setTrends] = useState<BiomarkerTrend[]>([]);
@@ -240,6 +250,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
       updateReportInHistory(report.id, { sharingPreferences: updatedPrefs });
       setReport({ ...report, sharingPreferences: updatedPrefs });
       setStatusMessage('Sharing preferences updated.');
+      setAuditReloadToken((n) => n + 1);
     } catch (err) {
       setStatusMessage('Unable to save sharing preferences. Please try again.');
     }
@@ -277,6 +288,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
       updateReportInHistory(report.id, { sharingPreferences: resetPrefs });
       setReport({ ...report, sharingPreferences: resetPrefs });
       setStatusMessage('Sharing revoked.');
+      setAuditReloadToken((n) => n + 1);
     } catch {
       setStatusMessage('Unable to revoke sharing preferences. Please try again.');
     }
@@ -306,6 +318,10 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   const selectedTrend = filteredTrendItems.find((item) => item.biomarker_key === selectedBiomarkerKey)
     || filteredTrendItems[0]
     || null;
+
+  const shareState: ShareLifecycleState = shareStateFrom(
+    { active: sharingPreferences.active, expiresAt: sharingPreferences.expiresAt },
+  );
 
   if (!user) {
     return (
@@ -492,8 +508,36 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
           ) : null}
         </div>
 
-        <div className="card">
-          <h2>Sharing Preferences</h2>
+        <div className="card" data-testid="sharing-card" data-share-state={shareState}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0 }}>Sharing Preferences</h2>
+            <span
+              data-testid="share-state-badge"
+              style={{
+                padding: '0.2rem 0.6rem',
+                borderRadius: '999px',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                color: SHARE_BADGE[shareState].color,
+                background: SHARE_BADGE[shareState].background,
+                border: `1px solid ${SHARE_BADGE[shareState].border}`,
+              }}
+            >
+              {SHARE_BADGE[shareState].label}
+            </span>
+          </div>
+          {shareState === 'expired' ? (
+            <p role="status" data-testid="share-expired-message" style={{ color: '#9a3412', marginTop: '0.5rem' }}>
+              This share has expired. Clinician access was removed automatically.
+            </p>
+          ) : null}
+          {shareState === 'revoked' ? (
+            <p role="status" data-testid="share-revoked-message" style={{ color: '#b91c1c', marginTop: '0.5rem' }}>
+              This share was revoked. Clinician access is no longer allowed.
+            </p>
+          ) : null}
           <div className="field">
             <label htmlFor="clinician-email">Clinician Email</label>
             <input
@@ -540,6 +584,8 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
           {sharingPreferences.active && <button className="nav-btn nav-btn-danger" onClick={revokeShare} style={{ marginLeft: '0.5rem' }}>Revoke</button>}
           {statusMessage && <p>{statusMessage}</p>}
         </div>
+
+        <AuditLogTimeline reportId={report.id} reloadToken={auditReloadToken} />
 
         <Disclaimer />
 

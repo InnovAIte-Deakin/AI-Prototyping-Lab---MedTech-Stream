@@ -37,7 +37,7 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded }: ThreadVie
 
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
-  const fetchThreads = async () => {
+  const fetchThreads = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch(`${backend}/api/v1/reports/${reportId}/threads`, {
@@ -53,7 +53,7 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded }: ThreadVie
     } finally {
       setLoading(false);
     }
-  };
+  }, [reportId, accessToken, backend, onThreadsLoaded]);
 
   useEffect(() => {
     fetchThreads();

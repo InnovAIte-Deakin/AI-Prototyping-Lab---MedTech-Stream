@@ -1,15 +1,14 @@
 'use client';
 
-import { useEffect, useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { fetchReportById, updateReportInHistory } from '@/lib/reportHistory';
-import type { ReportHistoryEntry, SharingPreferences } from '@/lib/reportHistory';
+import type { ReportHistoryEntry, SharingPreferences, Interpretation, ChatMessage } from '@/lib/reportHistory';
 import { PatientQuestions } from '@/components/PatientQuestions';
 import { ThreadView, ConversationThread } from '@/components/ThreadView';
 import { DoctorSummaryDocument, type SummaryFinding, type SummaryThread } from '@/components/DoctorSummaryDocument';
 import Disclaimer from '@/components/Disclaimer';
-import { BiomarkerTrendChart } from '@/components/BiomarkerTrendChart';
 import { fetchReportTrends, type BiomarkerTrend } from '@/lib/reportTrends';
 import { AuditLogTimeline } from '@/components/AuditLogTimeline';
 import { shareStateFrom, type ShareLifecycleState } from '@/lib/auditLog';
@@ -58,6 +57,16 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   const [biomarkerFilterText, setBiomarkerFilterText] = useState('');
   const [selectedBiomarkerKey, setSelectedBiomarkerKey] = useState('');
 
+  // Interpretation panel state
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [isInterpreting, setIsInterpreting] = useState(false);
+  const [interpretError, setInterpretError] = useState<string | null>(null);
+  const [localInterpretation, setLocalInterpretation] = useState<Interpretation | undefined>(undefined);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     async function loadReport() {
       if (!params.reportId || !user) {
@@ -85,7 +94,15 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   useEffect(() => {
     if (!report) return;
     setSharingPreferences(report.sharingPreferences ?? defaultSharingPreferences);
+    if (report.interpretation) {
+      setLocalInterpretation(report.interpretation);
+    }
   }, [report]);
+
+  // Restore saved chat thread when navigating to a report that has prior messages
+  useEffect(() => {
+    setChatMessages(report?.chatMessages ?? []);
+  }, [report?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setTrends([]);
@@ -97,6 +114,11 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     setBiomarkerFilterText('');
     setSelectedBiomarkerKey('');
   }, [report?.id]);
+
+  // Scroll chat to bottom on new messages
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -182,6 +204,100 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     void translateTrendNotesIfNeeded(trendLanguage);
   }, [trendLanguage, translateTrendNotesIfNeeded]);
 
+  // ── Interpretation trigger ──
+  async function triggerInterpretation() {
+    setIsPanelOpen(true);
+    const alreadyHave = localInterpretation || report?.interpretation;
+    if (alreadyHave || isInterpreting || !report) return;
+
+    setIsInterpreting(true);
+    setInterpretError(null);
+    try {
+      const response = await fetch(`${backend}/api/v1/interpret`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rows: report.rows.map((row) => ({
+            test_name: row.test_name,
+            value: row.value,
+            unit: row.unit ?? null,
+            reference_range: row.reference_range ?? null,
+            // 'unknown' is a valid DB enum value but not a clinically meaningful
+            // flag for interpretation — normalise to null so the backend accepts it.
+            flag: (row.flag && row.flag !== 'unknown') ? row.flag : null,
+            confidence: row.confidence,
+          })),
+        }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to generate interpretation.');
+      }
+      const data = await response.json();
+      const interp = data.interpretation as Interpretation;
+      setLocalInterpretation(interp);
+      updateReportInHistory(report.id, { interpretation: interp });
+      setReport((prev) => (prev ? { ...prev, interpretation: interp } : prev));
+      // Persist to backend so interpretation survives page refresh
+      const token = getAccessToken();
+      if (token) {
+        fetch(`${backend}/api/v1/reports/${report.id}/interpretation`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ interpretation: interp }),
+        }).catch(() => { /* non-critical — in-memory store still has it */ });
+      }
+    } catch (err: any) {
+      setInterpretError(err?.message || 'Unable to generate interpretation. Please try again.');
+    } finally {
+      setIsInterpreting(false);
+    }
+  }
+
+  // ── Chat send ──
+  async function sendChatMessage() {
+    const text = chatInput.trim();
+    if (!text || isSendingChat || !report) return;
+    setChatInput('');
+    const userMsg: ChatMessage = { role: 'user', text };
+    const withUser: ChatMessage[] = [...chatMessages, userMsg];
+    setChatMessages(withUser);
+    setIsSendingChat(true);
+    try {
+      const activeInterp = localInterpretation || report.interpretation;
+      const response = await fetch(`${backend}/api/v1/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: text,
+          interpretation_context: activeInterp?.summary || '',
+          rows: report.rows.map((row) => ({
+            test_name: row.test_name,
+            value: row.value,
+            unit: row.unit ?? null,
+            reference_range: row.reference_range ?? null,
+            flag: (row.flag && row.flag !== 'unknown') ? row.flag : null,
+            confidence: row.confidence,
+          })),
+        }),
+      });
+      if (!response.ok) throw new Error('Chat request failed.');
+      const data = await response.json();
+      const aiMsg: ChatMessage = { role: 'ai', text: data.answer || 'No response received.' };
+      const updated: ChatMessage[] = [...withUser, aiMsg];
+      setChatMessages(updated);
+      updateReportInHistory(report.id, { chatMessages: updated });
+      setReport((prev) => prev ? { ...prev, chatMessages: updated } : prev);
+    } catch {
+      const errMsg: ChatMessage = { role: 'ai', text: 'Sorry, I could not answer that right now. Please try again or consult your clinician.' };
+      const updated: ChatMessage[] = [...withUser, errMsg];
+      setChatMessages(updated);
+      updateReportInHistory(report.id, { chatMessages: updated });
+      setReport((prev) => prev ? { ...prev, chatMessages: updated } : prev);
+    } finally {
+      setIsSendingChat(false);
+    }
+  }
+
   async function updateShare() {
     if (!report) return;
     if (!sharingPreferences.clinicianEmail) {
@@ -249,7 +365,7 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
     }
   }
 
-  const interpretation = report?.interpretation;
+  const activeInterp = localInterpretation || report?.interpretation;
   const trendItems = trends.filter((item) => item.sparkline.length > 1);
   const normalizedFilter = biomarkerFilterText.trim().toLowerCase();
   const filteredTrendItems = trendItems.filter((item) => {
@@ -268,6 +384,20 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   const shareState: ShareLifecycleState = shareStateFrom(
     { active: sharingPreferences.active, expiresAt: sharingPreferences.expiresAt },
   );
+
+  function isSharingError(msg: string) {
+    return /fail|unable|error|provide|not found|denied/i.test(msg);
+  }
+
+  function getFlagRowClass(flag: string | null | undefined) {
+    if (flag === 'high' || flag === 'low' || flag === 'abnormal') return `row-flagged-${flag}`;
+    return '';
+  }
+
+  function getFlagLabel(flag: string | null | undefined) {
+    if (!flag) return 'Unknown';
+    return flag.charAt(0).toUpperCase() + flag.slice(1);
+  }
 
   if (!user) {
     return (<ProtectedView><div>Loading...</div></ProtectedView>);
@@ -344,227 +474,192 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
           patientName={user?.displayName || user?.email || 'Patient'}
           flaggedFindings={flaggedFindings}
           allFindings={allFindingsForPDF}
-          interpretationSummary={interpretation?.summary}
+          interpretationSummary={activeInterp?.summary}
           trendNotes={undefined}
           threads={threadSummaries}
         />
       </div>
 
-      <section className="stack">
-        {/* Breadcrumb */}
-        <nav className="report-breadcrumb">
-          <a href="/reports">Reports</a>
-          <span className="report-breadcrumb-sep" aria-hidden="true">&gt;</span>
-          <span>{report.title || 'Report Detail'}</span>
-        </nav>
+      <div className="report-detail-page">
 
-        {/* Report header */}
-        <div className="report-header">
-          <div>
-            <h1 style={{ margin: 0 }}>{report.title || 'Report Detail'}</h1>
-            <p className="report-header-meta">
-              Patient: {user?.displayName || user?.email || 'Patient'} &bull; Date: {formatDate(report.createdAt)}
-            </p>
-          </div>
-          <div className="report-header-actions">
+        {/* ── Page header ── */}
+        <div className="report-detail-header">
+          <a href="/reports" className="back-link">
+            ← My Reports
+          </a>
+          <h1 className="report-detail-title">{report.title || 'Lab Report'}</h1>
+          <div className="report-meta-row">
+            <span className="meta-chip">
+              <span className="meta-chip-label">Saved</span>
+              {formatDate(report.createdAt)}
+            </span>
+            <span className="meta-chip">
+              <span className="meta-chip-label">Results</span>
+              {report.rows.length} {report.rows.length === 1 ? 'test' : 'tests'}
+            </span>
             <button
               type="button"
-              className="btn btn-outline btn-md"
-              onClick={() => setSharingPanelOpen(true)}
-              aria-label="Share Report"
+              className={`meta-chip meta-chip-btn${activeInterp ? ' chip-success' : ''}`}
+              onClick={() => void triggerInterpretation()}
+              title={activeInterp ? 'View AI interpretation panel' : 'Generate AI interpretation'}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.4rem' }}>
-                <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-              </svg>
-              Share Report
-            </button>
-            <button
-              id="export-doctor-summary-btn"
-              type="button"
-              className="btn btn-primary btn-md"
-              onClick={handleExportPDF}
-              title="Export a doctor-ready one-page PDF summary"
-              aria-label="Export PDF"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.4rem' }}>
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7,10 12,15 17,10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              Export PDF
+              {activeInterp ? '✓ Interpreted — View' : '⚡ Generate Interpretation'}
             </button>
           </div>
         </div>
 
-        {/* Main content: two-column layout */}
-        <div className="report-layout">
-          {/* Left column */}
-          <div>
-            {/* Clinical Summary */}
-            <div className="clinical-summary-card">
-              <div className="clinical-summary-header">
-                <h2>Clinical Summary</h2>
-                {interpretation && (
-                  <span className="ai-badge">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-                    </svg>
-                    AI Analysis Ready
-                  </span>
-                )}
+        {/* ── Test Results card ── */}
+        <div className="report-section-card">
+          <div className="card-section-header">
+            <div className="card-section-header-inner">
+              <div className="card-section-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+                  <line x1="9" y1="12" x2="15" y2="12"/>
+                  <line x1="9" y1="16" x2="15" y2="16"/>
+                </svg>
               </div>
-
-              {interpretation ? (
-                <p style={{ lineHeight: 1.7, color: 'var(--on-surface)' }}>{interpretation.summary}</p>
-              ) : (
-                <p style={{ color: 'var(--on-surface-muted)' }}>
-                  No AI analysis available yet. Click &ldquo;Review My Report&rdquo; to generate an interpretation.
-                </p>
-              )}
-
-              {/* Status indicators */}
-              <div className="status-indicators">
-                <div className="status-indicator status-indicator--success">
-                  <svg className="status-indicator-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                    <polyline points="22,4 12,14.01 9,11.01" />
-                  </svg>
-                  <div>
-                    <div className="status-indicator-label">Critical Markers</div>
-                    <div>{normalCount > 0 ? 'Normal Range' : 'No data'}</div>
-                  </div>
-                </div>
-                {flaggedCount > 0 && (
-                  <div className="status-indicator status-indicator--warning">
-                    <svg className="status-indicator-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                      <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-                    </svg>
-                    <div>
-                      <div className="status-indicator-label">Action Required</div>
-                      <div>{flaggedCount} flagged result{flaggedCount > 1 ? 's' : ''}</div>
-                    </div>
-                  </div>
-                )}
+              <div className="card-section-text">
+                <p className="card-section-title">Your Test Results</p>
+                <p className="card-section-subtitle">Values from your lab report with reference ranges and status flags</p>
               </div>
             </div>
-
-            {/* Lab Results & Biomarkers */}
-            <div className="card" style={{ padding: 'var(--space-6)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
-                <h2>Lab Results &amp; Biomarkers</h2>
-              </div>
-
-              {report.rows.length > 0 ? (
-                <table className="lab-table">
-                  <thead>
-                    <tr>
-                      <th>Biomarker</th>
-                      <th>Result</th>
-                      <th>Reference Range</th>
-                      <th style={{ textAlign: 'right' }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.rows.map((row, idx) => {
-                      const isFlagged = row.flag === 'high' || row.flag === 'low' || row.flag === 'abnormal';
-                      return (
-                        <tr key={`${row.test_name}-${idx}`} className={isFlagged ? 'lab-row-flagged' : ''}>
-                          <td>
-                            <div className="biomarker-name">{row.test_name}</div>
-                          </td>
-                          <td>
-                            <span className={`result-value${isFlagged ? ' flagged' : ''}`}>
-                              {String(row.value)}
-                            </span>
-                            {row.unit && <span className="result-unit">{row.unit}</span>}
-                          </td>
-                          <td style={{ color: 'var(--on-surface-muted)' }}>{row.reference_range || '—'}</td>
-                          <td style={{ textAlign: 'right' }}>
-                            <Badge variant={flagBadgeVariant(row.flag)}>
-                              {flagBadgeLabel(row.flag)}
-                            </Badge>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              ) : (
-                <p style={{ color: 'var(--on-surface-muted)' }}>No lab results available.</p>
-              )}
-            </div>
-
-            {/* Biomarker Trends */}
-            <div className="card" style={{ padding: 'var(--space-6)' }}>
-              <h2>Biomarker Trends</h2>
-              {trendsLoading ? <p>Loading trends...</p> : null}
-              {!trendsLoading && trendsError ? <p>{trendsError}</p> : null}
-              {!trendsLoading && !trendsError && trendItems.length === 0 ? (
-                <p style={{ color: 'var(--on-surface-muted)' }}>Not enough prior report data to calculate trends yet.</p>
-              ) : null}
-              {!trendsLoading && !trendsError && trendItems.length > 0 ? (
-                <>
-                  <div className="field" style={{ maxWidth: '420px' }}>
-                    <label htmlFor="biomarker-filter">Filter biomarkers</label>
-                    <input id="biomarker-filter" placeholder="Type biomarker name" value={biomarkerFilterText} onChange={(e) => setBiomarkerFilterText(e.target.value)} />
-                  </div>
-                  <div className="field" style={{ maxWidth: '420px' }}>
-                    <label htmlFor="biomarker-select">Biomarker</label>
-                    <select id="biomarker-select" value={selectedTrend?.biomarker_key || ''} onChange={(e) => setSelectedBiomarkerKey(e.target.value)}>
-                      {filteredTrendItems.map((item) => (<option key={item.biomarker_key} value={item.biomarker_key}>{item.display_name}</option>))}
-                    </select>
-                  </div>
-                  <div className="field" style={{ maxWidth: '320px' }}>
-                    <label htmlFor="trend-language">Trend note language</label>
-                    <select id="trend-language" value={trendLanguage} onChange={(e) => setTrendLanguage(e.target.value)}>
-                      {LANGUAGE_OPTIONS.map((option) => (<option key={option.value} value={option.value}>{option.label}</option>))}
-                    </select>
-                  </div>
-                  {loadingTrendTranslations ? <p>Loading translation...</p> : null}
-                  {trendTranslationError ? <p>{trendTranslationError}</p> : null}
-                  {!selectedTrend ? <p>No biomarkers match your filter.</p> : null}
-                  {selectedTrend ? (
-                    <>
-                      <p>{trendNoteTranslations[selectedTrend.biomarker_key]?.[trendLanguage] || selectedTrend.trend_note}</p>
-                      <BiomarkerTrendChart
-                        title={selectedTrend.display_name}
-                        unit={selectedTrend.unit}
-                        points={selectedTrend.sparkline.map((point) => ({ observed_at: point.observed_at, value: point.value }))}
-                      />
-                    </>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-
-            {/* Patient Questions */}
-            <PatientQuestions reportId={report.id} accessToken={accessToken} onThreadCreated={() => {}} />
-
-            <AuditLogTimeline reportId={report.id} reloadToken={auditReloadToken} />
-            <Disclaimer />
           </div>
+          <div className="card-section-body">
+            <div className="results-table-wrap">
+              <table className="results-data-table">
+                <thead>
+                  <tr>
+                    <th>Test Name</th>
+                    <th>Value</th>
+                    <th>Reference Range</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.rows.map((row, idx) => (
+                    <tr key={`${row.test_name}-${idx}`} className={getFlagRowClass(row.flag)}>
+                      <td className="result-test-name">{row.test_name}</td>
+                      <td className="result-value-cell">
+                        {row.value}
+                        {row.unit && <span className="result-unit">{row.unit}</span>}
+                      </td>
+                      <td className="result-ref">{row.reference_range || '—'}</td>
+                      <td>
+                        <span className={`rd-flag flag-${row.flag || 'unknown'}`}>
+                          {getFlagLabel(row.flag)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
 
-          {/* Right column — sidebar */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            {/* Sharing Preferences sidebar card */}
-            <div className="sharing-sidebar" data-testid="sharing-card" data-share-state={shareState}>
-              <div className="sharing-sidebar-title">Sharing Preferences</div>
-              <div className="field">
+        {/* ── Interpretation card (shown inline if already interpreted) ── */}
+        {activeInterp && (
+          <div className="report-section-card">
+            <div className="card-section-header">
+              <div className="card-section-header-inner">
+                <div className="card-section-icon" aria-hidden="true">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                </div>
+                <div className="card-section-text">
+                  <p className="card-section-title">What This Means</p>
+                  <p className="card-section-subtitle">A plain-language summary to help you prepare for your next clinical conversation</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="nav-btn nav-btn-outline"
+                style={{ fontSize: '0.8rem', padding: '0.4rem 0.875rem' }}
+                onClick={() => void triggerInterpretation()}
+              >
+                Open AI chat
+              </button>
+            </div>
+            <div className="card-section-body">
+              <p className="interpretation-body">{activeInterp.summary}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="report-header-actions" style={{ margin: '0.75rem 0 1rem' }}>
+          <button
+            type="button"
+            className="btn btn-outline btn-md"
+            onClick={() => void triggerInterpretation()}
+            aria-label="Review My Report"
+          >
+            Review My Report
+          </button>
+          <button
+            id="export-doctor-summary-btn"
+            type="button"
+            className="btn btn-primary btn-md"
+            onClick={handleExportPDF}
+            title="Export a doctor-ready one-page PDF summary"
+            aria-label="Export PDF"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.4rem' }}>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7,10 12,15 17,10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Export PDF
+          </button>
+        </div>
+
+        {/* ── Sharing Preferences card ── */}
+        <div className="report-section-card">
+          <div className="card-section-header">
+            <div className="card-section-header-inner">
+              <div className="card-section-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="18" cy="5" r="3"/>
+                  <circle cx="6" cy="12" r="3"/>
+                  <circle cx="18" cy="19" r="3"/>
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                </svg>
+              </div>
+              <div className="card-section-text">
+                <p className="card-section-title">Share with Your Clinician</p>
+                <p className="card-section-subtitle">Grant temporary, scoped access — you can revoke it at any time</p>
+              </div>
+            </div>
+            {sharingPreferences.active && (
+              <span className="sharing-active-badge">
+                <span className="sharing-active-dot" />
+                Sharing active
+              </span>
+            )}
+          </div>
+          <div className="card-section-body">
+            <div className="sharing-form-grid">
+              <div className="sharing-field sharing-form-full">
                 <label htmlFor="clinician-email">Clinician Email</label>
                 <input
                   id="clinician-email"
-                  className="input"
+                  type="email"
+                  placeholder="clinician@example.com"
                   value={sharingPreferences.clinicianEmail}
                   onChange={(e) => setSharingPreferences({ ...sharingPreferences, clinicianEmail: e.target.value })}
                 />
               </div>
-              <div className="field">
-                <label htmlFor="share-scope">Scope</label>
+              <div className="sharing-field">
+                <label htmlFor="share-scope">Access Scope</label>
                 <select
                   id="share-scope"
-                  className="input"
                   value={sharingPreferences.scope}
                   onChange={(e) => setSharingPreferences({ ...sharingPreferences, scope: e.target.value as 'summary' | 'full' })}
                 >
@@ -572,18 +667,18 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
                   <option value="full">Full report</option>
                 </select>
               </div>
-              <div className="field">
-                <label htmlFor="share-expiry">Expiry</label>
+              <div className="sharing-field">
+                <label htmlFor="share-expiry">Access Expires</label>
                 <input
                   id="share-expiry"
                   type="datetime-local"
-                  className="input"
                   value={new Date(sharingPreferences.expiresAt).toISOString().slice(0, 16)}
                   onChange={(e) => setSharingPreferences({ ...sharingPreferences, expiresAt: new Date(e.target.value).getTime() })}
                 />
               </div>
+              <div className="sharing-field sharing-form-full">
               {/* FR13 include doctor summary PDF */}
-              <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'var(--success-container)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginTop: 'var(--space-2)' }}>
+              <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'var(--success-container)', padding: '0.75rem', borderRadius: 'var(--radius-sm)' }}>
                 <input
                   id="include-summary-pdf"
                   type="checkbox"
@@ -598,57 +693,173 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
                   </span>
                 </label>
               </div>
-              <button id="share-report-btn" className="btn btn-primary btn-md" style={{ width: '100%', marginTop: 'var(--space-3)' }} onClick={handleShareWithPDF}>
-                {sharingPreferences.active ? 'Update Share' : 'Start Sharing'}
+              </div>
+            </div>
+            <div className="sharing-divider" />
+            <div className="sharing-actions">
+              <button className="nav-btn nav-btn-primary" onClick={handleShareWithPDF}>
+                {sharingPreferences.active ? 'Update Sharing' : 'Start Sharing'}
               </button>
               {sharingPreferences.active && (
-                <button className="btn btn-danger btn-md" onClick={revokeShare} style={{ width: '100%', marginTop: 'var(--space-2)' }}>
-                  Revoke
+                <button className="nav-btn nav-btn-danger" onClick={revokeShare}>
+                  Revoke Access
                 </button>
               )}
-              {statusMessage && <p style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-body-sm)', textAlign: 'center' }}>{statusMessage}</p>}
             </div>
-
-            {/* Thread View / Intelligence Panel */}
-            <div className="intelligence-panel">
-              <div className="intelligence-panel-header">
-                <div className="intelligence-panel-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                    <line x1="12" y1="17" x2="12.01" y2="17" />
-                  </svg>
-                </div>
-                <div>
-                  <div style={{ fontWeight: 600 }}>Intelligence Panel</div>
-                  <div style={{ fontSize: 'var(--text-body-sm)', color: 'var(--on-surface-muted)' }}>Contextual Analysis Assistant</div>
-                </div>
-              </div>
-              <ThreadView
-                reportId={report.id}
-                accessToken={accessToken}
-                onThreadsLoaded={setThreads}
-              />
-            </div>
+            {statusMessage && (
+              <p className={`sharing-status-msg ${isSharingError(statusMessage) ? 'msg-error' : 'msg-success'}`}>
+                {statusMessage}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Sharing Panel (slide-in) */}
-        <SharingPreferencesPanel
-          open={sharingPanelOpen}
-          onClose={() => setSharingPanelOpen(false)}
-          onShare={handleShareWithPDF}
-          onRevoke={revokeShare}
-          clinicianEmail={sharingPreferences.clinicianEmail}
-          onClinicianEmailChange={(e) => setSharingPreferences({ ...sharingPreferences, clinicianEmail: e.target.value })}
-          scope={sharingPreferences.scope}
-          onScopeChange={(e) => setSharingPreferences({ ...sharingPreferences, scope: e.target.value as 'summary' | 'full' })}
-          expiresAt={sharingPreferences.expiresAt}
-          onExpiresAtChange={(e) => setSharingPreferences({ ...sharingPreferences, expiresAt: new Date(e.target.value).getTime() })}
-          shareActive={sharingPreferences.active}
-          statusMessage={statusMessage}
-        />
-      </section>
+        <AuditLogTimeline reportId={report.id} reloadToken={auditReloadToken} />
+
+        <Disclaimer />
+
+      </div>
+
+      {/* ── Interpretation Sidebar Panel ── */}
+      {isPanelOpen && (
+        <aside className="interp-sidebar" role="complementary" aria-label="AI Interpretation Panel">
+
+          {/* Header */}
+          <div className="interp-sidebar-header">
+            <div className="card-section-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+            </div>
+            <div className="interp-sidebar-text">
+              <p className="interp-sidebar-title">AI Interpretation</p>
+              <p className="interp-sidebar-subtitle">Plain-language explanation · Ask follow-up questions below</p>
+            </div>
+            <button
+              type="button"
+              className="interp-close-btn"
+              onClick={() => setIsPanelOpen(false)}
+              aria-label="Close interpretation panel"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Scrollable body */}
+          <div className="interp-sidebar-body">
+            {isInterpreting && (
+              <div className="interp-loading">
+                <div className="interp-spinner" />
+                <p>Generating your interpretation…</p>
+              </div>
+            )}
+
+            {interpretError && !isInterpreting && (
+              <p className="interp-error">{interpretError}</p>
+            )}
+
+            {activeInterp && !isInterpreting && (
+              <>
+                <div className="interp-section">
+                  <p className="interp-section-label">Summary</p>
+                  <p className="interp-text">{activeInterp.summary}</p>
+                </div>
+
+                {activeInterp.flags && activeInterp.flags.length > 0 && (
+                  <div className="interp-section">
+                    <p className="interp-section-label">Flagged Results</p>
+                    <ul className="interp-flags-list">
+                      {activeInterp.flags.map((flag, i) => (
+                        <li key={i} className="interp-flag-item">
+                          <span className={`rd-flag flag-${flag.severity}`}>{flag.severity}</span>
+                          <span><strong>{flag.test_name}</strong> — {flag.note}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {activeInterp.next_steps && activeInterp.next_steps.length > 0 && (
+                  <div className="interp-section">
+                    <p className="interp-section-label">Next Steps</p>
+                    <ol className="interp-steps-list">
+                      {activeInterp.next_steps.map((step, i) => (
+                        <li key={i}>{step}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {activeInterp.disclaimer && (
+                  <p className="interp-disclaimer">{activeInterp.disclaimer}</p>
+                )}
+              </>
+            )}
+
+            {!activeInterp && !isInterpreting && !interpretError && (
+              <div className="interp-loading">
+                <p style={{ textAlign: 'center', color: 'var(--muted-ink)', fontSize: '0.875rem' }}>
+                  Click the button above to generate your AI interpretation.
+                </p>
+              </div>
+            )}
+
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Chat section */}
+          <div className="interp-chat">
+            <div className="interp-chat-header">Ask a follow-up question</div>
+
+            <div className="interp-chat-messages">
+              {chatMessages.length === 0 && (
+                <p className="interp-chat-empty">
+                  Ask anything about your results or this explanation.
+                </p>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`chat-bubble chat-bubble-${msg.role}`}>
+                  <p>{msg.text}</p>
+                </div>
+              ))}
+              {isSendingChat && (
+                <div className="chat-bubble chat-bubble-ai chat-bubble-loading">
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                </div>
+              )}
+            </div>
+
+            <div className="interp-chat-compose">
+              <textarea
+                className="interp-chat-input"
+                placeholder="Ask about your results…"
+                value={chatInput}
+                rows={2}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    void sendChatMessage();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="interp-send-btn"
+                onClick={() => void sendChatMessage()}
+                disabled={!chatInput.trim() || isSendingChat}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+
+        </aside>
+      )}
     </ProtectedView>
   );
 }

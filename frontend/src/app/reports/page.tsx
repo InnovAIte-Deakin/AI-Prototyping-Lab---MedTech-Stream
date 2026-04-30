@@ -5,8 +5,7 @@ import { ProtectedView } from '@/components/ProtectedView';
 import { useAuth } from '@/store/authStore';
 import { fetchReportHistory } from '@/lib/reportHistory';
 import type { ReportHistoryEntry, SharingPreferences } from '@/lib/reportHistory';
-import { BiomarkerTimelineChart } from '@/components/BiomarkerTimelineChart';
-import { buildBiomarkerTimeline } from '@/lib/reportTimeline';
+import type { ViewScope } from '@/components/SharingPreferencesPanel';
 import { resolveReportDate } from '@/lib/reportHistory';
 import { SharingPreferencesPanel } from '@/components/SharingPreferencesPanel';
 import { Badge } from '@/components/ui/Badge';
@@ -51,7 +50,7 @@ export default function ReportsPage() {
   const { user } = useAuth();
   const [reportHistory, setReportHistory] = useState<ReportHistoryEntry[]>([]);
   const [editingSharingId, setEditingSharingId] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<SharingPreferences>({ clinicianEmail: '', scope: 'summary', expiresAt: Date.now() + 86400000, active: false });
+  const [sheet, setSheet] = useState<SharingPreferences>({ clinicianEmail: '', viewScope: 'summary_only', includeDoctorSummary: false, expiresAt: Date.now() + 86400000, active: false });
   const [statusMessage, setStatusMessage] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -73,8 +72,7 @@ export default function ReportsPage() {
     }
   }, [user]);
 
-  const timeline = useMemo(() => buildBiomarkerTimeline(reportHistory), [reportHistory]);
-  const reportCards = useMemo(() => [...timeline.reports].sort((a, b) => b.reportDate - a.reportDate), [timeline.reports]);
+  const reportCards = useMemo(() => [...reportHistory].sort((a, b) => resolveReportDate(b) - resolveReportDate(a)), [reportHistory]);
   const reportCardById = useMemo(() => new Map(reportCards.map((item) => [item.id, item])), [reportCards]);
 
   const rows = useMemo(() => {
@@ -128,7 +126,8 @@ export default function ReportsPage() {
     setEditingSharingId(entry.id);
     setSheet({
       clinicianEmail: entry.sharingPreferences?.clinicianEmail || '',
-      scope: entry.sharingPreferences?.scope || 'summary',
+      viewScope: entry.sharingPreferences?.viewScope || 'summary_only',
+      includeDoctorSummary: entry.sharingPreferences?.includeDoctorSummary ?? false,
       expiresAt: entry.sharingPreferences?.expiresAt || Date.now() + 86400000,
       active: entry.sharingPreferences?.active ?? false,
     });
@@ -144,14 +143,17 @@ export default function ReportsPage() {
       return;
     }
     try {
+      const accessLevelMap = { summary_only: 'read', full_report: 'comment', full_report_with_threads: 'manage' } as const;
       const res = await fetch(`${backend}/api/v1/reports/${editingSharingId}/share`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           clinician_email: sheet.clinicianEmail,
-          scope: sheet.scope === 'full' ? 'patient' : 'report',
-          access_level: sheet.scope === 'full' ? 'comment' : 'read',
+          scope: 'report',
+          access_level: accessLevelMap[sheet.viewScope],
           expires_at: new Date(sheet.expiresAt).toISOString(),
+          view_scope: sheet.viewScope,
+          include_doctor_summary: sheet.includeDoctorSummary,
         }),
       });
       if (!res.ok) {
@@ -217,71 +219,16 @@ export default function ReportsPage() {
   return (
     <ProtectedView>
       <section className="stack">
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
-          <div>
-            <h1>My Report History</h1>
-            <p className="history-summary" style={{ color: 'var(--on-surface-muted)', marginTop: 'var(--space-2)' }}>
-              {reportCountLabel}
-            </p>
-          </div>
-          <div className="biomarker-selector">
-            <div className="biomarker-selector-label">Selected Biomarker</div>
-            <select
-              aria-label="Select biomarker"
-              className="input"
-              style={{ minWidth: 260 }}
-              defaultValue=""
-            >
-              {timeline.series.length === 0 && <option value="">No biomarkers available</option>}
-              {timeline.series.map((s) => (
-                <option key={s.biomarkerKey} value={s.biomarkerKey}>{s.displayName}</option>
-              ))}
-            </select>
-          </div>
+        <div>
+          <h1>My Report History</h1>
+          <p className="history-summary" style={{ color: 'var(--on-surface-muted)', marginTop: 'var(--space-2)' }}>
+            {reportCountLabel}
+          </p>
         </div>
 
         {loadError && (
           <div className="alert alert-error" style={{ marginBottom: '1rem' }}>{loadError}</div>
         )}
-
-        {/* Trend analysis section */}
-        <div className="trend-section">
-          <div className="trend-chart-card">
-            <div className="trend-chart-header">
-              <h3 className="trend-chart-title">Biomarker Trend Analysis</h3>
-              <div className="trend-time-pills">
-                <button type="button" className="trend-time-pill active">6 Months</button>
-                <button type="button" className="trend-time-pill">1 Year</button>
-              </div>
-            </div>
-            <BiomarkerTimelineChart reports={reportHistory} />
-          </div>
-
-          <div className="clinical-insight-card">
-            <div className="clinical-insight-label">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-              Clinical Insight
-            </div>
-            {timeline.series.length > 0 ? (
-              <>
-                <h3>Your biomarker trends are being tracked.</h3>
-                <p>Comparing your reports over time to identify meaningful patterns in your health data.</p>
-              </>
-            ) : (
-              <>
-                <h3>Upload more reports to unlock trends.</h3>
-                <p>We need at least two reports with the same biomarkers to begin trend analysis.</p>
-              </>
-            )}
-            <button type="button" className="btn btn-outline" style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}>
-              View Recommendations
-            </button>
-          </div>
-        </div>
 
         {/* Comprehensive Report History */}
         <div className="report-section-header">
@@ -451,8 +398,10 @@ export default function ReportsPage() {
           onRevoke={revokeSharing}
           clinicianEmail={sheet.clinicianEmail}
           onClinicianEmailChange={(e) => setSheet({ ...sheet, clinicianEmail: e.target.value })}
-          scope={sheet.scope}
-          onScopeChange={(e) => setSheet({ ...sheet, scope: e.target.value as 'summary' | 'full' })}
+          viewScope={sheet.viewScope}
+          onViewScopeChange={(e) => setSheet({ ...sheet, viewScope: e.target.value as SharingPreferences['viewScope'] })}
+          includeDoctorSummary={sheet.includeDoctorSummary}
+          onIncludeDoctorSummaryChange={(e) => setSheet({ ...sheet, includeDoctorSummary: e.target.checked })}
           expiresAt={sheet.expiresAt}
           onExpiresAtChange={(e) => setSheet({ ...sheet, expiresAt: new Date(e.target.value).getTime() })}
           shareActive={sheet.active}

@@ -14,6 +14,7 @@ from app.db.models import (
     Report,
     ReportFinding,
     ReportSourceKind,
+    ShareViewScope,
 )
 from app.db.session import get_db_session
 from app.dependencies.auth import AuthContext, get_current_auth_context
@@ -37,6 +38,8 @@ class ReportShareRequest(BaseModel):
     scope: ConsentScope = ConsentScope.REPORT
     access_level: ConsentAccessLevel = ConsentAccessLevel.READ
     expires_at: datetime
+    view_scope: ShareViewScope = ShareViewScope.SUMMARY_ONLY
+    include_doctor_summary: bool = False
 
 
 class ReportCreateFinding(BaseModel):
@@ -179,6 +182,11 @@ async def share_report(
     auth: AuthContext = Depends(get_current_auth_context),
     session: AsyncSession = Depends(get_db_session),
 ) -> ReportShareResponse:
+    if "clinician" in auth.roles and "patient" not in auth.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Clinicians may not create report shares",
+        )
     try:
         result = await share_report_with_user(
             session,
@@ -188,6 +196,8 @@ async def share_report(
             scope=payload.scope,
             access_level=payload.access_level,
             expires_at=payload.expires_at,
+            view_scope=payload.view_scope,
+            include_doctor_summary=payload.include_doctor_summary,
         )
     except ReportServiceError as exc:
         _raise_report_http_error(exc)
@@ -212,6 +222,11 @@ async def revoke_share(
     auth: AuthContext = Depends(get_current_auth_context),
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
+    if "clinician" in auth.roles and "patient" not in auth.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Clinicians may not revoke report shares",
+        )
     try:
         await revoke_report_share(
             session,
@@ -338,12 +353,21 @@ async def _ensure_full_report_trend_access(
     auth: AuthContext,
     session: AsyncSession,
 ) -> None:
+    # T21: Trend data is clinician-only
+    if "clinician" not in auth.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only clinicians may access trend data",
+        )
+
+    # Report owner (patient who is also clinician - unlikely but handle it) can access own trends
     if report.subject_user_id == auth.user.id:
         return
 
+    # Clinician must have an active share with appropriate scope
     now = datetime.now(UTC)
-    full_access_share = await session.scalar(
-        select(ConsentShare.id)
+    share = await session.scalar(
+        select(ConsentShare)
         .where(
             ConsentShare.subject_user_id == report.subject_user_id,
             ConsentShare.grantee_user_id == auth.user.id,
@@ -354,10 +378,17 @@ async def _ensure_full_report_trend_access(
         )
         .limit(1)
     )
-    if full_access_share is None:
+    if share is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Trend data requires full-report access for this patient",
+            detail="Trend data requires full-report access to the entire patient, not just individual reports.",
+        )
+
+    # T21: Enforce ShareViewScope - trends require full_report or full_report_with_threads
+    if share.view_scope == ShareViewScope.SUMMARY_ONLY:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Trend data is not available under summary_only scope. Require full_report or full_report_with_threads.",
         )
 
 

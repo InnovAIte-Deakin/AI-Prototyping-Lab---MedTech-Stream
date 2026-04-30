@@ -147,6 +147,7 @@ async def _notify_other_participants(
     thread: ConversationThread,
     *,
     actor_id: str,
+    actor_roles: frozenset[str],
     message_body_preview: str,
 ) -> None:
     stmt = (
@@ -162,13 +163,16 @@ async def _notify_other_participants(
     if thread.subject_user_id != actor_id and not any(p.user_id == thread.subject_user_id for p in recipients):
         recipients.append(ThreadParticipant(thread_id=thread.id, user_id=thread.subject_user_id))
 
+    is_clinician = "clinician" in actor_roles
+    kind = NotificationKind.CLINICIAN_REPLIED_IN_THREAD if is_clinician else NotificationKind.PATIENT_MESSAGE_IN_THREAD
+
     for participant in recipients:
         session.add(
             Notification(
                 user_id=participant.user_id,
                 thread_id=thread.id,
                 report_id=thread.report_id,
-                kind=NotificationKind.THREAD_REPLY,
+                kind=kind,
                 title=thread.title or "New reply on your report",
                 resource_type="thread",
                 resource_id=thread.id,
@@ -285,6 +289,7 @@ async def create_thread(
         session,
         thread,
         actor_id=auth.user.id,
+        actor_roles=auth.roles,
         message_body_preview=payload.initial_message,
     )
 
@@ -365,6 +370,7 @@ async def add_message(
         session,
         thread,
         actor_id=auth.user.id,
+        actor_roles=auth.roles,
         message_body_preview=body,
     )
 

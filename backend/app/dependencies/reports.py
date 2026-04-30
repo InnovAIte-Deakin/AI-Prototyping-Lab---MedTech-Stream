@@ -7,8 +7,9 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import AuditEvent, ConsentScope, ConsentShare, Report
+from app.db.models import AuditEvent, ConsentScope, ConsentShare, NotificationKind, Report
 from app.db.session import get_db_session
+from app.services.notifications import emit_notification
 
 from .auth import AuthContext, get_current_auth_context
 
@@ -68,6 +69,15 @@ async def get_accessible_report(
             occurred_at=now,
         )
         session.add(audit)
+        await emit_notification(
+            session,
+            recipient_user_id=report.subject_user_id,
+            kind=NotificationKind.CLINICIAN_VIEWED_REPORT,
+            message=f"{auth.user.display_name} viewed your shared report",
+            resource_type="report",
+            resource_id=report.id,
+            report_id=report.id,
+        )
         await session.commit()
         return report
     

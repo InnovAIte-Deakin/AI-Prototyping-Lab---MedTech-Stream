@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
+
+from app.db.models import ConsentShare
+from app.services.reports import cleanup_expired_shares
 from tests.support.consent_api import auth_headers, consent_api, login, seed_report, seed_user
 
 
@@ -144,9 +149,23 @@ def test_cleanup_emits_expiry_notifications(consent_api) -> None:
             "clinician_email": clinician.email,
             "scope": "report",
             "access_level": "comment",
-            "expires_at": (datetime.now(UTC) - timedelta(days=1)).isoformat(),
+            "expires_at": _future_expiry_iso(),
         },
     )
+
+    with consent_api.session_factory() as session:
+        share = session.scalar(
+            select(ConsentShare).where(
+                ConsentShare.subject_user_id == patient.id,
+                ConsentShare.grantee_user_id == clinician.id,
+                ConsentShare.report_id == report.id,
+            )
+        )
+        assert share is not None
+        share.expires_at = datetime.now(UTC) - timedelta(days=1)
+        session.commit()
+
+    asyncio.run(_run_cleanup(consent_api))
 
     clinician_token = login(consent_api, email=clinician.email)
     notifications = consent_api.client.get(
@@ -158,3 +177,8 @@ def test_cleanup_emits_expiry_notifications(consent_api) -> None:
         item["type"] in {"share_expired", "share_expiry_warning"}
         for item in notifications.json()["items"]
     )
+
+
+async def _run_cleanup(consent_api) -> None:
+    async with consent_api.client.app.state.database.session_factory() as session:
+        await cleanup_expired_shares(session)

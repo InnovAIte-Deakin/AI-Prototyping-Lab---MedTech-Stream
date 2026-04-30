@@ -170,6 +170,8 @@ async def _notify_other_participants(
                 report_id=thread.report_id,
                 kind=NotificationKind.THREAD_REPLY,
                 title=thread.title or "New reply on your report",
+                resource_type="thread",
+                resource_id=thread.id,
                 payload={
                     "thread_id": thread.id,
                     "report_id": thread.report_id,

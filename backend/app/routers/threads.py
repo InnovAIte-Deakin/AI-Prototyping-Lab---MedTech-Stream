@@ -163,8 +163,11 @@ async def _notify_other_participants(
     if thread.subject_user_id != actor_id and not any(p.user_id == thread.subject_user_id for p in recipients):
         recipients.append(ThreadParticipant(thread_id=thread.id, user_id=thread.subject_user_id))
 
-    is_clinician = "clinician" in actor_roles
-    kind = NotificationKind.CLINICIAN_REPLIED_IN_THREAD if is_clinician else NotificationKind.PATIENT_MESSAGE_IN_THREAD
+    kind = (
+        NotificationKind.CLINICIAN_REPLIED_IN_THREAD
+        if "clinician" in actor_roles
+        else NotificationKind.PATIENT_MESSAGE_IN_THREAD
+    )
 
     for participant in recipients:
         session.add(

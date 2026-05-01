@@ -174,7 +174,7 @@ def test_cleanup_emits_expiry_notifications(consent_api) -> None:
     )
     assert notifications.status_code == 200, notifications.text
     assert any(
-        item["type"] in {"share_expired", "share_expiry_warning"}
+        item["type"] == "share_expired"
         for item in notifications.json()["items"]
     )
 

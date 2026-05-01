@@ -131,16 +131,22 @@ async def emit_share_expiry_warnings(
         )
     )
 
-    warned = 0
+    created = 0
     for share in shares.all():
-        if share.report_id is None:
-            resource_type = "patient"
-            resource_id = share.subject_user_id
-        else:
-            resource_type = "report"
-            resource_id = share.report_id
+        resource_type = "report" if share.report_id else "patient"
+        resource_id = share.report_id or share.subject_user_id
 
-        created = await emit_notification(
+        patient_created = await emit_notification(
+            session,
+            recipient_user_id=share.subject_user_id,
+            kind=NotificationKind.SHARE_EXPIRING_SOON,
+            message="A shared report is expiring soon.",
+            resource_type=resource_type,
+            resource_id=resource_id,
+            report_id=share.report_id,
+            payload={"share_id": share.id, "grantee_user_id": share.grantee_user_id},
+        )
+        clinician_created = await emit_notification(
             session,
             recipient_user_id=share.grantee_user_id,
             kind=NotificationKind.SHARE_EXPIRY_WARNING,
@@ -148,9 +154,9 @@ async def emit_share_expiry_warnings(
             resource_type=resource_type,
             resource_id=resource_id,
             report_id=share.report_id,
+            payload={"share_id": share.id, "subject_user_id": share.subject_user_id},
         )
-        if created is not None:
-            warned += 1
+        created += int(patient_created is not None) + int(clinician_created is not None)
 
     await session.commit()
-    return warned
+    return created

@@ -77,6 +77,7 @@ async def get_accessible_report(
             resource_type="report",
             resource_id=report.id,
             report_id=report.id,
+            payload={"report_id": report.id, "viewer_user_id": auth.user.id},
         )
         await session.commit()
         return report

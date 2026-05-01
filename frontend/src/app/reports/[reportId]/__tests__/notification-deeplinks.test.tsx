@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import ReportDetailPage from '../page';
 import { AuthProvider } from '@/store/authStore';
 import { clearReportHistory } from '@/lib/reportHistory';

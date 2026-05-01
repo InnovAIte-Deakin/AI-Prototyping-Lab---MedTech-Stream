@@ -254,23 +254,27 @@ async def share_report_with_user(
         },
     )
 
+    resource_type = "report" if scope == ConsentScope.REPORT else "patient"
+    resource_id = report.id if scope == ConsentScope.REPORT else report.subject_user_id
     await emit_notification(
         session,
         recipient_user_id=report.subject_user_id,
         kind=NotificationKind.REPORT_SHARED_CONFIRMED,
         message="Report sharing confirmed.",
-        resource_type="report",
-        resource_id=report.id,
-        report_id=report.id,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        report_id=report.id if scope == ConsentScope.REPORT else None,
+        payload={"report_id": report.id, "grantee_email": grantee.email, "scope": scope.value},
     )
     await emit_notification(
         session,
         recipient_user_id=grantee.id,
         kind=NotificationKind.NEW_REPORT_SHARED,
         message="A report was shared with you.",
-        resource_type="report",
-        resource_id=report.id,
-        report_id=report.id,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        report_id=report.id if scope == ConsentScope.REPORT else None,
+        payload={"report_id": report.id, "subject_user_id": report.subject_user_id, "scope": scope.value},
     )
     
     await sync_subject_report_sharing_modes(session, subject_user_id=report.subject_user_id)
@@ -332,23 +336,27 @@ async def revoke_report_share(
         },
     )
 
+    resource_type = "report" if share.scope == ConsentScope.REPORT else "patient"
+    resource_id = report.id if share.scope == ConsentScope.REPORT else report.subject_user_id
     await emit_notification(
         session,
         recipient_user_id=report.subject_user_id,
         kind=NotificationKind.SHARE_REVOCATION_CONFIRMED,
         message="Report sharing revoked.",
-        resource_type="report",
-        resource_id=report.id,
-        report_id=report.id,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        report_id=report.id if share.scope == ConsentScope.REPORT else None,
+        payload={"report_id": report.id, "grantee_email": grantee.email, "scope": share.scope.value},
     )
     await emit_notification(
         session,
         recipient_user_id=grantee.id,
         kind=NotificationKind.SHARE_REVOKED,
         message="Report sharing was revoked.",
-        resource_type="report",
-        resource_id=report.id,
-        report_id=report.id,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        report_id=report.id if share.scope == ConsentScope.REPORT else None,
+        payload={"report_id": report.id, "subject_user_id": report.subject_user_id, "scope": share.scope.value},
     )
     
     await sync_subject_report_sharing_modes(session, subject_user_id=report.subject_user_id)
@@ -570,6 +578,7 @@ async def cleanup_expired_shares(session: AsyncSession) -> int:
             resource_type="report" if share.report_id else "patient",
             resource_id=share.report_id or share.subject_user_id,
             report_id=share.report_id,
+            payload={"share_id": share.id, "subject_user_id": share.subject_user_id},
         )
         
         cleaned_count += 1

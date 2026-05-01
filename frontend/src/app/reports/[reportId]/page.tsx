@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { fetchReportById, updateReportInHistory } from '@/lib/reportHistory';
@@ -35,7 +35,7 @@ const LANGUAGE_OPTIONS = [
   { value: 'fr', label: 'Francais' },
 ];
 
-export default function ReportDetailPage({ params }: { params: { reportId: string } }) {
+export default function ReportDetailPage({ params, searchParams }: { params: { reportId: string }; searchParams?: { panel?: string; threadId?: string } }) {
   const { user } = useAuth();
   const [report, setReport] = useState<ReportHistoryEntry | undefined>(undefined);
   const [sharingPreferences, setSharingPreferences] = useState<SharingPreferences>(defaultSharingPreferences);
@@ -44,6 +44,12 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   const [threads, setThreads] = useState<ConversationThread[]>([]);
   const [auditReloadToken, setAuditReloadToken] = useState(0);
   const [sharingPanelOpen, setSharingPanelOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchParams?.panel === 'sharing') {
+      setSharingPanelOpen(true);
+    }
+  }, [searchParams?.panel]);
 
   // Trend states
   const [trends, setTrends] = useState<BiomarkerTrend[]>([]);
@@ -717,6 +723,21 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
         <AuditLogTimeline reportId={report.id} reloadToken={auditReloadToken} />
 
         <Disclaimer />
+
+        <SharingPreferencesPanel
+          open={sharingPanelOpen}
+          onClose={() => setSharingPanelOpen(false)}
+          onShare={handleShareWithPDF}
+          onRevoke={sharingPreferences.active ? revokeShare : undefined}
+          clinicianEmail={sharingPreferences.clinicianEmail}
+          onClinicianEmailChange={(e) => setSharingPreferences({ ...sharingPreferences, clinicianEmail: e.target.value })}
+          scope={sharingPreferences.scope}
+          onScopeChange={(e) => setSharingPreferences({ ...sharingPreferences, scope: e.target.value as 'summary' | 'full' })}
+          expiresAt={sharingPreferences.expiresAt}
+          onExpiresAtChange={(e) => setSharingPreferences({ ...sharingPreferences, expiresAt: new Date(e.target.value).getTime() })}
+          shareActive={sharingPreferences.active}
+          statusMessage={statusMessage}
+        />
 
       </div>
 

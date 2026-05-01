@@ -156,7 +156,18 @@ async def get_accessible_report(
                 occurred_at=now,
             )
             session.add(audit)
-            await session.commit()
+
+        await emit_notification(
+            session,
+            recipient_user_id=auth.user.id,
+            kind=NotificationKind.SHARE_EXPIRED,
+            message="A shared report has expired.",
+            resource_type="report" if expired_share.report_id else "patient",
+            resource_id=expired_share.report_id or report.subject_user_id,
+            report_id=expired_share.report_id,
+            payload={"share_id": expired_share.id, "subject_user_id": report.subject_user_id},
+        )
+        await session.commit()
         
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Share has expired")
     

@@ -15,7 +15,7 @@ function setupAuth() {
   }));
 }
 
-function mockDetailApi() {
+function mockDetailApi(threads: Array<{ id: string; report_id: string; title: string | null; status: string; messages: any[] }> = []) {
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes('/api/v1/reports/') && url.endsWith('/trends')) {
@@ -27,7 +27,7 @@ function mockDetailApi() {
       return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (url.includes('/api/v1/reports/') && url.endsWith('/threads')) {
-      return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify(threads), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (url.includes('/api/v1/reports/') && url.endsWith('/question-prompts')) {
       return new Response(JSON.stringify({ prompts: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -73,6 +73,29 @@ describe('Notification deep links', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('complementary', { name: /sharing preferences/i })).toBeInTheDocument();
+    });
+  });
+
+  it('focuses the matching thread when threadId is in the URL', async () => {
+    mockDetailApi([
+      {
+        id: 'thread-1',
+        report_id: 'report-1',
+        title: 'Question about glucose',
+        status: 'open',
+        messages: [],
+      },
+    ]);
+
+    const Component = ReportDetailPage as React.ComponentType<any>;
+    render(
+      <AuthProvider>
+        <Component params={{ reportId: 'report-1' }} searchParams={{ threadId: 'thread-1' }} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('thread-card-thread-1')).toHaveAttribute('data-focused', 'true');
     });
   });
 });

@@ -5,7 +5,6 @@ import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { fetchReportById, updateReportInHistory } from '@/lib/reportHistory';
 import type { ReportHistoryEntry, SharingPreferences, Interpretation, ChatMessage } from '@/lib/reportHistory';
-import { PatientQuestions } from '@/components/PatientQuestions';
 import { ThreadView, ConversationThread } from '@/components/ThreadView';
 import { DoctorSummaryDocument, type SummaryFinding, type SummaryThread } from '@/components/DoctorSummaryDocument';
 import Disclaimer from '@/components/Disclaimer';
@@ -721,6 +720,13 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
         </div>
 
         <AuditLogTimeline reportId={report.id} reloadToken={auditReloadToken} />
+
+        <ThreadView
+          reportId={report.id}
+          accessToken={accessToken}
+          onThreadsLoaded={setThreads}
+          focusedThreadId={searchParams?.threadId}
+        />
 
         <Disclaimer />
 

@@ -191,7 +191,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     def assign_role(self, role: Role) -> UserRole:
-        existing = next((assignment for assignment in self.role_assignments if assignment.role == role), None)
+        existing = next(
+            (assignment for assignment in self.role_assignments if assignment.role == role), None
+        )
         if existing is not None:
             return existing
         assignment = UserRole(role=role)
@@ -203,13 +205,19 @@ class UserRole(Base):
     __tablename__ = "user_roles"
     __table_args__ = (UniqueConstraint("user_id", "role_id"),)
 
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    role_id: Mapped[str] = mapped_column(ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    role_id: Mapped[str] = mapped_column(
+        ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
+    )
     assigned_by_user_id: Mapped[str | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
 
     user: Mapped[User] = relationship(
         back_populates="role_assignments",
@@ -224,23 +232,45 @@ class AuthSession(UUIDPrimaryKeyMixin, Base):
 
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     refresh_token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
-    session_family: Mapped[str] = mapped_column(String(36), nullable=False, default=lambda: str(uuid4()))
+    session_family: Mapped[str] = mapped_column(
+        String(36), nullable=False, default=lambda: str(uuid4())
+    )
     device_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ip_address_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
 
     user: Mapped[User] = relationship(back_populates="auth_sessions")
+
+
+class PasswordResetToken(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "password_reset_tokens"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    user: Mapped[User] = relationship()
 
 
 class Report(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "reports"
 
-    subject_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    subject_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_kind: Mapped[ReportSourceKind] = mapped_column(
         enum_column(ReportSourceKind, name="report_source_kind"),
@@ -278,7 +308,9 @@ class Report(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
     )
     notifications: Mapped[list[Notification]] = relationship(back_populates="report")
-    biomarker_observations: Mapped[list[BiomarkerObservation]] = relationship(back_populates="report")
+    biomarker_observations: Mapped[list[BiomarkerObservation]] = relationship(
+        back_populates="report"
+    )
 
 
 class ReportFinding(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -290,7 +322,9 @@ class ReportFinding(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
     )
 
-    report_id: Mapped[str] = mapped_column(ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
+    report_id: Mapped[str] = mapped_column(
+        ForeignKey("reports.id", ondelete="CASCADE"), nullable=False
+    )
     biomarker_key: Mapped[str] = mapped_column(String(120), nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     value_numeric: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -319,9 +353,15 @@ class BiomarkerObservation(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "biomarker_observations"
     __table_args__ = (UniqueConstraint("finding_id"),)
 
-    patient_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    report_id: Mapped[str] = mapped_column(ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
-    finding_id: Mapped[str] = mapped_column(ForeignKey("report_findings.id", ondelete="CASCADE"), nullable=False)
+    patient_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    report_id: Mapped[str] = mapped_column(
+        ForeignKey("reports.id", ondelete="CASCADE"), nullable=False
+    )
+    finding_id: Mapped[str] = mapped_column(
+        ForeignKey("report_findings.id", ondelete="CASCADE"), nullable=False
+    )
     biomarker_key: Mapped[str] = mapped_column(String(120), nullable=False)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     value_numeric: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -332,7 +372,9 @@ class BiomarkerObservation(UUIDPrimaryKeyMixin, Base):
         nullable=False,
         default=FindingFlag.UNKNOWN,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
 
     patient_user: Mapped[User] = relationship(
         back_populates="biomarker_observations",
@@ -353,10 +395,18 @@ class ConsentShare(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
     )
 
-    subject_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    grantee_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    granted_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    report_id: Mapped[str | None] = mapped_column(ForeignKey("reports.id", ondelete="CASCADE"), nullable=True)
+    subject_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    grantee_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    granted_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    report_id: Mapped[str | None] = mapped_column(
+        ForeignKey("reports.id", ondelete="CASCADE"), nullable=True
+    )
     scope: Mapped[ConsentScope] = mapped_column(
         enum_column(ConsentScope, name="consent_scope"),
         nullable=False,
@@ -389,9 +439,15 @@ class ConsentShare(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 class ConversationThread(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "conversation_threads"
 
-    subject_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    report_id: Mapped[str | None] = mapped_column(ForeignKey("reports.id", ondelete="SET NULL"), nullable=True)
+    subject_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    report_id: Mapped[str | None] = mapped_column(
+        ForeignKey("reports.id", ondelete="SET NULL"), nullable=True
+    )
     finding_id: Mapped[str | None] = mapped_column(
         ForeignKey("report_findings.id", ondelete="SET NULL"), nullable=True
     )
@@ -432,8 +488,12 @@ class ThreadParticipant(Base):
         ForeignKey("conversation_threads.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
 
     thread: Mapped[ConversationThread] = relationship(back_populates="participants")
     user: Mapped[User] = relationship(back_populates="thread_participations")
@@ -442,7 +502,9 @@ class ThreadParticipant(Base):
 class ClinicianResponseTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "clinician_response_templates"
 
-    author_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    author_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
@@ -463,7 +525,9 @@ class ThreadMessage(UUIDPrimaryKeyMixin, Base):
         ForeignKey("conversation_threads.id", ondelete="CASCADE"),
         nullable=False,
     )
-    author_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    author_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     template_id: Mapped[str | None] = mapped_column(
         ForeignKey("clinician_response_templates.id", ondelete="SET NULL"),
         nullable=True,
@@ -474,7 +538,9 @@ class ThreadMessage(UUIDPrimaryKeyMixin, Base):
         default=MessageKind.TEXT,
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
 
     thread: Mapped[ConversationThread] = relationship(back_populates="messages")
     author_user: Mapped[User] = relationship(
@@ -492,7 +558,9 @@ class Notification(UUIDPrimaryKeyMixin, Base):
         ForeignKey("conversation_threads.id", ondelete="CASCADE"),
         nullable=True,
     )
-    report_id: Mapped[str | None] = mapped_column(ForeignKey("reports.id", ondelete="CASCADE"), nullable=True)
+    report_id: Mapped[str | None] = mapped_column(
+        ForeignKey("reports.id", ondelete="CASCADE"), nullable=True
+    )
     kind: Mapped[NotificationKind] = mapped_column(
         enum_column(NotificationKind, name="notification_kind"),
         nullable=False,
@@ -501,7 +569,9 @@ class Notification(UUIDPrimaryKeyMixin, Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
 
     user: Mapped[User] = relationship(back_populates="notifications")
     thread: Mapped[ConversationThread | None] = relationship(back_populates="notifications")
@@ -523,7 +593,9 @@ class AuditEvent(UUIDPrimaryKeyMixin, Base):
     resource_id: Mapped[str] = mapped_column(String(36), nullable=False)
     action: Mapped[str] = mapped_column(String(128), nullable=False)
     context: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
 
     actor_user: Mapped[User | None] = relationship(
         back_populates="actor_audit_events",

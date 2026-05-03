@@ -13,9 +13,9 @@ describe('Report history and sharing preference flow', () => {
     localStorage.setItem('reportx_session', JSON.stringify({
       user: { id: '1', email: 'patient@example.com', role: 'patient', displayName: 'Patient' },
       accessToken: 'access-token',
-      accessTokenExpiresAt: Date.now() + 100000,
+      accessTokenExpiresAt: Date.now() + 3600000,
       refreshToken: 'refresh-token',
-      refreshTokenExpiresAt: Date.now() + 1000000,
+      refreshTokenExpiresAt: Date.now() + 7200000,
     }));
 
     global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -80,6 +80,15 @@ describe('Report history and sharing preference flow', () => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
+      if (url.includes('/api/v1/reports/') && url.endsWith('/threads')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/api/v1/reports/') && url.endsWith('/question-prompts')) {
+        return new Response(JSON.stringify({ prompts: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/api/v1/reports/') && url.endsWith('/audit')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (url.includes('/api/v1/reports/') && !url.includes('/share')) {
         // report detail endpoint
         const reportId = url.split('/').pop();
@@ -142,8 +151,52 @@ describe('Report history and sharing preference flow', () => {
     });
 
     expect(screen.queryByText('Report B')).toBeNull();
+    // Desktop table uses icon buttons with aria-labels; mobile list uses text buttons
+    expect(screen.getAllByLabelText(/open report|^open$/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText(/share report|^sharing$/i).length).toBeGreaterThan(0);
+  });
+
+  it('includes a locally saved parsed report in My Reports', async () => {
+    addReportToHistory({
+      patientEmail: 'patient@example.com',
+      title: 'Report from Parse',
+      reportDate: Date.parse('2026-04-15T10:00:00Z'),
+      rows: [
+        {
+          test_name: 'Hemoglobin',
+          value: 13.5,
+          unit: 'g/dL',
+          reference_range: '11.0-15.0',
+          flag: 'normal',
+          confidence: 1,
+        },
+      ],
+      unparsed: [],
+      extractedText: 'Hemoglobin 13.5 g/dL 11.0-15.0',
+    });
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/v1/reports')) {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    render(
+      <AuthProvider>
+        <ReportsPage />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('1 report on file')).toBeInTheDocument();
+    });
+
     expect(screen.getAllByRole('button', { name: /^open$/i }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: /^sharing$/i }).length).toBeGreaterThan(0);
   });
 
   it('shows one timeline trend graph on history page with all uploaded report dates on x-axis', async () => {
@@ -265,6 +318,10 @@ describe('Report history and sharing preference flow', () => {
     fireEvent.change(emailInput, { target: { value: 'doc@clinic.org' } });
     fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full' } });
 
+    await waitFor(() => {
+      expect((screen.getByLabelText(/clinician email/i) as HTMLInputElement).value).toBe('doc@clinic.org');
+    });
+
     fireEvent.click(screen.getByRole('button', { name: /start sharing/i }));
 
     await waitFor(() => {
@@ -379,6 +436,43 @@ describe('Report history and sharing preference flow', () => {
     expect(screen.getByText(/y-axis: value/i)).toBeInTheDocument();
   });
 
+  it('keeps and shows generated interpretation on report detail after reload', async () => {
+    const report = addReportToHistory({
+      patientEmail: 'patient@example.com',
+      title: 'Report With Insight',
+      rows: [
+        {
+          test_name: 'Hgb',
+          value: 13.5,
+          unit: 'g/dL',
+          reference_range: '11-15',
+          flag: 'normal',
+          confidence: 1,
+        },
+      ],
+      unparsed: [],
+      interpretation: {
+        summary: 'Your key blood markers are within expected ranges.',
+        per_test: [{ test_name: 'Hgb', explanation: 'This value is within the expected range.' }],
+        flags: [],
+        next_steps: ['Discuss routine follow-up with your clinician.'],
+        disclaimer: 'Educational only.',
+      },
+    });
+
+    render(
+      <AuthProvider>
+        <ReportDetailPage params={{ reportId: report.id }} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /interpretation/i })).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Your key blood markers are within expected ranges\./i)).toBeInTheDocument();
+  });
+
   it('shows access-aware trend message when trends endpoint is forbidden', async () => {
     const report = addReportToHistory({
       patientEmail: 'patient@example.com',
@@ -392,6 +486,26 @@ describe('Report history and sharing preference flow', () => {
 
       if (url.includes('/api/v1/reports/') && url.endsWith('/trends')) {
         return new Response('Forbidden', { status: 403 });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/threads')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/question-prompts')) {
+        return new Response(JSON.stringify({ prompts: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/audit')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/share')) {
+        return new Response(JSON.stringify({ id: 'share-1' }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/share/revoke')) {
+        return new Response(null, { status: 204 });
       }
 
       if (url.includes('/api/v1/reports/') && !url.includes('/share')) {
@@ -408,14 +522,6 @@ describe('Report history and sharing preference flow', () => {
             findings: [],
           },
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-
-      if (url.includes('/api/v1/reports/') && url.endsWith('/share')) {
-        return new Response(JSON.stringify({ id: 'share-1' }), { status: 201, headers: { 'Content-Type': 'application/json' } });
-      }
-
-      if (url.includes('/api/v1/reports/') && url.endsWith('/share/revoke')) {
-        return new Response(null, { status: 204 });
       }
 
       return new Response(null, { status: 404 });

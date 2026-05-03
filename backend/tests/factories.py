@@ -219,6 +219,8 @@ class PersistenceFactory:
             report=report,
             kind=kind,
             title="New activity",
+            resource_type="thread",
+            resource_id=thread.id,
             payload=payload or {"thread_id": thread.id},
         )
         self.session.add(notification)

@@ -73,7 +73,7 @@ async def _load_finding_for_report(
         )
     )
     if finding is None:
-        raise ThreadServiceError("Finding not found for report", 404)
+        raise ThreadServiceError("Finding does not belong to this report.", 400)
     return finding
 
 
@@ -82,7 +82,7 @@ async def _load_thread(session: AsyncSession, *, thread_id: str) -> Conversation
         select(ConversationThread)
         .where(ConversationThread.id == thread_id)
         .options(
-            selectinload(ConversationThread.anchor_finding),
+            selectinload(ConversationThread.finding),
             selectinload(ConversationThread.report),
             THREAD_LOAD,
         )
@@ -195,19 +195,27 @@ async def _create_notification(
     message: ThreadMessage,
     sender: User,
 ) -> None:
+    sender_role = user_role_label(sender)
+    kind = (
+        NotificationKind.CLINICIAN_REPLIED_IN_THREAD
+        if sender_role == "clinician"
+        else NotificationKind.PATIENT_MESSAGE_IN_THREAD
+    )
     session.add(
         Notification(
             user_id=recipient.id,
             thread_id=thread.id,
             report_id=thread.report_id,
-            kind=NotificationKind.THREAD_REPLY,
+            kind=kind,
             title=f"New message in {thread.title or 'report thread'}",
+            resource_type="thread",
+            resource_id=thread.id,
             payload={
                 "thread_id": thread.id,
                 "report_id": thread.report_id,
                 "message_id": message.id,
                 "sender_user_id": sender.id,
-                "sender_role": user_role_label(sender),
+                "sender_role": sender_role,
             },
         )
     )
@@ -236,18 +244,22 @@ async def create_report_thread(
     actor: User,
     title: str | None,
     initial_message: str,
-    finding_id: str,
+    finding_id: str | None,
 ) -> ConversationThread:
     if report.subject_user_id != actor.id:
         raise ThreadServiceError("Only the patient may open a report thread", 403)
 
-    finding = await _load_finding_for_report(session, report_id=report.id, finding_id=finding_id)
+    finding = (
+        await _load_finding_for_report(session, report_id=report.id, finding_id=finding_id)
+        if finding_id is not None
+        else None
+    )
     thread = ConversationThread(
         subject_user_id=report.subject_user_id,
         created_by_user_id=actor.id,
         report_id=report.id,
-        anchor_finding_id=finding.id,
-        title=title or finding.display_name,
+        finding_id=finding.id if finding is not None else None,
+        title=title or (finding.display_name if finding is not None else "Questions for Clinician"),
     )
     session.add(thread)
     await session.flush()
@@ -307,7 +319,7 @@ async def list_threads_for_report(
             .where(ConversationThread.report_id == report_id)
             .order_by(ConversationThread.created_at.desc())
             .options(
-                selectinload(ConversationThread.anchor_finding),
+                selectinload(ConversationThread.finding),
                 THREAD_LOAD,
             )
         )

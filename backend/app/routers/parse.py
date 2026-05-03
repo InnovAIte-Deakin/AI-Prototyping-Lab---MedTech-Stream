@@ -1,20 +1,96 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
-from app.services.ocr import extract_text_from_image_bytes, extract_text_from_pdf_bytes
-from app.services.parser import extract_report_date, parse_text
+from app.services.parse_llm import ParseExtractionError, extract_lab_rows_with_openai
+from app.services.parser import extract_report_date
 from app.services.parse_pipeline import (
     ParseServiceError,
-    build_parse_response,
     collect_uploads,
-    extract_text_from_json_payload,
     extract_text_from_uploads,
 )
 
 router = APIRouter()
+
+_META_NAME = re.compile(
+    r"\b(patient\s*name|dob|date\s*of\s*birth|age|sex|gender|medicare\s*(?:number|no\.?|num\.?|#)|"
+    r"provider\s*(?:number|no\.?|num\.?|#)|requesting\s*(?:doctor|dr\.?|physician)|doctor|specimen\s*type|report\s*id|lab\s*name|abn)\b",
+    re.IGNORECASE,
+)
+
+_UNIT_ONLY = re.compile(
+    r"^(%|[a-zA-Zμµ]+(?:/[a-zA-Zμµ]+)?|(?:x?10\^\d+/?[a-zA-Zμµ]+)|(?:10\^\d+/?[a-zA-Zμµ]+))$",
+    re.IGNORECASE,
+)
+
+_VALUE_NOISE = re.compile(
+    r"^(?:\d{1,2}[:/]\d{1,2}(?:[:/]\d{2,4})?|\d{1,4}\s*(?:years?|yrs?|yo|y/o)|"
+    r"\d{4,}\s*[A-Z]?$|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b|"
+    r"(?:mon|tue|wed|thu|fri|sat|sun)\b)",
+    re.IGNORECASE,
+)
+
+_MONTH_OR_AGE_UNIT = re.compile(
+    r"^(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|"
+    r"sep|sept|september|oct|october|nov|november|dec|december|years?|yrs?|yo|y/o|[A-Z])$",
+    re.IGNORECASE,
+)
+
+_TEST_NAME_NOISE = re.compile(
+    r"^(?:x10\^.*|[a-z]\/L|[a-z]{1,3}\/L|[A-Z]\/L|[A-Z]\/mL|[A-Z]\/dL|[A-Z]\/UL|[A-Z]\/uL)$",
+    re.IGNORECASE,
+)
+
+_REPORT_CODE_LIKE = re.compile(r"^[A-Z0-9]{2,}(?:-[A-Z0-9]{2,})+$")
+
+_PERSON_NAME_LIKE = re.compile(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}$")
+
+
+def _row_get(row: Any, field: str) -> Any:
+    if isinstance(row, dict):
+        return row.get(field)
+    return getattr(row, field, None)
+
+
+def _coerce_value(result_text: str) -> tuple[float | str, float | None]:
+    raw = (result_text or "").strip()
+    normalized = raw.replace(",", "")
+    try:
+        numeric = float(normalized)
+        return numeric, numeric
+    except Exception:
+        return raw, None
+
+
+def _flag_from_hl(flag: str | None) -> str | None:
+    if flag == "H":
+        return "high"
+    if flag == "L":
+        return "low"
+    return None
+
+
+def _is_excluded_row(test_name: str, result: str, unit: str, reference_range: str) -> bool:
+    if not test_name or not result:
+        return True
+    if _META_NAME.search(test_name):
+        return True
+    if test_name.lower() in {"unit", "units"}:
+        return True
+    if _TEST_NAME_NOISE.fullmatch(test_name):
+        return True
+    if _PERSON_NAME_LIKE.fullmatch(test_name) and _VALUE_NOISE.search(result):
+        return True
+    if _MONTH_OR_AGE_UNIT.fullmatch(unit) and (_PERSON_NAME_LIKE.fullmatch(test_name) or not test_name):
+        return True
+    if _REPORT_CODE_LIKE.fullmatch(test_name) and re.fullmatch(r"\d{6}(?:\.0+)?", result):
+        return True
+    if _UNIT_ONLY.fullmatch(result) and not unit and not reference_range:
+        return True
+    return False
 
 
 @router.post("/parse")
@@ -23,7 +99,6 @@ async def parse_endpoint(
     file: UploadFile | None = File(default=None),
     files: list[UploadFile] | None = File(default=None),
 ) -> dict[str, Any]:
-    content_type = request.headers.get("content-type", "").lower()
     try:
         content_length = int(request.headers.get("content-length", "0"))
     except Exception:
@@ -49,27 +124,44 @@ async def parse_endpoint(
         text_content = str(payload.get("text") or "")
 
     source_text = text_content or ""
-    rows, unparsed = parse_text(source_text)
+    try:
+        rows = await extract_lab_rows_with_openai(source_text)
+    except ParseExtractionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    unparsed: list[str] = []
     observed_at = extract_report_date(source_text)
-    # Convert dataclasses to dicts
+
     payload_rows = []
     for i, r in enumerate(rows, start=1):
+        test_name = str(_row_get(r, "test_name") or "").strip()
+        result = str(_row_get(r, "result") or "").strip()
+        unit = str(_row_get(r, "unit") or "").strip()
+        reference_range = str(_row_get(r, "reference_range") or "").strip()
+        flag = _row_get(r, "flag")
+
+        if _is_excluded_row(test_name, result, unit, reference_range):
+            continue
+
+        value, value_num = _coerce_value(result)
+        value_text = result or None
+        row_id = f"r{len(payload_rows) + 1}"
         d = {
-            "id": f"r{i}",
-            "test_name": r.test_name,
-            "test_name_raw": r.test_name_raw,
-            "value": r.value,
-            "value_text": r.value_text or (str(r.value) if r.value is not None else None),
-            "value_num": r.value_num,
-            "unit": r.unit,
-            "unit_raw": r.unit_raw,
-            "reference_range": r.reference_range,
-            "comparator": r.comparator,
-            "flag": r.flag,
-            "confidence": r.confidence,
-            "page": r.page,
-            "bbox": r.bbox,
-            "raw_line": r.raw_line,
+            "id": row_id,
+            "test_name": test_name,
+            "test_name_raw": test_name,
+            "value": value,
+            "value_text": value_text,
+            "value_num": value_num,
+            "unit": unit,
+            "unit_raw": unit,
+            "reference_range": reference_range,
+            "comparator": None,
+            "flag": _flag_from_hl(flag),
+            "confidence": 0.95,
+            "page": None,
+            "bbox": None,
+            "raw_line": None,
         }
         payload_rows.append(d)
 

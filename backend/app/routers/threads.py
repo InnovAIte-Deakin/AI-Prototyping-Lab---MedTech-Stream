@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ConversationThread, Notification, Report, ReportFinding, ThreadMessage
+from app.db.models import ConversationThread, Report, ReportFinding, ThreadMessage
 from app.db.session import get_db_session
 from app.dependencies.auth import AuthContext, get_current_auth_context
 from app.dependencies.reports import get_accessible_report
@@ -18,7 +18,6 @@ from app.services.threads import (
     add_thread_message,
     create_report_thread,
     get_thread_for_user,
-    list_notifications_for_user,
     list_threads_for_report,
     user_role_label,
 )
@@ -37,6 +36,7 @@ class QuestionPromptsResponse(BaseModel):
 @router.get("/reports/{report_id}/question-prompts", response_model=QuestionPromptsResponse)
 async def get_question_prompts(
     report: Report = Depends(get_accessible_report),
+    auth: AuthContext = Depends(get_current_auth_context),
 ) -> QuestionPromptsResponse:
     prompts, _ = await generate_questions(report.findings)
     return QuestionPromptsResponse(prompts=prompts)
@@ -63,6 +63,8 @@ class ThreadMessageOut(BaseModel):
 class ConversationThreadOut(BaseModel):
     id: str
     report_id: str | None
+    finding_id: str | None
+    finding_label: str | None = None
     subject_user_id: str
     title: str | None
     status: str
@@ -73,24 +75,13 @@ class ConversationThreadOut(BaseModel):
 
 class CreateThreadRequest(BaseModel):
     title: str | None = None
-    finding_id: str
     initial_message: str
+    finding_id: str | None = None
 
 
 class AddMessageRequest(BaseModel):
     body: str | None = None
     template_payload: dict[str, Any] | None = None
-
-
-class NotificationOut(BaseModel):
-    id: str
-    kind: str
-    title: str
-    thread_id: str | None
-    report_id: str | None
-    payload: dict[str, Any]
-    read_at: datetime | None
-    created_at: datetime
 
 
 def _anchor_out(finding: ReportFinding | None) -> ThreadAnchorOut | None:
@@ -103,6 +94,14 @@ def _anchor_out(finding: ReportFinding | None) -> ThreadAnchorOut | None:
         flag=finding.flag.value,
         position=finding.position,
     )
+
+
+def _finding_label(finding: ReportFinding | None) -> str | None:
+    if finding is None:
+        return None
+    value = finding.value_numeric if finding.value_numeric is not None else finding.value_text
+    unit = f" {finding.unit}" if finding.unit else ""
+    return f"{finding.display_name} ({value}{unit})" if value is not None else finding.display_name
 
 
 def _message_out(message: ThreadMessage) -> ThreadMessageOut:
@@ -124,38 +123,32 @@ def _thread_out(thread: ConversationThread) -> ConversationThreadOut:
     return ConversationThreadOut(
         id=thread.id,
         report_id=thread.report_id,
+        finding_id=thread.finding_id,
+        finding_label=_finding_label(thread.finding),
         subject_user_id=thread.subject_user_id,
         title=thread.title,
         status=thread.status.value,
         created_at=thread.created_at,
-        anchor=_anchor_out(thread.anchor_finding),
+        anchor=_anchor_out(thread.finding),
         messages=[_message_out(message) for message in messages],
-    )
-
-
-def _notification_out(notification: Notification) -> NotificationOut:
-    return NotificationOut(
-        id=notification.id,
-        kind=notification.kind.value,
-        title=notification.title,
-        thread_id=notification.thread_id,
-        report_id=notification.report_id,
-        payload=notification.payload,
-        read_at=notification.read_at,
-        created_at=notification.created_at,
     )
 
 
 @router.get("/reports/{report_id}/threads", response_model=list[ConversationThreadOut])
 async def list_report_threads(
     report: Report = Depends(get_accessible_report),
+    auth: AuthContext = Depends(get_current_auth_context),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[ConversationThreadOut]:
     threads = await list_threads_for_report(session, report_id=report.id)
     return [_thread_out(thread) for thread in threads]
 
 
-@router.post("/reports/{report_id}/threads", response_model=ConversationThreadOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/reports/{report_id}/threads",
+    response_model=ConversationThreadOut,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_thread(
     payload: CreateThreadRequest,
     report: Report = Depends(get_accessible_report),
@@ -190,7 +183,11 @@ async def get_thread(
     return _thread_out(thread)
 
 
-@router.post("/threads/{thread_id}/messages", response_model=ThreadMessageOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/threads/{thread_id}/messages",
+    response_model=ThreadMessageOut,
+    status_code=status.HTTP_201_CREATED,
+)
 async def add_message(
     thread_id: str,
     payload: AddMessageRequest,
@@ -211,12 +208,3 @@ async def add_message(
         _raise_thread_http_error(exc)
 
     return _message_out(message)
-
-
-@router.get("/notifications", response_model=list[NotificationOut])
-async def list_notifications(
-    auth: AuthContext = Depends(get_current_auth_context),
-    session: AsyncSession = Depends(get_db_session),
-) -> list[NotificationOut]:
-    notifications = await list_notifications_for_user(session, user_id=auth.user.id)
-    return [_notification_out(notification) for notification in notifications]

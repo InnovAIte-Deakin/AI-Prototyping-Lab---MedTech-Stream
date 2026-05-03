@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
     ConsentAccessLevel,
     ConsentScope,
+    ConsentShare,
     Report,
     ReportFinding,
     ReportSourceKind,
@@ -16,17 +18,16 @@ from app.db.models import (
 from app.db.session import get_db_session
 from app.dependencies.auth import AuthContext, get_current_auth_context
 from app.dependencies.reports import get_accessible_report
-from app.services.trends import BiomarkerTrend, build_trends_for_patient
 from app.services.reports import (
     ReportFindingCreateInput,
     ReportServiceError,
-    ClinicianSharedReportItem,
     create_report_for_user,
     get_clinician_shared_reports,
     list_reports_for_user,
     revoke_report_share,
     share_report_with_user,
 )
+from app.services.trends import BiomarkerTrend, build_trends_for_patient
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -60,6 +61,7 @@ class ReportCreateResponse(BaseModel):
     title: str | None
     source_kind: str
     sharing_mode: str
+    created_at: datetime
     observed_at: datetime
 
 
@@ -84,6 +86,7 @@ class ReportOut(BaseModel):
     created_at: datetime
     observed_at: datetime
     findings: list[ReportFindingOut]
+    interpretation: dict | None = None
 
 
 class ReportDetailResponse(BaseModel):
@@ -96,6 +99,8 @@ class TrendPointOut(BaseModel):
     value: float
     unit: str | None
     flag: str
+    reference_low: float | None
+    reference_high: float | None
 
 
 class BiomarkerTrendOut(BaseModel):
@@ -111,6 +116,8 @@ class ReportTrendsResponse(BaseModel):
     report_id: str
     subject_user_id: str
     trends: list[BiomarkerTrendOut]
+
+
 def _raise_report_http_error(exc: ReportServiceError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
@@ -156,6 +163,7 @@ async def create_report(
         title=report.title,
         source_kind=report.source_kind.value,
         sharing_mode=report.sharing_mode.value,
+        created_at=report.created_at,
         observed_at=report.observed_at,
     )
 
@@ -244,6 +252,7 @@ def _report_out(report: Report) -> ReportOut:
         created_at=report.created_at,
         observed_at=report.observed_at,
         findings=[_finding_out(finding) for finding in findings],
+        interpretation=report.interpretation_json,
     )
 
 
@@ -309,6 +318,27 @@ async def get_report_endpoint(report: Report = Depends(get_accessible_report)) -
     return ReportDetailResponse(report=_report_out(report))
 
 
+class SaveInterpretationRequest(BaseModel):
+    interpretation: dict
+
+
+@router.patch("/{report_id}/interpretation", status_code=status.HTTP_204_NO_CONTENT)
+async def save_interpretation_endpoint(
+    payload: SaveInterpretationRequest,
+    report: Report = Depends(get_accessible_report),
+    auth: AuthContext = Depends(get_current_auth_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> None:
+    if report.subject_user_id != auth.user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the report owner may save an interpretation.",
+        )
+    report.interpretation_json = payload.interpretation
+    session.add(report)
+    await session.commit()
+
+
 async def _ensure_full_report_trend_access(
     *,
     report: Report,
@@ -352,6 +382,8 @@ def _trend_out(trend: BiomarkerTrend) -> BiomarkerTrendOut:
                 value=point.value,
                 unit=point.unit,
                 flag=point.flag.value,
+                reference_low=point.reference_low,
+                reference_high=point.reference_high,
             )
             for point in trend.points
         ],

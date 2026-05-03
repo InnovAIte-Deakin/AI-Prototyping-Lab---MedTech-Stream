@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { TextArea } from '@/components/ui/TextArea';
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/Table';
+import { Badge } from '@/components/ui/Badge';
 import Disclaimer from '@/components/Disclaimer';
 import { useAuth } from '@/store/authStore';
 import { addReportToHistory, createReportEntry, updateReportInHistory } from '@/lib/reportHistory';
@@ -55,6 +56,7 @@ export default function ParsePage() {
   const [unparsed, setUnparsed] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
   const [explaining, setExplaining] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -119,6 +121,7 @@ export default function ParsePage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setSaveWarning(null);
     setLoading(true);
     try {
       let res: Response;
@@ -177,8 +180,12 @@ export default function ParsePage() {
             });
           }
         } catch (entryErr: any) {
-          // API failure should still allow local caching in the UX path, but avoid dupes.
-          setError(entryErr?.message || 'Saved locally but failed to persist report remotely.');
+          // Keep the successful parse visible even if optional report persistence fails.
+          console.error('createReportEntry failed', entryErr);
+          const detail = typeof entryErr?.message === 'string' && entryErr.message.trim()
+            ? ` ${entryErr.message}`
+            : '';
+          setSaveWarning(`Your report was parsed, but we could not save it to My Reports.${detail}`);
           addReportToHistory({
             patientEmail: user.email,
             title: `Report ${new Date().toLocaleString()}`,
@@ -252,6 +259,7 @@ export default function ParsePage() {
     setInterpretation(null);
     setCurrentReportId(null);
     setError(null);
+    setSaveWarning(null);
     setExplainError(null);
     setUploadError(null);
     const input = document.getElementById('file-upload') as HTMLInputElement | null;
@@ -263,8 +271,8 @@ export default function ParsePage() {
   return (
     <div className="parse-page">
       <div className="parse-header">
-        <h1>Understand Your Lab Report</h1>
-        <p className="parse-subtitle">Upload your report or paste the text. We’ll sort the numbers and explain them in plain language so you can talk confidently with your clinician.</p>
+        <h1>Understand Your{' '}<span className="hero-accent">Lab Results</span>.</h1>
+        <p className="parse-subtitle">Get clinical-grade clarity on your blood work and diagnostic tests. We translate complex medical jargon so you can talk confidently with your clinician.</p>
       </div>
 
       <div className="upload-section">
@@ -449,10 +457,15 @@ export default function ParsePage() {
                   <svg className="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 12a9 9 0 11-6.219-8.56"/>
                   </svg>
-                  Reviewing...
+                  Processing...
                 </>
               ) : (
-                'Review Report'
+                <>
+                  Process Text Summary
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: '0.5rem' }}>
+                    <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12,5 19,12 12,19" />
+                  </svg>
+                </>
               )}
             </Button>
             <Button variant="outline" type="button" onClick={clearAll} size="lg">
@@ -468,45 +481,59 @@ export default function ParsePage() {
         </div>
       )}
 
+      {saveWarning && (
+        <div className="alert" role="status" aria-live="polite">
+          <strong>Saved locally only.</strong> {saveWarning}
+        </div>
+      )}
+
       {/* Rest of the component remains the same */}
       {rows.length > 0 && (
         <div className="stack">
-          <h2>Results</h2>
-          <div className="card table-container">
-            <table className="table">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+            <h2>Biomarker Analysis</h2>
+            <Button variant="outline" onClick={() => window.print()} className="no-print" size="sm">Download PDF</Button>
+          </div>
+          <div className="card" style={{ padding: 'var(--space-5)', overflow: 'auto' }}>
+            <table className="lab-table">
               <thead>
                 <tr>
-                  <th>Text</th>
-                  <th>Reference</th>
-                  <th>Value</th>
-                  <th>Flag</th>
+                  <th>Test Name</th>
+                  <th>Result</th>
+                  <th>Status</th>
+                  <th>Reference Range</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
-                  <tr key={i}>
-                    <td>{r.test_name}</td>
-                    <td>{r.reference_range}</td>
-                    <td>{`${String(r.value)}${r.unit ? ` ${r.unit}` : ''}`}</td>
-                    <td>
-                      {r.flag ? (
-                        <span className={`flag-chip ${r.flag}`}>
-                          {r.flag.toUpperCase()}
+                {rows.map((r, i) => {
+                  const isFlagged = r.flag === 'high' || r.flag === 'low' || r.flag === 'abnormal';
+                  const badgeVariant = !r.flag || r.flag === 'normal' ? 'optimal' : r.flag === 'high' ? 'high' : r.flag === 'low' ? 'low' : 'attention';
+                  const badgeLabel = !r.flag || r.flag === 'normal' ? 'Optimal' : r.flag.toUpperCase();
+                  return (
+                    <tr key={i} className={isFlagged ? 'lab-row-flagged' : ''}>
+                      <td>
+                        <div className="biomarker-name">{r.test_name}</div>
+                      </td>
+                      <td>
+                        <span className={`result-value${isFlagged ? ' flagged' : ''}`}>
+                          {String(r.value)}
                         </span>
-                      ) : (
-                        <span className="flag-chip normal">NORMAL</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                        {r.unit && <span className="result-unit">{r.unit}</span>}
+                      </td>
+                      <td>
+                        <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+                      </td>
+                      <td style={{ color: 'var(--on-surface-muted)' }}>{r.reference_range || '—'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
           <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
             <Button variant="primary" onClick={onExplain} disabled={explaining}>
-              {explaining ? 'Explaining…' : 'Explain'}
+              {explaining ? 'Explaining...' : 'Explain'}
             </Button>
-            <Button variant="outline" onClick={() => window.print()} className="no-print">Print</Button>
           </div>
         </div>
       )}
@@ -588,6 +615,33 @@ export default function ParsePage() {
           )}
         </div>
       )}
+      {/* Feature cards */}
+      {rows.length === 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-6)', marginTop: 'var(--space-8)' }}>
+          <div className="feature-card">
+            <svg className="feature-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3>Smart Markers</h3>
+            <p>Our AI recognizes over 4,000 unique biomarkers across hematology, metabolic, and hormonal panels.</p>
+          </div>
+          <div className="feature-card accent-purple">
+            <svg className="feature-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <polyline points="22,12 18,12 15,21 9,3 6,12 2,12" />
+            </svg>
+            <h3>Trend Analysis</h3>
+            <p>Upload multiple reports to see how your levels change over time with high-precision trend visualization.</p>
+          </div>
+          <div className="feature-card accent-orange">
+            <svg className="feature-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <h3>Doctor-Ready</h3>
+            <p>Generated insights include specific questions and talking points for your next physician consultation.</p>
+          </div>
+        </div>
+      )}
+
       <Disclaimer />
     </div>
   );

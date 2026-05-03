@@ -82,6 +82,16 @@ class MessageKind(StrEnum):
 
 
 class NotificationKind(StrEnum):
+    REPORT_SHARED_CONFIRMED = "report_shared_confirmed"
+    CLINICIAN_VIEWED_REPORT = "clinician_viewed_report"
+    CLINICIAN_REPLIED_IN_THREAD = "clinician_replied_in_thread"
+    SHARE_EXPIRING_SOON = "share_expiring_soon"
+    SHARE_REVOCATION_CONFIRMED = "share_revocation_confirmed"
+    NEW_REPORT_SHARED = "new_report_shared"
+    SHARE_REVOKED = "share_revoked"
+    PATIENT_MESSAGE_IN_THREAD = "patient_message_in_thread"
+    SHARE_EXPIRY_WARNING = "share_expiry_warning"
+    SHARE_EXPIRED = "share_expired"
     THREAD_REPLY = "thread_reply"
     SHARE_GRANTED = "share_granted"
     REPORT_READY = "report_ready"
@@ -254,6 +264,8 @@ class Report(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    interpretation_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    chat_history_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     subject_user: Mapped[User] = relationship(
         back_populates="subject_reports",
@@ -390,6 +402,9 @@ class ConversationThread(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     subject_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     report_id: Mapped[str | None] = mapped_column(ForeignKey("reports.id", ondelete="SET NULL"), nullable=True)
+    finding_id: Mapped[str | None] = mapped_column(
+        ForeignKey("report_findings.id", ondelete="SET NULL"), nullable=True
+    )
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[ThreadStatus] = mapped_column(
         enum_column(ThreadStatus, name="thread_status"),
@@ -407,6 +422,7 @@ class ConversationThread(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         foreign_keys=[created_by_user_id],
     )
     report: Mapped[Report | None] = relationship(back_populates="threads")
+    finding: Mapped[ReportFinding | None] = relationship(foreign_keys=[finding_id])
     participants: Mapped[list[ThreadParticipant]] = relationship(
         back_populates="thread",
         cascade="all, delete-orphan",
@@ -494,6 +510,8 @@ class Notification(UUIDPrimaryKeyMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    resource_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resource_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 

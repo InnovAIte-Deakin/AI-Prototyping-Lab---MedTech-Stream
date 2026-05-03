@@ -8,9 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
-    ConsentShare,
     ConsentAccessLevel,
     ConsentScope,
+    ConsentShare,
     Report,
     ReportFinding,
     ReportSourceKind,
@@ -18,17 +18,16 @@ from app.db.models import (
 from app.db.session import get_db_session
 from app.dependencies.auth import AuthContext, get_current_auth_context
 from app.dependencies.reports import get_accessible_report
-from app.services.trends import BiomarkerTrend, build_trends_for_patient
 from app.services.reports import (
     ReportFindingCreateInput,
     ReportServiceError,
-    ClinicianSharedReportItem,
     create_report_for_user,
     get_clinician_shared_reports,
     list_reports_for_user,
     revoke_report_share,
     share_report_with_user,
 )
+from app.services.trends import BiomarkerTrend, build_trends_for_patient
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -62,6 +61,7 @@ class ReportCreateResponse(BaseModel):
     title: str | None
     source_kind: str
     sharing_mode: str
+    created_at: datetime
     observed_at: datetime
 
 
@@ -86,6 +86,7 @@ class ReportOut(BaseModel):
     created_at: datetime
     observed_at: datetime
     findings: list[ReportFindingOut]
+    interpretation: dict | None = None
 
 
 class ReportDetailResponse(BaseModel):
@@ -162,6 +163,7 @@ async def create_report(
         title=report.title,
         source_kind=report.source_kind.value,
         sharing_mode=report.sharing_mode.value,
+        created_at=report.created_at,
         observed_at=report.observed_at,
     )
 
@@ -250,6 +252,7 @@ def _report_out(report: Report) -> ReportOut:
         created_at=report.created_at,
         observed_at=report.observed_at,
         findings=[_finding_out(finding) for finding in findings],
+        interpretation=report.interpretation_json,
     )
 
 
@@ -313,6 +316,27 @@ async def list_clinician_shared_reports(
 @router.get("/{report_id}", response_model=ReportDetailResponse)
 async def get_report_endpoint(report: Report = Depends(get_accessible_report)) -> ReportDetailResponse:
     return ReportDetailResponse(report=_report_out(report))
+
+
+class SaveInterpretationRequest(BaseModel):
+    interpretation: dict
+
+
+@router.patch("/{report_id}/interpretation", status_code=status.HTTP_204_NO_CONTENT)
+async def save_interpretation_endpoint(
+    payload: SaveInterpretationRequest,
+    report: Report = Depends(get_accessible_report),
+    auth: AuthContext = Depends(get_current_auth_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> None:
+    if report.subject_user_id != auth.user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the report owner may save an interpretation.",
+        )
+    report.interpretation_json = payload.interpretation
+    session.add(report)
+    await session.commit()
 
 
 async def _ensure_full_report_trend_access(

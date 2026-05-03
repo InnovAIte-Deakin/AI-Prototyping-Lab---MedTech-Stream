@@ -4,6 +4,7 @@ import fitz  # PyMuPDF
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.routers import parse as parse_router
 
 
 def make_pdf_bytes(text: str) -> bytes:
@@ -16,7 +17,27 @@ def make_pdf_bytes(text: str) -> bytes:
     return data
 
 
-def test_parse_pdf_smoke():
+def test_parse_pdf_smoke(monkeypatch):
+    async def fake_extract(_: str):
+        return [
+            {
+                "test_name": "Hemoglobin",
+                "result": "13.2",
+                "unit": "g/dL",
+                "reference_range": "12.0-15.5",
+                "flag": None,
+            },
+            {
+                "test_name": "LDL",
+                "result": "210",
+                "unit": "mg/dL",
+                "reference_range": "≤ 200",
+                "flag": "H",
+            },
+        ]
+
+    monkeypatch.setattr(parse_router, "extract_lab_rows_with_openai", fake_extract)
+
     content = "Hemoglobin 13.2 g/dL 12.0-15.5\nLDL 210 mg/dL ≤ 200"
     pdf_bytes = make_pdf_bytes(content)
     client = TestClient(app)

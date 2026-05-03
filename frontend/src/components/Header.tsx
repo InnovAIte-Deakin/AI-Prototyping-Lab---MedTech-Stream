@@ -3,6 +3,7 @@
 import React from 'react';
 import { useAuth } from '@/store/authStore';
 import ThemeToggle from './ThemeToggle';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 /**
  * Redesigned navigation bar matching Figma spec.
@@ -73,6 +74,7 @@ export default function Header() {
 
             {isAuth ? (
               <>
+                <NotificationBell />
                 <div className="nav-avatar" title={`${user.email} (${user.role})`}>
                   {initials}
                 </div>

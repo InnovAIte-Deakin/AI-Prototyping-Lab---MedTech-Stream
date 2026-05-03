@@ -105,6 +105,7 @@ def create_report_with_findings(
     observed_at: datetime,
     hemoglobin_value: float,
     hemoglobin_flag: str,
+    hemoglobin_unit: str = "g/dL",
     include_singleton_biomarker: bool = False,
     include_report_date_numeric_finding: bool = False,
 ) -> str:
@@ -126,7 +127,7 @@ def create_report_with_findings(
             biomarker_key="hemoglobin",
             display_name="Hemoglobin",
             value_numeric=hemoglobin_value,
-            unit="g/dL",
+            unit=hemoglobin_unit,
             flag=hemoglobin_flag,
             reference_low=12.0,
             reference_high=15.5,
@@ -272,6 +273,43 @@ def test_trends_exclude_date_like_numeric_findings(trends_api: TrendsApiHarness)
     trend_names = {item["display_name"] for item in response.json()["trends"]}
     assert "Hemoglobin" in trend_names
     assert "Report Date" not in trend_names
+
+
+def test_trends_skip_mixed_unit_series(trends_api: TrendsApiHarness):
+    register_user(
+        trends_api,
+        email="patient.mixedunits@example.com",
+        password="Password123!",
+        role="patient",
+        display_name="Patient Mixed Units",
+    )
+
+    create_report_with_findings(
+        trends_api.session_factory,
+        subject_email="patient.mixedunits@example.com",
+        created_by_email="patient.mixedunits@example.com",
+        observed_at=datetime.now(UTC) - timedelta(days=12),
+        hemoglobin_value=14.2,
+        hemoglobin_flag="normal",
+        hemoglobin_unit="g/dL",
+    )
+    newer_report_id = create_report_with_findings(
+        trends_api.session_factory,
+        subject_email="patient.mixedunits@example.com",
+        created_by_email="patient.mixedunits@example.com",
+        observed_at=datetime.now(UTC) - timedelta(days=1),
+        hemoglobin_value=8.8,
+        hemoglobin_flag="normal",
+        hemoglobin_unit="mmol/L",
+    )
+
+    login = login_user(trends_api, email="patient.mixedunits@example.com", password="Password123!")
+    response = trends_api.client.get(
+        f"/api/v1/reports/{newer_report_id}/trends",
+        headers=auth_headers(login["access_token"]),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["trends"] == []
 
 
 def test_clinician_trends_require_full_report_access(trends_api: TrendsApiHarness):

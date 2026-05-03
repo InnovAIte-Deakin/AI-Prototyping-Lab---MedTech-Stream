@@ -181,8 +181,9 @@ def test_thread_creation_notifies_authorized_clinician(consent_api: ConsentApiHa
         headers=auth_headers(patient_token),
     )
     assert notifications.status_code == 200, notifications.text
-    payloads = notifications.json()
-    assert any(n.get("thread_id") == thread_id for n in payloads)
+    payload = notifications.json()
+    assert payload["total_unread"] >= 1
+    assert any(item.get("thread_id") == thread_id for item in payload["items"])
 
     unread = consent_api.client.get(
         "/api/v1/notifications/unread-count",
@@ -304,7 +305,10 @@ def test_mark_notification_as_read(consent_api: ConsentApiHarness) -> None:
         "/api/v1/notifications",
         headers=auth_headers(patient_token),
     )
-    notif_id = listing.json()[0]["id"]
+    thread_notification = next(
+        item for item in listing.json()["items"] if item.get("thread_id") == thread_id
+    )
+    notif_id = thread_notification["id"]
 
     read_resp = consent_api.client.post(
         f"/api/v1/notifications/{notif_id}/read",
@@ -316,4 +320,4 @@ def test_mark_notification_as_read(consent_api: ConsentApiHarness) -> None:
         "/api/v1/notifications/unread-count",
         headers=auth_headers(patient_token),
     )
-    assert unread.json()["unread"] == 0
+    assert unread.json()["unread"] == listing.json()["total_unread"] - 1

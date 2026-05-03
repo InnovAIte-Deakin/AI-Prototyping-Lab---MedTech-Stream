@@ -61,6 +61,7 @@ class ReportCreateResponse(BaseModel):
     title: str | None
     source_kind: str
     sharing_mode: str
+    created_at: datetime
     observed_at: datetime
 
 
@@ -85,6 +86,7 @@ class ReportOut(BaseModel):
     created_at: datetime
     observed_at: datetime
     findings: list[ReportFindingOut]
+    interpretation: dict | None = None
 
 
 class ReportDetailResponse(BaseModel):
@@ -97,6 +99,8 @@ class TrendPointOut(BaseModel):
     value: float
     unit: str | None
     flag: str
+    reference_low: float | None
+    reference_high: float | None
 
 
 class BiomarkerTrendOut(BaseModel):
@@ -112,6 +116,8 @@ class ReportTrendsResponse(BaseModel):
     report_id: str
     subject_user_id: str
     trends: list[BiomarkerTrendOut]
+
+
 def _raise_report_http_error(exc: ReportServiceError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
@@ -157,6 +163,7 @@ async def create_report(
         title=report.title,
         source_kind=report.source_kind.value,
         sharing_mode=report.sharing_mode.value,
+        created_at=report.created_at,
         observed_at=report.observed_at,
     )
 
@@ -245,6 +252,7 @@ def _report_out(report: Report) -> ReportOut:
         created_at=report.created_at,
         observed_at=report.observed_at,
         findings=[_finding_out(finding) for finding in findings],
+        interpretation=report.interpretation_json,
     )
 
 
@@ -310,6 +318,27 @@ async def get_report_endpoint(report: Report = Depends(get_accessible_report)) -
     return ReportDetailResponse(report=_report_out(report))
 
 
+class SaveInterpretationRequest(BaseModel):
+    interpretation: dict
+
+
+@router.patch("/{report_id}/interpretation", status_code=status.HTTP_204_NO_CONTENT)
+async def save_interpretation_endpoint(
+    payload: SaveInterpretationRequest,
+    report: Report = Depends(get_accessible_report),
+    auth: AuthContext = Depends(get_current_auth_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> None:
+    if report.subject_user_id != auth.user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the report owner may save an interpretation.",
+        )
+    report.interpretation_json = payload.interpretation
+    session.add(report)
+    await session.commit()
+
+
 async def _ensure_full_report_trend_access(
     *,
     report: Report,
@@ -353,6 +382,8 @@ def _trend_out(trend: BiomarkerTrend) -> BiomarkerTrendOut:
                 value=point.value,
                 unit=point.unit,
                 flag=point.flag.value,
+                reference_low=point.reference_low,
+                reference_high=point.reference_high,
             )
             for point in trend.points
         ],

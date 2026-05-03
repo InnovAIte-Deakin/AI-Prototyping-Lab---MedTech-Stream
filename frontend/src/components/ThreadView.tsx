@@ -22,9 +22,10 @@ interface ThreadViewProps {
   reportId: string;
   accessToken: string;
   onThreadsLoaded?: (threads: ConversationThread[]) => void;
+  focusedThreadId?: string;
 }
 
-export function ThreadView({ reportId, accessToken, onThreadsLoaded }: ThreadViewProps) {
+export function ThreadView({ reportId, accessToken, onThreadsLoaded, focusedThreadId }: ThreadViewProps) {
   const { user } = useAuth();
   const [threads, setThreads] = useState<ConversationThread[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,6 +61,14 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded }: ThreadVie
     const intv = setInterval(fetchThreads, 10000);
     return () => clearInterval(intv);
   }, [fetchThreads]);
+
+  useEffect(() => {
+    if (!focusedThreadId) return;
+    const node = document.getElementById(`thread-card-${focusedThreadId}`);
+    if (node && typeof node.scrollIntoView === 'function') {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [focusedThreadId, threads]);
 
   const handleSendReply = async (threadId: string) => {
     if (!replyText.trim()) return;
@@ -114,7 +123,18 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded }: ThreadVie
       <h2>Conversations</h2>
       <div style={{ display: 'flex', gap: '1rem', flexDirection: 'column' }}>
         {threads.map((thread) => (
-          <div key={thread.id} className="card" style={{ padding: '1rem', border: '1px solid #ccc' }}>
+          <div
+            key={thread.id}
+            id={`thread-card-${thread.id}`}
+            data-testid={`thread-card-${thread.id}`}
+            data-focused={thread.id === focusedThreadId ? 'true' : 'false'}
+            className="card"
+            style={{
+              padding: '1rem',
+              border: thread.id === focusedThreadId ? '2px solid #2563eb' : '1px solid #ccc',
+              boxShadow: thread.id === focusedThreadId ? '0 0 0 3px rgba(37,99,235,0.15)' : 'none',
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>{thread.title || 'Thread'}</h3>
                 <div>

@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import FindingFlag, Report, ReportFinding
 
-
 NON_QUANTITATIVE_MARKER_NAME = {
     "date",
     "report date",

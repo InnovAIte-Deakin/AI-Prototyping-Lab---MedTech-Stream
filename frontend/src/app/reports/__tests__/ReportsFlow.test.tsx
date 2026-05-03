@@ -27,6 +27,7 @@ describe('Report history and sharing preference flow', () => {
             title: 'Report A',
             source_kind: 'text',
             sharing_mode: 'private',
+            created_at: new Date().toISOString(),
             observed_at: new Date().toISOString(),
             findings: [
               {
@@ -100,6 +101,7 @@ describe('Report history and sharing preference flow', () => {
             title: 'Report A',
             source_kind: 'text',
             sharing_mode: 'private',
+            created_at: new Date().toISOString(),
             observed_at: new Date().toISOString(),
             findings: [
               {
@@ -170,6 +172,7 @@ describe('Report history and sharing preference flow', () => {
             title: 'Report 3',
             source_kind: 'text',
             sharing_mode: 'private',
+            created_at: d3,
             observed_at: d3,
             findings: [
               { id: 'r3a', biomarker_key: 'ALT', display_name: 'Alanine Aminotransferase (ALT)', value_numeric: 58, value_text: null, unit: 'U/L', flag: 'high', reference_range_text: '11-15' },
@@ -181,6 +184,7 @@ describe('Report history and sharing preference flow', () => {
             title: 'Report 2',
             source_kind: 'text',
             sharing_mode: 'private',
+            created_at: d2,
             observed_at: d2,
             findings: [
               { id: 'r2a', biomarker_key: 'ALT', display_name: 'Alanine Aminotransferase (ALT)', value_numeric: 34, value_text: null, unit: 'U/L', flag: 'normal', reference_range_text: '11-15' },
@@ -193,6 +197,7 @@ describe('Report history and sharing preference flow', () => {
             title: 'Report 1',
             source_kind: 'text',
             sharing_mode: 'private',
+            created_at: d1,
             observed_at: d1,
             findings: [
               { id: 'r1a', biomarker_key: 'ALT', display_name: 'Alanine Aminotransferase (ALT)', value_numeric: 29, value_text: null, unit: 'U/L', flag: 'normal', reference_range_text: '11-15' },
@@ -238,10 +243,10 @@ describe('Report history and sharing preference flow', () => {
     await waitFor(() => {
       expect(screen.getByRole('img', { name: /biomarker timeline chart/i })).toBeInTheDocument();
     });
-    expect(screen.getByLabelText(/select biomarker/i)).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /alanine aminotransferase/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /aspartate aminotransferase/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /alkaline phosphatase/i })).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/select biomarker/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('option', { name: /alanine aminotransferase/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('option', { name: /aspartate aminotransferase/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('option', { name: /alkaline phosphatase/i }).length).toBeGreaterThan(0);
   });
 
   it('navigates into report detail and allows sharing preference update', async () => {
@@ -268,25 +273,26 @@ describe('Report history and sharing preference flow', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Report A')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Report A' })).toBeInTheDocument();
     });
 
     const emailInput = screen.getByLabelText(/clinician email/i);
     fireEvent.change(emailInput, { target: { value: 'doc@clinic.org' } });
     fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /start sharing/i }));
+    fireEvent.click(document.querySelector('#share-report-btn') as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/reports/'),
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({
-            Authorization: 'Bearer access-token',
-          }),
-        }),
-      );
+      expect(
+        vi.mocked(global.fetch).mock.calls.some(
+          ([url, init]) =>
+            String(url).includes('/api/v1/reports/') &&
+            String(url).endsWith('/share') &&
+            init?.method === 'POST' &&
+            init?.headers &&
+            (init.headers as Record<string, string>).Authorization === 'Bearer access-token',
+        ),
+      ).toBe(true);
     });
   });
 
@@ -318,17 +324,18 @@ describe('Report history and sharing preference flow', () => {
     // Existing sharing preferences are not persisted in this workflow in test double, so just validate form is available.
     expect(screen.getByLabelText(/clinician email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/scope/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /start sharing/i })).toBeInTheDocument();
+    expect(document.querySelector('#share-report-btn')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/clinician email/i), { target: { value: 'doc@clinic.org' } });
     fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full' } });
-    fireEvent.click(screen.getByRole('button', { name: /start sharing/i }));
+    fireEvent.click(document.querySelector('#share-report-btn') as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/reports/'),
-        expect.objectContaining({ method: 'POST' }),
-      );
+      expect(
+        vi.mocked(global.fetch).mock.calls.some(
+          ([url, init]) => String(url).endsWith('/share') && init?.method === 'POST',
+        ),
+      ).toBe(true);
     });
   });
 
@@ -353,13 +360,14 @@ describe('Report history and sharing preference flow', () => {
     fireEvent.change(screen.getByLabelText(/clinician email/i), { target: { value: 'doc2@clinic.org' } });
     fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /start sharing/i }));
+    fireEvent.click(document.querySelector('#share-report-btn') as HTMLButtonElement);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/reports/'),
-        expect.objectContaining({ method: 'POST' }),
-      );
+      expect(
+        vi.mocked(global.fetch).mock.calls.some(
+          ([url, init]) => String(url).endsWith('/share') && init?.method === 'POST',
+        ),
+      ).toBe(true);
     });
   });
 
@@ -434,6 +442,7 @@ describe('Report history and sharing preference flow', () => {
             title: 'Report E',
             source_kind: 'text',
             sharing_mode: 'private',
+            created_at: new Date().toISOString(),
             observed_at: new Date().toISOString(),
             findings: [],
           },

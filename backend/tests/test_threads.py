@@ -5,7 +5,6 @@ from __future__ import annotations
 from tests.support.consent_api import (
     ConsentApiHarness,
     auth_headers,
-    consent_api,
     login,
     seed_report,
     seed_user,

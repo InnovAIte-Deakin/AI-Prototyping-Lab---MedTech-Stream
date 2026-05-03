@@ -4,15 +4,12 @@ from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
-from app.services.ocr import extract_text_from_image_bytes, extract_text_from_pdf_bytes
-from app.services.parser import extract_report_date, parse_text
 from app.services.parse_pipeline import (
     ParseServiceError,
-    build_parse_response,
     collect_uploads,
-    extract_text_from_json_payload,
     extract_text_from_uploads,
 )
+from app.services.parser import extract_report_date, parse_text
 
 router = APIRouter()
 
@@ -23,7 +20,6 @@ async def parse_endpoint(
     file: UploadFile | None = File(default=None),
     files: list[UploadFile] | None = File(default=None),
 ) -> dict[str, Any]:
-    content_type = request.headers.get("content-type", "").lower()
     try:
         content_length = int(request.headers.get("content-length", "0"))
     except Exception:

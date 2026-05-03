@@ -264,7 +264,7 @@ export default function ParsePage() {
   return (
     <div className="parse-page">
       <div className="parse-header">
-        <h1>Understand Your{‘ ‘}<span className="hero-accent">Lab Results</span>.</h1>
+        <h1>Understand Your <span className="hero-accent">Lab Results</span>.</h1>
         <p className="parse-subtitle">Get clinical-grade clarity on your blood work and diagnostic tests. We translate complex medical jargon so you can talk confidently with your clinician.</p>
       </div>
 

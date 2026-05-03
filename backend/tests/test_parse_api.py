@@ -8,9 +8,8 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.routers import parse as parse_router
+from app.services import parse_llm, parse_pipeline
 from app.services.parse_llm import ParseExtractionError
-from app.services import parse_llm
-from app.services import parse_pipeline
 
 
 @pytest.fixture
@@ -220,7 +219,11 @@ def test_parse_returns_clear_error_when_model_json_is_malformed(monkeypatch):
 
 
 def test_fallback_extraction_filters_metadata_and_unit_rows(monkeypatch):
-    monkeypatch.setattr(parse_llm, "_run_openai_extraction", lambda _: (_ for _ in ()).throw(RuntimeError("missing_api_key")))
+    monkeypatch.setattr(
+        parse_llm,
+        "_run_openai_extraction",
+        lambda _: (_ for _ in ()).throw(RuntimeError("missing_api_key")),
+    )
 
     text = """
     Amy Santiago 12 June

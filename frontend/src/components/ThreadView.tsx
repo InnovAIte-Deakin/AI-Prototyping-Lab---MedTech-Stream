@@ -54,7 +54,7 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded, focusedThre
     } finally {
       setLoading(false);
     }
-  }, [reportId, accessToken, backend, onThreadsLoaded]);
+  }, [accessToken, backend, onThreadsLoaded, reportId]);
 
   useEffect(() => {
     fetchThreads();

@@ -67,11 +67,19 @@ DATE_CANDIDATE = re.compile(
 )
 
 REPORT_DATE_PRIMARY_PATTERNS = [
-    re.compile(r"\b(?:report(?:ed)?\s*date|result\s*date|test\s*date|observation\s*date)\b[^\n:]*[:\-]?\s*(?P<date>.+)$", re.IGNORECASE),
+    re.compile(
+        r"\b(?:report(?:ed)?\s*date|result\s*date|test\s*date|observation\s*date)"
+        r"\b[^\n:]*[:\-]?\s*(?P<date>.+)$",
+        re.IGNORECASE,
+    ),
 ]
 
 REPORT_DATE_SECONDARY_PATTERNS = [
-    re.compile(r"\b(?:collection\s*date|collected(?:\s*on)?|specimen\s*collected|sample\s*collected)\b[^\n:]*[:\-]?\s*(?P<date>.+)$", re.IGNORECASE),
+    re.compile(
+        r"\b(?:collection\s*date|collected(?:\s*on)?|specimen\s*collected|sample\s*collected)"
+        r"\b[^\n:]*[:\-]?\s*(?P<date>.+)$",
+        re.IGNORECASE,
+    ),
 ]
 
 

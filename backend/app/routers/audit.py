@@ -2,13 +2,13 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
 from app.dependencies.auth import AuthContext, get_current_auth_context
-from app.services.reports import AuditLogEntry, get_report_audit_log, ReportServiceError
+from app.services.reports import ReportServiceError, get_report_audit_log
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 

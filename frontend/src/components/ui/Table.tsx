@@ -1,5 +1,5 @@
 "use client";
-import type { PropsWithChildren, HTMLAttributes } from 'react';
+import type { PropsWithChildren, HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from 'react';
 
 export function Table({ children, className = '', ...rest }: PropsWithChildren & HTMLAttributes<HTMLTableElement>) {
   return (
@@ -33,7 +33,7 @@ export function TR({ children, className = '', ...rest }: PropsWithChildren & HT
   );
 }
 
-export function TH({ children, className = '', ...rest }: PropsWithChildren & HTMLAttributes<HTMLTableCellElement>) {
+export function TH({ children, className = '', ...rest }: PropsWithChildren & ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th className={className} {...rest}>
       {children}
@@ -41,7 +41,7 @@ export function TH({ children, className = '', ...rest }: PropsWithChildren & HT
   );
 }
 
-export function TD({ children, className = '', ...rest }: PropsWithChildren & HTMLAttributes<HTMLTableCellElement>) {
+export function TD({ children, className = '', ...rest }: PropsWithChildren & TdHTMLAttributes<HTMLTableCellElement>) {
   return (
     <td className={className} {...rest}>
       {children}

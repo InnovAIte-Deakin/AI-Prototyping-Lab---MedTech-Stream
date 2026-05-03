@@ -67,7 +67,7 @@ export function NotificationDrawer({
           {drawerLoading ? <div className="notifications-loading">Loading notifications...</div> : null}
           {drawerError ? <div className="notifications-error">{drawerError}</div> : null}
           {!drawerLoading && !drawerError && drawerItems.length === 0 ? (
-            <div className="notifications-empty">You're all caught up.</div>
+            <div className="notifications-empty">You&apos;re all caught up.</div>
           ) : null}
           <ul className="notifications-page-list" style={{ margin: 0 }}>
             {drawerItems.map((notification) => (

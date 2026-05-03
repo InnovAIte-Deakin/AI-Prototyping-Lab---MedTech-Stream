@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ProtectedView } from '@/components/ProtectedView';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -43,7 +43,7 @@ export default function NotificationsPage() {
     });
   }, [filter, items, typeFilter]);
 
-  const loadNotifications = async (nextOffset = 0, append = false) => {
+  const loadNotifications = useCallback(async (nextOffset = 0, append = false) => {
     setLoading(true);
     setError(null);
     try {
@@ -63,12 +63,12 @@ export default function NotificationsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, limit]);
 
   useEffect(() => {
     if (!user) return;
     void loadNotifications(0, false);
-  }, [filter, user]);
+  }, [loadNotifications, user]);
 
   const handleMarkAllRead = async () => {
     await markAllNotificationsRead();

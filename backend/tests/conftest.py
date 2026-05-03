@@ -19,6 +19,8 @@ from app.db.base import Base  # noqa: E402
 from tests.factories import PersistenceFactory  # noqa: E402
 from tests.support.consent_api import consent_api as consent_api  # noqa: E402,F401
 
+pytest_plugins = ("tests.support.consent_api",)
+
 
 @pytest.fixture()
 def db_session() -> Session:

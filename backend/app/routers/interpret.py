@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.services.llm import ParsedRowIn, interpret_rows, call_gpt5_chat
+from app.services.llm import ParsedRowIn, call_gpt5_chat, interpret_rows
 
 router = APIRouter()
 

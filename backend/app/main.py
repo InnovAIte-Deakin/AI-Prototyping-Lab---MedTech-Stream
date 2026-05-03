@@ -18,9 +18,9 @@ from .routers.audit import router as audit_router
 from .routers.auth import router as auth_router
 from .routers.health import router as health_router
 from .routers.interpret import router as interpret_router
+from .routers.notifications import router as notifications_router
 from .routers.parse import router as parse_router
 from .routers.reports import router as reports_router
-from .routers.notifications import router as notifications_router
 from .routers.threads import router as threads_router
 from .routers.translate import router as translate_router
 from .services.notifications import emit_share_expiry_warnings

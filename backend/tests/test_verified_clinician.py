@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta
 from tests.support.consent_api import (
     ConsentApiHarness,
     auth_headers,
-    consent_api,
     login,
     seed_report,
     seed_user,

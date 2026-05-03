@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ProtectedView } from '@/components/ProtectedView';
 import { Button } from '@/components/ui/Button';
@@ -39,7 +39,7 @@ function getAccessToken() {
   }
 }
 
-export default function SharedReportsPage() {
+function SharedReportsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const focusedReportId = searchParams.get('reportId');
@@ -133,5 +133,21 @@ export default function SharedReportsPage() {
         ) : null}
       </section>
     </ProtectedView>
+  );
+}
+
+export default function SharedReportsPage() {
+  return (
+    <Suspense
+      fallback={(
+        <ProtectedView>
+          <section className="shared-reports-shell">
+            <div className="notifications-loading">Loading shared reports...</div>
+          </section>
+        </ProtectedView>
+      )}
+    >
+      <SharedReportsPageContent />
+    </Suspense>
   );
 }

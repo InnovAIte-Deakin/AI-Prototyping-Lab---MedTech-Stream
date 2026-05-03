@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from tests.support.consent_api import auth_headers, consent_api, login, seed_report, seed_user
+from tests.support.consent_api import auth_headers, login, seed_report, seed_user
 
 
 def _future_expiry_iso(days: int = 7) -> str:

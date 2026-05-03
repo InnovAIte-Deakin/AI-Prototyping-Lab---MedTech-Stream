@@ -12,7 +12,6 @@ from pydantic import BaseModel, ValidationError
 from app.services.llm import _get_openai_client, _max_tokens, _resolve_model
 from app.services.parser import parse_text
 
-
 LOGGER = logging.getLogger("reportrx.backend")
 
 

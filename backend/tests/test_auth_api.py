@@ -12,9 +12,8 @@ from passlib.context import CryptContext
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import selectinload, sessionmaker
 
-from app.db.base import Base
-from app.db.models import AuditEvent, AuthSession, ConsentShare, Report, User, UserRole
 import app.main as main_mod
+from app.db.models import AuditEvent, AuthSession, ConsentShare, Report, User, UserRole
 from app.main import create_app
 from app.services.auth import hash_password, verify_password
 from tests.factories import PersistenceFactory

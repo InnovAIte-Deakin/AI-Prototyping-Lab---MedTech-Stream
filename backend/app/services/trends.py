@@ -59,6 +59,15 @@ def _is_quantitative_finding(finding: ReportFinding) -> bool:
     return name not in NON_QUANTITATIVE_MARKER_NAME
 
 
+def _has_consistent_units(findings: list[tuple[ReportFinding, Report]]) -> bool:
+    normalized_units = {
+        (finding.unit or "").strip().lower()
+        for finding, _ in findings
+        if (finding.unit or "").strip()
+    }
+    return len(normalized_units) <= 1
+
+
 def _flag_severity(flag: FindingFlag) -> int:
     if flag is FindingFlag.NORMAL:
         return 0
@@ -157,6 +166,9 @@ async def build_trends_for_patient(
 
     trends: list[BiomarkerTrend] = []
     for biomarker_key, entries in grouped.items():
+        if not _has_consistent_units(entries):
+            continue
+
         # Collapse to one finding per report, picking the most clinically relevant
         by_report: dict[str, list[tuple[ReportFinding, Report]]] = {}
         for finding, report in entries:

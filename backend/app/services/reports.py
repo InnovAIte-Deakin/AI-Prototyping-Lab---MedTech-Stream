@@ -586,4 +586,3 @@ async def cleanup_expired_shares(session: AsyncSession) -> int:
     await session.commit()
     return cleaned_count
 
-

@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.db.models import ConsentShare
 from app.services.reports import cleanup_expired_shares
-from tests.support.consent_api import auth_headers, consent_api, login, seed_report, seed_user
+from tests.support.consent_api import auth_headers, login, seed_report, seed_user
 
 
 def _future_expiry_iso(days: int = 7) -> str:

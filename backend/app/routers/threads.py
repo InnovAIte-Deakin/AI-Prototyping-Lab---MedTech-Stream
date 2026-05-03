@@ -1,35 +1,32 @@
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.db.models import (
-    ConsentScope,
-    ConsentShare,
-    ConversationThread,
-    MessageKind,
-    Notification,
-    NotificationKind,
-    Report,
-    ReportFinding,
-    ThreadMessage,
-    ThreadParticipant,
-    User,
-    UserRole,
-)
+from app.db.models import ConversationThread, Report, ReportFinding, ThreadMessage
 from app.db.session import get_db_session
 from app.dependencies.auth import AuthContext, get_current_auth_context
 from app.dependencies.reports import get_accessible_report
 from app.services.questions import generate_questions
+from app.services.threads import (
+    ThreadMessageCreateInput,
+    ThreadServiceError,
+    add_thread_message,
+    create_report_thread,
+    get_thread_for_user,
+    list_threads_for_report,
+    user_role_label,
+)
 
 router = APIRouter(tags=["threads"])
+
+
+def _raise_thread_http_error(exc: ThreadServiceError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
 
 class QuestionPromptsResponse(BaseModel):
@@ -43,6 +40,14 @@ async def get_question_prompts(
 ) -> QuestionPromptsResponse:
     prompts, _ = await generate_questions(report.findings)
     return QuestionPromptsResponse(prompts=prompts)
+
+
+class ThreadAnchorOut(BaseModel):
+    finding_id: str
+    display_name: str
+    biomarker_key: str
+    flag: str
+    position: int
 
 
 class ThreadMessageOut(BaseModel):
@@ -64,6 +69,7 @@ class ConversationThreadOut(BaseModel):
     title: str | None
     status: str
     created_at: datetime
+    anchor: ThreadAnchorOut | None = None
     messages: list[ThreadMessageOut] = []
 
 
@@ -73,14 +79,21 @@ class CreateThreadRequest(BaseModel):
     finding_id: str | None = None
 
 
-def _primary_role(user: User | None) -> str:
-    if user is None:
-        return "unknown"
-    role_names = [assignment.role.name for assignment in user.role_assignments if assignment.role]
-    for preferred in ("clinician", "caregiver", "patient"):
-        if preferred in role_names:
-            return preferred
-    return role_names[0] if role_names else "unknown"
+class AddMessageRequest(BaseModel):
+    body: str | None = None
+    template_payload: dict[str, Any] | None = None
+
+
+def _anchor_out(finding: ReportFinding | None) -> ThreadAnchorOut | None:
+    if finding is None:
+        return None
+    return ThreadAnchorOut(
+        finding_id=finding.id,
+        display_name=finding.display_name,
+        biomarker_key=finding.biomarker_key,
+        flag=finding.flag.value,
+        position=finding.position,
+    )
 
 
 def _finding_label(finding: ReportFinding | None) -> str | None:
@@ -91,119 +104,22 @@ def _finding_label(finding: ReportFinding | None) -> str | None:
     return f"{finding.display_name} ({value}{unit})" if value is not None else finding.display_name
 
 
-async def _has_share_access(
-    session: AsyncSession,
-    *,
-    thread: ConversationThread,
-    user_id: str,
-) -> bool:
-    if thread.report_id is None:
-        return False
-    now = datetime.now(UTC)
-    share = await session.scalar(
-        select(ConsentShare)
-        .where(
-            ConsentShare.subject_user_id == thread.subject_user_id,
-            ConsentShare.grantee_user_id == user_id,
-            ConsentShare.revoked_at.is_(None),
-            ConsentShare.expires_at > now,
-            or_(
-                and_(
-                    ConsentShare.scope == ConsentScope.PATIENT,
-                    ConsentShare.report_id.is_(None),
-                ),
-                and_(
-                    ConsentShare.scope == ConsentScope.REPORT,
-                    ConsentShare.report_id == thread.report_id,
-                ),
-            ),
-        )
-        .limit(1)
-    )
-    return share is not None
-
-
-async def _ensure_participant(
-    session: AsyncSession,
-    thread: ConversationThread,
-    user: User,
-) -> ThreadParticipant:
-    existing = await session.scalar(
-        select(ThreadParticipant).where(
-            ThreadParticipant.thread_id == thread.id,
-            ThreadParticipant.user_id == user.id,
-        )
-    )
-    if existing:
-        return existing
-    participant = ThreadParticipant(thread_id=thread.id, user_id=user.id)
-    session.add(participant)
-    await session.flush()
-    return participant
-
-
-async def _notify_other_participants(
-    session: AsyncSession,
-    thread: ConversationThread,
-    *,
-    actor_id: str,
-    actor_roles: frozenset[str],
-    message_body_preview: str,
-) -> None:
-    stmt = (
-        select(ThreadParticipant)
-        .where(ThreadParticipant.thread_id == thread.id)
-        .where(ThreadParticipant.user_id != actor_id)
-    )
-    result = await session.scalars(stmt)
-    recipients = list(result.all())
-
-    # Ensure the thread subject is always notified on incoming messages
-    # they do not author — even before they have been registered as a participant.
-    if thread.subject_user_id != actor_id and not any(p.user_id == thread.subject_user_id for p in recipients):
-        recipients.append(ThreadParticipant(thread_id=thread.id, user_id=thread.subject_user_id))
-
-    kind = (
-        NotificationKind.CLINICIAN_REPLIED_IN_THREAD
-        if "clinician" in actor_roles
-        else NotificationKind.PATIENT_MESSAGE_IN_THREAD
-    )
-
-    for participant in recipients:
-        session.add(
-            Notification(
-                user_id=participant.user_id,
-                thread_id=thread.id,
-                report_id=thread.report_id,
-                kind=kind,
-                title=thread.title or "New reply on your report",
-                resource_type="thread",
-                resource_id=thread.id,
-                payload={
-                    "thread_id": thread.id,
-                    "report_id": thread.report_id,
-                    "finding_id": thread.finding_id,
-                    "preview": message_body_preview[:160],
-                    "actor_user_id": actor_id,
-                },
-            )
-        )
-
-
-def _serialize_message(message: ThreadMessage) -> ThreadMessageOut:
+def _message_out(message: ThreadMessage) -> ThreadMessageOut:
+    author = message.author_user
+    assert author is not None
     return ThreadMessageOut(
         id=message.id,
         author_user_id=message.author_user_id,
-        author_name=message.author_user.display_name if message.author_user else "Unknown",
-        author_role=_primary_role(message.author_user),
+        author_name=author.display_name,
+        author_role=user_role_label(author),
         kind=message.kind.value,
         body=message.body,
         created_at=message.created_at,
     )
 
 
-def _serialize_thread(thread: ConversationThread) -> ConversationThreadOut:
-    messages = sorted(thread.messages, key=lambda m: m.created_at)
+def _thread_out(thread: ConversationThread) -> ConversationThreadOut:
+    messages = sorted(thread.messages, key=lambda item: item.created_at)
     return ConversationThreadOut(
         id=thread.id,
         report_id=thread.report_id,
@@ -213,7 +129,8 @@ def _serialize_thread(thread: ConversationThread) -> ConversationThreadOut:
         title=thread.title,
         status=thread.status.value,
         created_at=thread.created_at,
-        messages=[_serialize_message(m) for m in messages],
+        anchor=_anchor_out(thread.finding),
+        messages=[_message_out(message) for message in messages],
     )
 
 
@@ -223,20 +140,8 @@ async def list_report_threads(
     auth: AuthContext = Depends(get_current_auth_context),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[ConversationThreadOut]:
-    stmt = (
-        select(ConversationThread)
-        .where(ConversationThread.report_id == report.id)
-        .order_by(ConversationThread.created_at.desc())
-        .options(
-            selectinload(ConversationThread.messages)
-            .selectinload(ThreadMessage.author_user)
-            .selectinload(User.role_assignments)
-            .selectinload(UserRole.role),
-            selectinload(ConversationThread.finding),
-        )
-    )
-    result = await session.scalars(stmt)
-    return [_serialize_thread(thread) for thread in result.all()]
+    threads = await list_threads_for_report(session, report_id=report.id)
+    return [_thread_out(thread) for thread in threads]
 
 
 @router.post(
@@ -250,74 +155,32 @@ async def create_thread(
     auth: AuthContext = Depends(get_current_auth_context),
     session: AsyncSession = Depends(get_db_session),
 ) -> ConversationThreadOut:
-    finding: ReportFinding | None = None
-    if payload.finding_id:
-        finding = await session.scalar(
-            select(ReportFinding).where(
-                ReportFinding.id == payload.finding_id,
-                ReportFinding.report_id == report.id,
-            )
+    try:
+        thread = await create_report_thread(
+            session,
+            report=report,
+            actor=auth.user,
+            title=payload.title,
+            initial_message=payload.initial_message,
+            finding_id=payload.finding_id,
         )
-        if finding is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Finding does not belong to this report.",
-            )
+    except ThreadServiceError as exc:
+        _raise_thread_http_error(exc)
 
-    thread = ConversationThread(
-        subject_user_id=report.subject_user_id,
-        created_by_user_id=auth.user.id,
-        report_id=report.id,
-        finding_id=finding.id if finding else None,
-        title=payload.title or "Questions for Clinician",
-    )
-    session.add(thread)
-    await session.flush()
-
-    session.add(ThreadParticipant(thread_id=thread.id, user_id=auth.user.id))
-    if thread.subject_user_id != auth.user.id:
-        session.add(ThreadParticipant(thread_id=thread.id, user_id=thread.subject_user_id))
-    await session.flush()
-
-    message = ThreadMessage(
-        thread_id=thread.id,
-        author_user_id=auth.user.id,
-        kind=MessageKind.TEXT,
-        body=payload.initial_message,
-    )
-    session.add(message)
-    await session.flush()
-
-    await _notify_other_participants(
-        session,
-        thread,
-        actor_id=auth.user.id,
-        actor_roles=auth.roles,
-        message_body_preview=payload.initial_message,
-    )
-
-    await session.commit()
-
-    # Reload with all relationships needed for serialization.
-    stmt = (
-        select(ConversationThread)
-        .where(ConversationThread.id == thread.id)
-        .options(
-            selectinload(ConversationThread.messages)
-            .selectinload(ThreadMessage.author_user)
-            .selectinload(User.role_assignments)
-            .selectinload(UserRole.role),
-            selectinload(ConversationThread.finding),
-        )
-    )
-    loaded = await session.scalar(stmt)
-    assert loaded is not None
-    return _serialize_thread(loaded)
+    return _thread_out(thread)
 
 
-class AddMessageRequest(BaseModel):
-    body: str | None = None
-    template_payload: dict[str, Any] | None = None
+@router.get("/threads/{thread_id}", response_model=ConversationThreadOut)
+async def get_thread(
+    thread_id: str,
+    auth: AuthContext = Depends(get_current_auth_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> ConversationThreadOut:
+    try:
+        thread = await get_thread_for_user(session, thread_id=thread_id, user=auth.user)
+    except ThreadServiceError as exc:
+        _raise_thread_http_error(exc)
+    return _thread_out(thread)
 
 
 @router.post(
@@ -331,59 +194,17 @@ async def add_message(
     auth: AuthContext = Depends(get_current_auth_context),
     session: AsyncSession = Depends(get_db_session),
 ) -> ThreadMessageOut:
-    thread = await session.scalar(
-        select(ConversationThread)
-        .where(ConversationThread.id == thread_id)
-        .options(selectinload(ConversationThread.participants))
-    )
-    if not thread:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found")
-
-    is_participant = any(p.user_id == auth.user.id for p in thread.participants)
-    is_subject = thread.subject_user_id == auth.user.id
-    if not is_participant and not is_subject:
-        if not await _has_share_access(session, thread=thread, user_id=auth.user.id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have access to this thread.",
-            )
-
-    if payload.template_payload:
-        kind = MessageKind.TEMPLATE
-        body = json.dumps(payload.template_payload)
-    elif payload.body:
-        kind = MessageKind.TEXT
-        body = payload.body
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Must provide body or template_payload",
+    try:
+        message = await add_thread_message(
+            session,
+            thread_id=thread_id,
+            message_input=ThreadMessageCreateInput(
+                author=auth.user,
+                body=payload.body,
+                template_payload=payload.template_payload,
+            ),
         )
+    except ThreadServiceError as exc:
+        _raise_thread_http_error(exc)
 
-    message = ThreadMessage(
-        thread_id=thread.id,
-        author_user_id=auth.user.id,
-        kind=kind,
-        body=body,
-    )
-    session.add(message)
-
-    await _ensure_participant(session, thread, auth.user)
-    await _notify_other_participants(
-        session,
-        thread,
-        actor_id=auth.user.id,
-        actor_roles=auth.roles,
-        message_body_preview=body,
-    )
-
-    await session.commit()
-
-    # Reload with the author's roles so response includes author_role correctly.
-    loaded_msg = await session.scalar(
-        select(ThreadMessage)
-        .where(ThreadMessage.id == message.id)
-        .options(selectinload(ThreadMessage.author_user).selectinload(User.role_assignments))
-    )
-    assert loaded_msg is not None
-    return _serialize_message(loaded_msg)
+    return _message_out(message)

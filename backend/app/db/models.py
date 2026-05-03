@@ -82,6 +82,16 @@ class MessageKind(StrEnum):
 
 
 class NotificationKind(StrEnum):
+    REPORT_SHARED_CONFIRMED = "report_shared_confirmed"
+    CLINICIAN_VIEWED_REPORT = "clinician_viewed_report"
+    CLINICIAN_REPLIED_IN_THREAD = "clinician_replied_in_thread"
+    SHARE_EXPIRING_SOON = "share_expiring_soon"
+    SHARE_REVOCATION_CONFIRMED = "share_revocation_confirmed"
+    NEW_REPORT_SHARED = "new_report_shared"
+    SHARE_REVOKED = "share_revoked"
+    PATIENT_MESSAGE_IN_THREAD = "patient_message_in_thread"
+    SHARE_EXPIRY_WARNING = "share_expiry_warning"
+    SHARE_EXPIRED = "share_expired"
     THREAD_REPLY = "thread_reply"
     SHARE_GRANTED = "share_granted"
     REPORT_READY = "report_ready"
@@ -500,6 +510,8 @@ class Notification(UUIDPrimaryKeyMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    resource_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resource_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 

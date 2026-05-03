@@ -3,9 +3,11 @@ import '../../styles/header.css';
 import '../../styles/parse.css';
 import '../../styles/report-detail.css';
 import '../../styles/auth.css';
+import '../../styles/notifications.css';
 import type { ReactNode } from 'react';
 import Header from '@/components/Header';
 import { AuthProvider } from '@/store/authStore';
+import { NotificationsProvider } from '@/store/notificationsStore';
 
 export const metadata = {
   title: 'ReportX',
@@ -17,8 +19,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body>
         <AuthProvider>
-          <Header />
-          <main id="main" className="container">{children}</main>
+          <NotificationsProvider>
+            <Header />
+            <main id="main" className="container">{children}</main>
+          </NotificationsProvider>
           <footer className="footer">
             <div className="footer-inner">
               <div>

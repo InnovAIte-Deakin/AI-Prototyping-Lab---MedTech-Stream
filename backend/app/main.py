@@ -23,6 +23,7 @@ from .routers.reports import router as reports_router
 from .routers.notifications import router as notifications_router
 from .routers.threads import router as threads_router
 from .routers.translate import router as translate_router
+from .services.notifications import emit_share_expiry_warnings
 from .services.reports import cleanup_expired_shares
 
 
@@ -72,6 +73,13 @@ async def app_lifespan(app: FastAPI):
             count = await cleanup_expired_shares(session)
             if count > 0:
                 logging.info(f"Cleaned up {count} expired shares")
+
+    async def scheduled_share_warning_scan():
+        """Emit notifications for shares nearing expiry."""
+        async with app.state.database.session_factory() as session:
+            count = await emit_share_expiry_warnings(session)
+            if count > 0:
+                logging.info(f"Emitted {count} share expiry warnings")
     
     # CLEANUP_INTERVAL_MINUTES controls how often expired shared reports are deleted.
     # Default: 5 minutes.
@@ -79,12 +87,20 @@ async def app_lifespan(app: FastAPI):
     # database activity, while higher values leave expired shares in place longer.
     # For production, choose an interval that balances prompt cleanup with operational load.
     cleanup_interval = int(os.getenv('CLEANUP_INTERVAL_MINUTES', '5'))
+    warning_interval = int(os.getenv('SHARE_WARNING_INTERVAL_MINUTES', str(cleanup_interval)))
     scheduler.add_job(
         scheduled_cleanup,
         'interval',
         minutes=cleanup_interval,
         id='cleanup-expired-shares',
         name='Cleanup expired shares',
+    )
+    scheduler.add_job(
+        scheduled_share_warning_scan,
+        'interval',
+        minutes=warning_interval,
+        id='share-expiry-warning-scan',
+        name='Emit share expiry warnings',
     )
     scheduler.start()
     app.state.scheduler = scheduler
@@ -195,7 +211,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=[frontend_origin],
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
         allow_headers=["*"],
         max_age=600,
     )

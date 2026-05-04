@@ -1,11 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { fetchReportById, updateReportInHistory } from '@/lib/reportHistory';
 import type { ReportHistoryEntry, SharingPreferences, Interpretation, ChatMessage } from '@/lib/reportHistory';
-import { PatientQuestions } from '@/components/PatientQuestions';
 import { ThreadView, ConversationThread } from '@/components/ThreadView';
 import { DoctorSummaryDocument, type SummaryFinding, type SummaryThread } from '@/components/DoctorSummaryDocument';
 import Disclaimer from '@/components/Disclaimer';
@@ -13,6 +12,7 @@ import { AuditLogTimeline } from '@/components/AuditLogTimeline';
 import { shareStateFrom, type ShareLifecycleState } from '@/lib/auditLog';
 import { Badge } from '@/components/ui/Badge';
 import { SharingPreferencesPanel } from '@/components/SharingPreferencesPanel';
+import { BiomarkerTrendChart } from '@/components/BiomarkerTrendChart';
 
 function formatDate(ts: number) {
   return new Date(ts).toLocaleString();
@@ -26,7 +26,16 @@ const defaultSharingPreferences: SharingPreferences = {
   active: false,
 };
 
-export default function ReportDetailPage({ params }: { params: { reportId: string } }) {
+const LANGUAGE_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Espanol' },
+  { value: 'ar', label: 'العربية' },
+  { value: 'zh', label: '中文 (普通话)' },
+  { value: 'hi', label: 'हिन्दी' },
+  { value: 'fr', label: 'Francais' },
+];
+
+export default function ReportDetailPage({ params, searchParams }: { params: { reportId: string }; searchParams?: { panel?: string; threadId?: string } }) {
   const { user } = useAuth();
   const [report, setReport] = useState<ReportHistoryEntry | undefined>(undefined);
   const [sharingPreferences, setSharingPreferences] = useState<SharingPreferences>(defaultSharingPreferences);
@@ -35,6 +44,25 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
   const [threads, setThreads] = useState<ConversationThread[]>([]);
   const [auditReloadToken, setAuditReloadToken] = useState(0);
   const [sharingPanelOpen, setSharingPanelOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchParams?.panel === 'sharing') {
+      setSharingPanelOpen(true);
+    }
+  }, [searchParams?.panel]);
+
+  // Trend states
+  const [trends, setTrends] = useState<BiomarkerTrend[]>([]);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+  const [trendsError, setTrendsError] = useState<string | null>(null);
+  const [trendLanguage, setTrendLanguage] = useState('en');
+  const [loadingTrendTranslations, setLoadingTrendTranslations] = useState(false);
+  const [trendTranslationError, setTrendTranslationError] = useState<string | null>(null);
+  const [trendNoteTranslations, setTrendNoteTranslations] = useState<Record<string, Record<string, string>>>({});
+  const [prefetchedTrendLanguages, setPrefetchedTrendLanguages] = useState<Record<string, Record<string, boolean>>>({});
+  const [biomarkerFilterText, setBiomarkerFilterText] = useState('');
+  const [selectedBiomarkerKey, setSelectedBiomarkerKey] = useState('');
+
 
   // Interpretation panel state
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -445,6 +473,70 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
         </div>
 
         {/* ── Interpretation card (shown inline if already interpreted) ── */}
+        <div className="report-section-card">
+          <div className="card-section-header">
+            <div className="card-section-header-inner">
+              <div className="card-section-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+                </svg>
+              </div>
+              <div className="card-section-text">
+                <h2 className="card-section-title">Biomarker Trends</h2>
+                <p className="card-section-subtitle">Compare repeated biomarkers across saved reports</p>
+              </div>
+            </div>
+          </div>
+          <div className="card-section-body">
+            {trendsLoading ? <p className="muted-text">Loading trends...</p> : null}
+            {trendsError ? <p className="alert alert-error">{trendsError}</p> : null}
+            {!trendsLoading && !trendsError && selectedTrend ? (
+              <div className="stack-tight">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+                  <label className="field">
+                    <span>Filter biomarkers</span>
+                    <input
+                      className="input"
+                      aria-label="Filter biomarkers"
+                      value={biomarkerFilterText}
+                      onChange={(event) => setBiomarkerFilterText(event.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Biomarker</span>
+                    <select
+                      className="input"
+                      aria-label="Biomarker"
+                      value={selectedTrend.biomarker_key}
+                      onChange={(event) => setSelectedBiomarkerKey(event.target.value)}
+                    >
+                      {filteredTrendItems.map((item) => (
+                        <option key={item.biomarker_key} value={item.biomarker_key}>
+                          {item.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <p className="muted-text">
+                  {trendNoteTranslations[selectedTrend.biomarker_key]?.[trendLanguage] || selectedTrend.trend_note}
+                </p>
+                {loadingTrendTranslations ? <p className="muted-text">Translating trend note...</p> : null}
+                {trendTranslationError ? <p className="alert alert-error">{trendTranslationError}</p> : null}
+                <BiomarkerTrendChart
+                  title={selectedTrend.display_name}
+                  points={selectedTrend.sparkline}
+                  unit={selectedTrend.unit}
+                  observationDates={trendItems.flatMap((item) => item.sparkline.map((point) => point.observed_at))}
+                />
+              </div>
+            ) : null}
+            {!trendsLoading && !trendsError && !selectedTrend ? (
+              <p className="muted-text">No repeat biomarker trend is available for this report yet.</p>
+            ) : null}
+          </div>
+        </div>
+
         {activeInterp && (
           <div className="report-section-card">
             <div className="card-section-header">
@@ -644,7 +736,29 @@ export default function ReportDetailPage({ params }: { params: { reportId: strin
 
         <AuditLogTimeline reportId={report.id} reloadToken={auditReloadToken} />
 
+        <ThreadView
+          reportId={report.id}
+          accessToken={accessToken}
+          onThreadsLoaded={setThreads}
+          focusedThreadId={searchParams?.threadId}
+        />
+
         <Disclaimer />
+
+        <SharingPreferencesPanel
+          open={sharingPanelOpen}
+          onClose={() => setSharingPanelOpen(false)}
+          onShare={handleShareWithPDF}
+          onRevoke={sharingPreferences.active ? revokeShare : undefined}
+          clinicianEmail={sharingPreferences.clinicianEmail}
+          onClinicianEmailChange={(e) => setSharingPreferences({ ...sharingPreferences, clinicianEmail: e.target.value })}
+          scope={sharingPreferences.scope}
+          onScopeChange={(e) => setSharingPreferences({ ...sharingPreferences, scope: e.target.value as 'summary' | 'full' })}
+          expiresAt={sharingPreferences.expiresAt}
+          onExpiresAtChange={(e) => setSharingPreferences({ ...sharingPreferences, expiresAt: new Date(e.target.value).getTime() })}
+          shareActive={sharingPreferences.active}
+          statusMessage={statusMessage}
+        />
 
       </div>
 

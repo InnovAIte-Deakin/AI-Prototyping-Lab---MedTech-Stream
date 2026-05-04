@@ -4,6 +4,13 @@ import { render, screen } from '@testing-library/react';
 
 import { MessageList } from '../MessageList';
 
+function expectedTimestamp(value: string) {
+  const d = new Date(value);
+  const date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const time = d.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+  return `${date}, ${time}`;
+}
+
 const messages = [
   {
     id: 'm2',
@@ -39,7 +46,7 @@ describe('MessageList', () => {
     expect(items[0]).toHaveTextContent('What does this mean?');
     expect(items[1]).toHaveTextContent('Clinician');
     expect(items[1]).toHaveTextContent('Please track this result monthly.');
-    expect(screen.getAllByTestId('thread-message-time')[0].textContent).toMatch(/15 Jan 2025, 2:34 pm/i);
+    expect(screen.getAllByTestId('thread-message-time')[0]).toHaveTextContent(expectedTimestamp('2025-01-15T14:34:00Z'));
   });
 
   it('AC-T8-05 shows empty message when there is no history', () => {

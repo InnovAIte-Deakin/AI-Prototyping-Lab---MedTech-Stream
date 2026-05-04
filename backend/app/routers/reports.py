@@ -102,6 +102,8 @@ class TrendPointOut(BaseModel):
     value: float
     unit: str | None
     flag: str
+    reference_low: float | None
+    reference_high: float | None
 
 
 class BiomarkerTrendOut(BaseModel):
@@ -117,6 +119,8 @@ class ReportTrendsResponse(BaseModel):
     report_id: str
     subject_user_id: str
     trends: list[BiomarkerTrendOut]
+
+
 def _raise_report_http_error(exc: ReportServiceError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
@@ -341,7 +345,10 @@ async def save_interpretation_endpoint(
     session: AsyncSession = Depends(get_db_session),
 ) -> None:
     if report.subject_user_id != auth.user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the report owner may save an interpretation.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the report owner may save an interpretation.",
+        )
     report.interpretation_json = payload.interpretation
     session.add(report)
     await session.commit()
@@ -406,6 +413,8 @@ def _trend_out(trend: BiomarkerTrend) -> BiomarkerTrendOut:
                 value=point.value,
                 unit=point.unit,
                 flag=point.flag.value,
+                reference_low=point.reference_low,
+                reference_high=point.reference_high,
             )
             for point in trend.points
         ],

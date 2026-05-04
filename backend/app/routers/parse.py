@@ -6,12 +6,12 @@ from typing import Any
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
 from app.services.parse_llm import ParseExtractionError, extract_lab_rows_with_openai
-from app.services.parser import extract_report_date
 from app.services.parse_pipeline import (
     ParseServiceError,
     collect_uploads,
     extract_text_from_uploads,
 )
+from app.services.parser import extract_report_date
 
 router = APIRouter()
 

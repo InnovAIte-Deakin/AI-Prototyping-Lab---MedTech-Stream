@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.db.models import AuditEvent, ConsentAccessLevel, ConsentScope, ConsentShare
 from app.services.reports import cleanup_expired_shares
-from tests.support.consent_api import ConsentApiHarness, consent_api, seed_report, seed_user
+from tests.support.consent_api import ConsentApiHarness, seed_report, seed_user
 
 
 def _run_cleanup(consent_api: ConsentApiHarness) -> int:

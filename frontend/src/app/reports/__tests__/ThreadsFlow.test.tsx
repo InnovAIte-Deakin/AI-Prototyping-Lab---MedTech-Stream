@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import { PatientQuestions } from '../../../../components/PatientQuestions';
-import { ThreadView } from '../../../../components/ThreadView';
+import { PatientQuestions } from '../../../components/PatientQuestions';
+import { ThreadView } from '../../../components/ThreadView';
+
+vi.mock('@/store/authStore', () => ({
+  useAuth: () => ({
+    user: { id: 'patient-user', email: 'patient@example.com', role: 'patient' },
+    status: 'authenticated',
+  }),
+}));
 
 process.env.NEXT_PUBLIC_BACKEND_URL = 'http://test';
 

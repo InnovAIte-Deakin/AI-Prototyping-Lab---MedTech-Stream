@@ -7,8 +7,9 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import AuditEvent, ConsentScope, ConsentShare, Report
+from app.db.models import AuditEvent, ConsentScope, ConsentShare, NotificationKind, Report
 from app.db.session import get_db_session
+from app.services.notifications import emit_notification
 
 from .auth import AuthContext, get_current_auth_context
 
@@ -68,6 +69,16 @@ async def get_accessible_report(
             occurred_at=now,
         )
         session.add(audit)
+        await emit_notification(
+            session,
+            recipient_user_id=report.subject_user_id,
+            kind=NotificationKind.CLINICIAN_VIEWED_REPORT,
+            message=f"{auth.user.display_name} viewed your shared report",
+            resource_type="report",
+            resource_id=report.id,
+            report_id=report.id,
+            payload={"report_id": report.id, "viewer_user_id": auth.user.id},
+        )
         await session.commit()
         return report
     
@@ -145,7 +156,18 @@ async def get_accessible_report(
                 occurred_at=now,
             )
             session.add(audit)
-            await session.commit()
+
+        await emit_notification(
+            session,
+            recipient_user_id=auth.user.id,
+            kind=NotificationKind.SHARE_EXPIRED,
+            message="A shared report has expired.",
+            resource_type="report" if expired_share.report_id else "patient",
+            resource_id=expired_share.report_id or report.subject_user_id,
+            report_id=expired_share.report_id,
+            payload={"share_id": expired_share.id, "subject_user_id": report.subject_user_id},
+        )
+        await session.commit()
         
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Share has expired")
     

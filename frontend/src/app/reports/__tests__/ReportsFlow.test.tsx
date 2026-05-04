@@ -27,6 +27,7 @@ describe('Report history and sharing preference flow', () => {
             title: 'Report A',
             source_kind: 'text',
             sharing_mode: 'private',
+            created_at: new Date().toISOString(),
             observed_at: new Date().toISOString(),
             findings: [
               {
@@ -86,6 +87,9 @@ describe('Report history and sharing preference flow', () => {
       if (url.includes('/api/v1/reports/') && url.endsWith('/question-prompts')) {
         return new Response(JSON.stringify({ prompts: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
+      if (url.includes('/api/v1/audit/reports/')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (url.includes('/api/v1/reports/') && url.endsWith('/audit')) {
         return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
@@ -100,6 +104,7 @@ describe('Report history and sharing preference flow', () => {
             title: 'Report A',
             source_kind: 'text',
             sharing_mode: 'private',
+            created_at: new Date().toISOString(),
             observed_at: new Date().toISOString(),
             findings: [
               {
@@ -281,11 +286,103 @@ describe('Report history and sharing preference flow', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('1 report on file')).toBeInTheDocument();
+      expect(screen.getByText(/You have 1 clinical report available for review\./i)).toBeInTheDocument();
     });
 
     expect(screen.getAllByRole('button', { name: /^open$/i }).length).toBeGreaterThan(0);
   });
+
+  it('shows one timeline trend graph on history page with all uploaded report dates on x-axis', async () => {
+    const d1 = '2026-01-05T00:00:00Z';
+    const d2 = '2026-02-05T00:00:00Z';
+    const d3 = '2026-03-05T00:00:00Z';
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/v1/reports')) {
+        return new Response(JSON.stringify([
+          {
+            id: 'report-3',
+            title: 'Report 3',
+            source_kind: 'text',
+            sharing_mode: 'private',
+            created_at: d3,
+            observed_at: d3,
+            findings: [
+              { id: 'r3a', biomarker_key: 'ALT', display_name: 'Alanine Aminotransferase (ALT)', value_numeric: 58, value_text: null, unit: 'U/L', flag: 'high', reference_range_text: '11-15' },
+              { id: 'r3b', biomarker_key: 'AST', display_name: 'Aspartate Aminotransferase (AST)', value_numeric: 45, value_text: null, unit: 'U/L', flag: 'normal', reference_range_text: '10-40' },
+            ],
+          },
+          {
+            id: 'report-2',
+            title: 'Report 2',
+            source_kind: 'text',
+            sharing_mode: 'private',
+            created_at: d2,
+            observed_at: d2,
+            findings: [
+              { id: 'r2a', biomarker_key: 'ALT', display_name: 'Alanine Aminotransferase (ALT)', value_numeric: 34, value_text: null, unit: 'U/L', flag: 'normal', reference_range_text: '11-15' },
+              { id: 'r2b', biomarker_key: 'AST', display_name: 'Aspartate Aminotransferase (AST)', value_numeric: 31, value_text: null, unit: 'U/L', flag: 'normal', reference_range_text: '10-40' },
+              { id: 'r2c', biomarker_key: 'ALP', display_name: 'Alkaline Phosphatase (ALP)', value_numeric: 74, value_text: null, unit: 'U/L', flag: 'normal', reference_range_text: '45-120' },
+            ],
+          },
+          {
+            id: 'report-1',
+            title: 'Report 1',
+            source_kind: 'text',
+            sharing_mode: 'private',
+            created_at: d1,
+            observed_at: d1,
+            findings: [
+              { id: 'r1a', biomarker_key: 'ALT', display_name: 'Alanine Aminotransferase (ALT)', value_numeric: 29, value_text: null, unit: 'U/L', flag: 'normal', reference_range_text: '11-15' },
+              { id: 'r1b', biomarker_key: 'AST', display_name: 'Aspartate Aminotransferase (AST)', value_numeric: 28, value_text: null, unit: 'U/L', flag: 'normal', reference_range_text: '10-40' },
+              { id: 'r1c', biomarker_key: 'ALP', display_name: 'Alkaline Phosphatase (ALP)', value_numeric: 52, value_text: null, unit: 'U/L', flag: 'normal', reference_range_text: '45-120' },
+            ],
+          },
+        ]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/v1/reports/') && url.endsWith('/trends')) {
+        return new Response(JSON.stringify({
+          report_id: 'report-3',
+          subject_user_id: 'patient-id',
+          trends: [
+            {
+              biomarker_key: 'alt',
+              display_name: 'Alanine Aminotransferase (ALT)',
+              unit: 'U/L',
+              direction: 'worsening',
+              trend_note: 'Alanine Aminotransferase trend appears to be worsening compared with prior reports.',
+              sparkline: [
+                { report_id: 'report-1', observed_at: d1, value: 29, unit: 'U/L', flag: 'normal' },
+                { report_id: 'report-2', observed_at: d2, value: 34, unit: 'U/L', flag: 'normal' },
+                { report_id: 'report-3', observed_at: d3, value: 58, unit: 'U/L', flag: 'high' },
+              ],
+            },
+          ],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      return new Response(null, { status: 404 });
+    });
+
+    render(
+      <AuthProvider>
+        <ReportsPage />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('img', { name: /biomarker timeline chart/i })).toBeInTheDocument();
+    });
+    expect(screen.getAllByLabelText(/select biomarker/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('option', { name: /alanine aminotransferase/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('option', { name: /aspartate aminotransferase/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('option', { name: /alkaline phosphatase/i }).length).toBeGreaterThan(0);
+  });
+
 
   it('navigates into report detail and allows sharing preference update', async () => {
     const report = addReportToHistory({
@@ -311,7 +408,7 @@ describe('Report history and sharing preference flow', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 1, name: 'Report A' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Report A' })).toBeInTheDocument();
     });
 
     const emailInput = screen.getByLabelText(/clinician email/i);
@@ -325,15 +422,16 @@ describe('Report history and sharing preference flow', () => {
     fireEvent.click(screen.getByRole('button', { name: /start sharing/i }));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/reports/'),
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({
-            Authorization: 'Bearer access-token',
-          }),
-        }),
-      );
+      expect(
+        vi.mocked(global.fetch).mock.calls.some(
+          ([url, init]) =>
+            String(url).includes('/api/v1/reports/') &&
+            String(url).endsWith('/share') &&
+            init?.method === 'POST' &&
+            init?.headers &&
+            (init.headers as Record<string, string>).Authorization === 'Bearer access-token',
+        ),
+      ).toBe(true);
     });
   });
 
@@ -365,17 +463,18 @@ describe('Report history and sharing preference flow', () => {
     // Existing sharing preferences are not persisted in this workflow in test double, so just validate form is available.
     expect(screen.getByLabelText(/clinician email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/scope/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /start sharing/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /update sharing|start sharing/i })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/clinician email/i), { target: { value: 'doc@clinic.org' } });
     fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full' } });
-    fireEvent.click(screen.getByRole('button', { name: /start sharing/i }));
+    fireEvent.click(screen.getByRole('button', { name: /update sharing|start sharing/i }));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/reports/'),
-        expect.objectContaining({ method: 'POST' }),
-      );
+      expect(
+        vi.mocked(global.fetch).mock.calls.some(
+          ([url, init]) => String(url).endsWith('/share') && init?.method === 'POST',
+        ),
+      ).toBe(true);
     });
   });
 
@@ -403,10 +502,11 @@ describe('Report history and sharing preference flow', () => {
     fireEvent.click(screen.getByRole('button', { name: /start sharing/i }));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/reports/'),
-        expect.objectContaining({ method: 'POST' }),
-      );
+      expect(
+        vi.mocked(global.fetch).mock.calls.some(
+          ([url, init]) => String(url).endsWith('/share') && init?.method === 'POST',
+        ),
+      ).toBe(true);
     });
   });
 
@@ -441,9 +541,79 @@ describe('Report history and sharing preference flow', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /interpretation/i })).toBeInTheDocument();
+      expect(screen.getAllByText(/Your key blood markers are within expected ranges\./i).length).toBeGreaterThan(0);
     });
 
-    expect(screen.getByText(/Your key blood markers are within expected ranges\./i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Your key blood markers are within expected ranges\./i).length).toBeGreaterThan(0);
+  });
+
+  it('shows access-aware trend message when trends endpoint is forbidden', async () => {
+    const report = addReportToHistory({
+      patientEmail: 'patient@example.com',
+      title: 'Report E',
+      rows: [],
+      unparsed: [],
+    });
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/trends')) {
+        return new Response('Forbidden', { status: 403 });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/threads')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/question-prompts')) {
+        return new Response(JSON.stringify({ prompts: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/audit/reports/')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/audit')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/share')) {
+        return new Response(JSON.stringify({ id: 'share-1' }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.includes('/api/v1/reports/') && url.endsWith('/share/revoke')) {
+        return new Response(null, { status: 204 });
+      }
+
+      if (url.includes('/api/v1/reports/') && !url.includes('/share')) {
+        const reportId = url.split('/').pop();
+        return new Response(JSON.stringify({
+          report: {
+            id: reportId,
+            subject_user_id: 'patient-id',
+            created_by_user_id: 'patient-id',
+            title: 'Report E',
+            source_kind: 'text',
+            sharing_mode: 'private',
+            created_at: new Date().toISOString(),
+            observed_at: new Date().toISOString(),
+            findings: [],
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      return new Response(null, { status: 404 });
+    });
+
+    render(
+      <AuthProvider>
+        <ReportDetailPage params={{ reportId: report.id }} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/trend details require full-report sharing access for clinician views/i)).toBeInTheDocument();
+    });
   });
 });

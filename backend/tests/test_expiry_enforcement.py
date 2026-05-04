@@ -10,7 +10,6 @@ from app.db.models import AuditEvent, ConsentShare
 from tests.support.consent_api import (
     ConsentApiHarness,
     auth_headers,
-    consent_api,
     login,
     seed_report,
     seed_user,
@@ -138,3 +137,41 @@ def test_first_expired_access_creates_single_expired_audit_event(consent_api: Co
     assert context.get("access_level") == "read"
     assert "expired_at" in context
     assert "expires_at" in context
+
+
+def test_expired_access_emits_share_expired_notification(consent_api: ConsentApiHarness) -> None:
+    patient_email = "patient-expiry-notification@example.com"
+    clinician_email = "clinician-expiry-notification@example.com"
+
+    with consent_api.session_factory() as session:
+        patient = seed_user(session, email=patient_email, role="patient")
+        seed_user(session, email=clinician_email, role="clinician")
+        report = seed_report(
+            session,
+            subject_email=patient.email,
+            created_by_email=patient.email,
+        )
+
+    patient_token = login(consent_api, email=patient_email)
+    share_id = _create_share(
+        consent_api,
+        report_id=report.id,
+        patient_token=patient_token,
+        clinician_email=clinician_email,
+    )
+    _expire_share(consent_api, share_id=share_id)
+
+    clinician_token = login(consent_api, email=clinician_email)
+    denied = consent_api.client.get(
+        f"/api/v1/reports/{report.id}",
+        headers=auth_headers(clinician_token),
+    )
+
+    assert denied.status_code == 403
+
+    notifications = consent_api.client.get(
+        "/api/v1/notifications",
+        headers=auth_headers(clinician_token),
+    )
+    assert notifications.status_code == 200, notifications.text
+    assert any(item["type"] == "share_expired" for item in notifications.json()["items"])

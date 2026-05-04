@@ -32,10 +32,16 @@ export default function Header() {
     );
   };
 
+  const isClinician = user?.role === 'clinician';
+
   // Build center nav items based on role
   const centerLinks: { href: string; label: string }[] = [];
   if (isAuth) {
-    centerLinks.push({ href: '/reports', label: 'My Reports' });
+    if (isClinician) {
+      centerLinks.push({ href: '/clinician/shared-reports', label: 'Shared Reports' });
+    } else {
+      centerLinks.push({ href: '/reports', label: 'My Reports' });
+    }
   }
   centerLinks.push({ href: '/health', label: 'Health Check' });
 
@@ -63,13 +69,15 @@ export default function Header() {
 
           {/* Right actions */}
           <div className="nav-right">
-            <button
-              onClick={() => (window.location.href = '/parse')}
-              className="nav-cta"
-              type="button"
-            >
-              Review My Report
-            </button>
+            {!isClinician && (
+              <button
+                onClick={() => (window.location.href = '/parse')}
+                className="nav-cta"
+                type="button"
+              >
+                Review My Report
+              </button>
+            )}
 
             {isAuth ? (
               <>

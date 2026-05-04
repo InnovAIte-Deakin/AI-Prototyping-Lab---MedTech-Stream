@@ -29,10 +29,16 @@ async def get_report_audit_log_endpoint(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[AuditEventOut]:
     """Get audit log for a report owned by authenticated user.
-    
+
     Filters:
         action: Comma-separated list of actions (created, revoked, expired)
     """
+    from fastapi import HTTPException, status as http_status  # local to avoid circular
+    if "clinician" in auth.roles and "patient" not in auth.roles:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Clinicians may not access audit logs",
+        )
     try:
         actions = None
         if action:

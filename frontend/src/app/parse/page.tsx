@@ -76,6 +76,16 @@ export default function ParsePage() {
 
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
+  function getAccessToken(): string | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const stored = localStorage.getItem('reportx_session');
+      return stored ? JSON.parse(stored)?.accessToken ?? null : null;
+    } catch {
+      return null;
+    }
+  }
+
   useEffect(() => {
     if (!uploadError) return;
     const timer = window.setTimeout(() => setUploadError(null), 3500);
@@ -235,6 +245,16 @@ export default function ParsePage() {
       setInterpretation(data.interpretation);
       if (currentReportId) {
         updateReportInHistory(currentReportId, { interpretation: data.interpretation });
+        // Persist to backend so the interpretation survives page refresh and is
+        // visible to clinicians via shared report views.
+        const token = getAccessToken();
+        if (token) {
+          fetch(`${backend}/api/v1/reports/${currentReportId}/interpretation`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ interpretation: data.interpretation }),
+          }).catch(() => { /* non-critical — in-memory store still has it */ });
+        }
       }
     } catch (err: any) {
       if (err?.message) {

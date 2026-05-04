@@ -309,8 +309,8 @@ export default function ReportsPage() {
                         </div>
                       </td>
                       <td>
-                        <Badge variant={card.hasInterpretation ? 'optimal' : 'attention'}>
-                          {card.hasInterpretation ? 'Optimal' : 'Not Interpreted'}
+                        <Badge variant={card.interpretation ? 'optimal' : 'attention'}>
+                          {card.interpretation ? 'Optimal' : 'Not Interpreted'}
                         </Badge>
                       </td>
                       <td>
@@ -368,18 +368,18 @@ export default function ReportsPage() {
             <div className="mobile-empty">No reports uploaded yet.</div>
           ) : (
             rows.map(({ entry, card, panelName, displayDate }) => (
-              <article key={entry.id} className="mobile-report-row" style={{ boxShadow: `inset 0 4px 0 ${card.accentColor}` }}>
+              <article key={entry.id} className="mobile-report-row">
                 <div className="mobile-line-1">
                   <div className="mobile-date-panel">
                     <span className="mobile-date">{displayDate}</span>
                     <span className="mobile-panel">{panelName}</span>
                   </div>
-                  <Badge variant={card.hasInterpretation ? 'optimal' : 'attention'}>
-                    {card.hasInterpretation ? 'Interpreted' : 'Not interpreted'}
+                  <Badge variant={card.interpretation ? 'optimal' : 'attention'}>
+                    {card.interpretation ? 'Interpreted' : 'Not interpreted'}
                   </Badge>
                 </div>
                 <div className="mobile-line-2">
-                  <span className="results-col">{card.testCount} results</span>
+                  <span className="results-col">{card.rows.length} results</span>
                   <div className="table-actions">
                     <button className="table-btn table-btn-primary" onClick={() => (window.location.href = `/reports/${entry.id}`)}>Open</button>
                     <button className="table-btn table-btn-ghost" onClick={() => beginSharing(entry)}>Sharing</button>

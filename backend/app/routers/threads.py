@@ -19,6 +19,7 @@ from app.db.models import (
     NotificationKind,
     Report,
     ReportFinding,
+    ShareViewScope,
     ThreadMessage,
     ThreadParticipant,
     User,
@@ -105,6 +106,40 @@ async def _has_share_access(
         .where(
             ConsentShare.subject_user_id == thread.subject_user_id,
             ConsentShare.grantee_user_id == user_id,
+            ConsentShare.revoked_at.is_(None),
+            ConsentShare.expires_at > now,
+            or_(
+                and_(
+                    ConsentShare.scope == ConsentScope.PATIENT,
+                    ConsentShare.report_id.is_(None),
+                ),
+                and_(
+                    ConsentShare.scope == ConsentScope.REPORT,
+                    ConsentShare.report_id == thread.report_id,
+                ),
+            ),
+        )
+        .limit(1)
+    )
+    return share is not None
+
+
+async def _clinician_can_post(
+    session: AsyncSession,
+    *,
+    thread: ConversationThread,
+    clinician_user_id: str,
+) -> bool:
+    """Return True only when the clinician has an active full_report_with_threads share."""
+    if thread.report_id is None:
+        return False
+    now = datetime.now(UTC)
+    share = await session.scalar(
+        select(ConsentShare)
+        .where(
+            ConsentShare.subject_user_id == thread.subject_user_id,
+            ConsentShare.grantee_user_id == clinician_user_id,
+            ConsentShare.view_scope == ShareViewScope.FULL_REPORT_WITH_THREADS,
             ConsentShare.revoked_at.is_(None),
             ConsentShare.expires_at > now,
             or_(
@@ -331,7 +366,17 @@ async def add_message(
 
     is_participant = any(p.user_id == auth.user.id for p in thread.participants)
     is_subject = thread.subject_user_id == auth.user.id
-    if not is_participant and not is_subject:
+    is_clinician = "clinician" in auth.roles and "patient" not in auth.roles
+
+    if is_clinician:
+        # Clinicians require an active full_report_with_threads share to post — regardless
+        # of prior participation. Re-validate on every request.
+        if not await _clinician_can_post(session, thread=thread, clinician_user_id=auth.user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Thread replies require full_report_with_threads share scope.",
+            )
+    elif not is_participant and not is_subject:
         if not await _has_share_access(session, thread=thread, user_id=auth.user.id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum, StrEnum
 from typing import Any
 from uuid import uuid4
@@ -9,6 +9,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -70,6 +71,12 @@ class ConsentAccessLevel(StrEnum):
     MANAGE = "manage"
 
 
+class ShareViewScope(StrEnum):
+    SUMMARY_ONLY = "summary_only"
+    FULL_REPORT = "full_report"
+    FULL_REPORT_WITH_THREADS = "full_report_with_threads"
+
+
 class ThreadStatus(StrEnum):
     OPEN = "open"
     CLOSED = "closed"
@@ -113,6 +120,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     preferred_language: Mapped[str] = mapped_column(String(16), nullable=False, default="en")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -368,6 +376,12 @@ class ConsentShare(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=ConsentAccessLevel.READ,
     )
     purpose: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    view_scope: Mapped[ShareViewScope] = mapped_column(
+        enum_column(ShareViewScope, name="share_view_scope"),
+        nullable=False,
+        default=ShareViewScope.SUMMARY_ONLY,
+    )
+    include_doctor_summary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

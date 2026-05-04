@@ -254,7 +254,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(nextSession);
       setStatus('authenticated');
       persistSession(nextSession);
-      safeRedirect('/parse');
+      const role = data.user.roles?.[0];
+      safeRedirect(role === 'clinician' ? '/clinician/shared-reports' : '/parse');
     },
     []
   );

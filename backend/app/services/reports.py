@@ -16,6 +16,7 @@ from app.db.models import (
     ReportFinding,
     ReportSharingMode,
     ReportSourceKind,
+    ShareViewScope,
     User,
 )
 
@@ -191,6 +192,8 @@ async def share_report_with_user(
     scope: ConsentScope,
     access_level: ConsentAccessLevel,
     expires_at: datetime,
+    view_scope: ShareViewScope = ShareViewScope.SUMMARY_ONLY,
+    include_doctor_summary: bool = False,
 ) -> ReportShareResult:
     _require_report_owner(report=report, owner_user_id=owner_user_id, action="grant sharing")
 
@@ -225,12 +228,16 @@ async def share_report_with_user(
             scope=scope,
             access_level=access_level,
             expires_at=expires_at,
+            view_scope=view_scope,
+            include_doctor_summary=include_doctor_summary,
         )
         session.add(share)
     else:
         existing_share.access_level = access_level
         existing_share.expires_at = expires_at
         existing_share.revoked_at = None
+        existing_share.view_scope = view_scope
+        existing_share.include_doctor_summary = include_doctor_summary
         share = existing_share
 
     await session.flush()

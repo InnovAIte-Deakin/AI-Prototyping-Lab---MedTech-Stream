@@ -202,130 +202,141 @@ export default function ClinicianPatientProfilePage({ params }: { params: { pati
         </div>
       </Card>
 
-      {/* ── Main 2-column: Reports table (left) + Trend panel (right) ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: hasTrends ? '1fr 1fr' : '1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-4)', alignItems: 'start' }}>
+      {/* ── Full-width Biomarker Trends card ── */}
+      {hasTrends && (
+        <Card style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
+          {/* Card header: title + biomarker selector */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
+            <p style={{ fontWeight: 600, fontSize: 'var(--text-body-md)', margin: 0 }}>Biomarker Trends</p>
+            {chartableTrends.length > 0 && (
+              <select
+                className="input"
+                style={{ fontSize: 'var(--text-body-sm)', padding: '4px 8px', maxWidth: 240 }}
+                value={selectedTrendKey ?? ''}
+                onChange={(e) => setSelectedTrendKey(e.target.value)}
+                aria-label="Select biomarker"
+              >
+                {chartableTrends.map((t) => (
+                  <option key={t.biomarker_key} value={t.biomarker_key}>
+                    {t.display_name}{t.unit ? ` (${t.unit})` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
 
-        {/* Left: Shared reports table */}
-        <Card style={{ padding: 'var(--space-4)' }}>
-          <p style={{ fontWeight: 600, fontSize: 'var(--text-body-md)', marginBottom: 'var(--space-3)', marginTop: 0 }}>
-            Shared Reports
-          </p>
-          {shared_reports.length === 0 ? (
-            <p style={{ color: 'var(--on-surface-muted)', fontSize: 'var(--text-body-sm)' }}>No reports currently shared.</p>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-body-sm)' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--outline-variant)' }}>
-                    <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--on-surface-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>Panel</th>
-                    <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--on-surface-muted)', fontWeight: 600 }}>Date</th>
-                    <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--on-surface-muted)', fontWeight: 600 }}>Scope</th>
-                    <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--on-surface-muted)', fontWeight: 600 }}>Expires</th>
-                    <th style={{ textAlign: 'right', padding: '6px 8px' }} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {shared_reports.map((report) => (
-                    <tr key={report.share_id} style={{ borderBottom: '1px solid var(--surface-container-low)' }}>
-                      <td style={{ padding: '8px', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={report.panel_type}>
-                        {report.panel_type}
-                      </td>
-                      <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>{formatDate(report.report_date)}</td>
-                      <td style={{ padding: '8px' }}>
-                        <Badge variant={scopeBadgeVariant(report.view_scope)}>{scopeLabel(report.view_scope)}</Badge>
-                      </td>
-                      <td style={{ padding: '8px', color: 'var(--on-surface-muted)', whiteSpace: 'nowrap' }}>{formatDate(report.expires_at)}</td>
-                      <td style={{ padding: '8px', textAlign: 'right' }}>
-                        <a href={`/clinician/shared-reports/${report.report_id}`} style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}>
-                          Open →
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
+          {/* 2-col body: chart left, scrollable trend list right */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 'var(--space-4)', alignItems: 'stretch' }}>
 
-        {/* Right: Trend chart + trend list */}
-        {hasTrends && (
-          <Card style={{ padding: 'var(--space-4)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
-              <p style={{ fontWeight: 600, fontSize: 'var(--text-body-md)', margin: 0 }}>Biomarker Trends</p>
-              {chartableTrends.length > 0 && (
-                <select
-                  className="input"
-                  style={{ fontSize: 'var(--text-body-sm)', padding: '4px 8px', maxWidth: 200 }}
-                  value={selectedTrendKey ?? ''}
-                  onChange={(e) => setSelectedTrendKey(e.target.value)}
-                  aria-label="Select biomarker"
-                >
-                  {chartableTrends.map((t) => (
-                    <option key={t.biomarker_key} value={t.biomarker_key}>
-                      {t.display_name}{t.unit ? ` (${t.unit})` : ''}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            {/* Chart */}
-            {selectedTrend && selectedTrend.sparkline.length >= 2 ? (
-              <div style={{ marginBottom: 'var(--space-3)' }}>
-                <BiomarkerTrendChart
-                  title={selectedTrend.display_name}
-                  unit={selectedTrend.unit}
-                  points={selectedTrend.sparkline.map((p) => ({
-                    observed_at: typeof p.observed_at === 'string' ? p.observed_at : new Date(p.observed_at).toISOString(),
-                    value: p.value,
-                  }))}
-                />
-                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--on-surface-muted)', margin: 'var(--space-2) 0 0', lineHeight: 1.5 }}>
-                  {selectedTrend.trend_note}
+            {/* Left: chart + trend note */}
+            <div style={{ minWidth: 0 }}>
+              {selectedTrend && selectedTrend.sparkline.length >= 2 ? (
+                <>
+                  <BiomarkerTrendChart
+                    title={selectedTrend.display_name}
+                    unit={selectedTrend.unit}
+                    points={selectedTrend.sparkline.map((p) => ({
+                      observed_at: typeof p.observed_at === 'string' ? p.observed_at : new Date(p.observed_at).toISOString(),
+                      value: p.value,
+                    }))}
+                  />
+                  <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--on-surface-muted)', margin: 'var(--space-2) 0 0', lineHeight: 1.5 }}>
+                    {selectedTrend.trend_note}
+                  </p>
+                </>
+              ) : selectedTrend ? (
+                <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--on-surface-muted)' }}>
+                  Need at least 2 data points to chart {selectedTrend.display_name}.
                 </p>
-              </div>
-            ) : selectedTrend ? (
-              <p style={{ fontSize: 'var(--text-body-sm)', color: 'var(--on-surface-muted)', marginBottom: 'var(--space-3)' }}>
-                Need at least 2 data points to chart {selectedTrend.display_name}.
-              </p>
-            ) : null}
+              ) : null}
+            </div>
 
-            {/* Compact trend list table */}
-            <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 'var(--space-2)' }}>
+            {/* Right: scrollable biomarker / direction list.
+                Outer div stretches to grid row height (same as chart).
+                Inner div is absolutely positioned to fill it and clips + scrolls vertically. */}
+            <div style={{ position: 'relative', borderLeft: '1px solid var(--outline-variant)' }}>
+            <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflowY: 'auto', overflowX: 'hidden', paddingLeft: 'var(--space-3)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-body-sm)' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid var(--outline-variant)', position: 'sticky', top: 0, background: 'var(--surface)' }}>
+                  <tr style={{ borderBottom: '1px solid var(--outline-variant)', position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
                     <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--on-surface-muted)', fontWeight: 600 }}>Biomarker</th>
                     <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--on-surface-muted)', fontWeight: 600 }}>Direction</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {allTrends.map((trend) => (
-                    <tr
-                      key={trend.biomarker_key}
-                      onClick={() => chartableTrends.some((t) => t.biomarker_key === trend.biomarker_key) && setSelectedTrendKey(trend.biomarker_key)}
-                      style={{
-                        borderBottom: '1px solid var(--surface-container-low)',
-                        cursor: chartableTrends.some((t) => t.biomarker_key === trend.biomarker_key) ? 'pointer' : 'default',
-                        background: selectedTrendKey === trend.biomarker_key ? 'var(--primary-container)' : undefined,
-                      }}
-                    >
-                      <td style={{ padding: '6px 8px', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: selectedTrendKey === trend.biomarker_key ? 600 : 400 }}>
-                        {trend.display_name}
-                        {trend.unit && <span style={{ color: 'var(--on-surface-muted)', fontWeight: 400 }}> ({trend.unit})</span>}
-                      </td>
-                      <td style={{ padding: '6px 8px' }}>
-                        <Badge variant={directionBadgeVariant(trend.direction)}>{trend.direction}</Badge>
-                      </td>
-                    </tr>
-                  ))}
+                  {allTrends.map((trend) => {
+                    const isChartable = chartableTrends.some((t) => t.biomarker_key === trend.biomarker_key);
+                    const isSelected = selectedTrendKey === trend.biomarker_key;
+                    return (
+                      <tr
+                        key={trend.biomarker_key}
+                        onClick={() => isChartable && setSelectedTrendKey(trend.biomarker_key)}
+                        style={{
+                          borderBottom: '1px solid var(--surface-container-low)',
+                          cursor: isChartable ? 'pointer' : 'default',
+                          background: isSelected ? 'var(--primary-container)' : undefined,
+                        }}
+                      >
+                        <td style={{ padding: '6px 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isSelected ? 600 : 400 }}>
+                          {trend.display_name}
+                          {trend.unit && <span style={{ color: 'var(--on-surface-muted)', fontWeight: 400 }}> ({trend.unit})</span>}
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <Badge variant={directionBadgeVariant(trend.direction)}>{trend.direction}</Badge>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-          </Card>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* ── Full-width Shared Reports card ── */}
+      <Card style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
+        <p style={{ fontWeight: 600, fontSize: 'var(--text-body-md)', marginBottom: 'var(--space-3)', marginTop: 0 }}>
+          Shared Reports
+        </p>
+        {shared_reports.length === 0 ? (
+          <p style={{ color: 'var(--on-surface-muted)', fontSize: 'var(--text-body-sm)' }}>No reports currently shared.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-body-sm)' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--outline-variant)' }}>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--on-surface-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>Panel</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--on-surface-muted)', fontWeight: 600 }}>Date</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--on-surface-muted)', fontWeight: 600 }}>Scope</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--on-surface-muted)', fontWeight: 600 }}>Expires</th>
+                  <th style={{ textAlign: 'right', padding: '6px 8px' }} />
+                </tr>
+              </thead>
+              <tbody>
+                {shared_reports.map((report) => (
+                  <tr key={report.share_id} style={{ borderBottom: '1px solid var(--surface-container-low)' }}>
+                    <td style={{ padding: '8px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={report.panel_type}>
+                      {report.panel_type}
+                    </td>
+                    <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>{formatDate(report.report_date)}</td>
+                    <td style={{ padding: '8px' }}>
+                      <Badge variant={scopeBadgeVariant(report.view_scope)}>{scopeLabel(report.view_scope)}</Badge>
+                    </td>
+                    <td style={{ padding: '8px', color: 'var(--on-surface-muted)', whiteSpace: 'nowrap' }}>{formatDate(report.expires_at)}</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>
+                      <a href={`/clinician/shared-reports/${report.report_id}`} style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                        Open →
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </Card>
 
       {/* ── Conversation threads (2-column grid) ── */}
       {threads.length > 0 && (

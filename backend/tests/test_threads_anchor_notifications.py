@@ -145,7 +145,7 @@ def test_thread_creation_notifies_authorized_clinician(consent_api: ConsentApiHa
 
     patient_token = login(consent_api, email=patient_email)
 
-    # Patient grants the clinician access, then creates a thread.
+    # Patient grants the clinician full thread access, then creates a thread.
     share_resp = consent_api.client.post(
         f"/api/v1/reports/{report.id}/share",
         headers=auth_headers(patient_token),
@@ -154,6 +154,7 @@ def test_thread_creation_notifies_authorized_clinician(consent_api: ConsentApiHa
             "scope": "report",
             "access_level": "comment",
             "expires_at": _future_expiry_iso(),
+            "view_scope": "full_report_with_threads",
         },
     )
     assert share_resp.status_code == 201, share_resp.text
@@ -286,6 +287,7 @@ def test_mark_notification_as_read(consent_api: ConsentApiHarness) -> None:
             "scope": "report",
             "access_level": "comment",
             "expires_at": _future_expiry_iso(),
+            "view_scope": "full_report_with_threads",
         },
     )
 

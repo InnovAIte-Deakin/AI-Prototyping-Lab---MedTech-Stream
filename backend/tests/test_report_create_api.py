@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 
 from app.db.models import Report
-from tests.support.consent_api import ConsentApiHarness, auth_headers, consent_api, login, seed_user
+from tests.support.consent_api import ConsentApiHarness, auth_headers, login, seed_user
 
 
 def test_create_report_persists_observed_at_and_returns_created_at(consent_api: ConsentApiHarness) -> None:

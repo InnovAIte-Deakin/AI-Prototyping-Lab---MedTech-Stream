@@ -65,9 +65,9 @@ describe('Auth pages', () => {
 
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'test@x.com' } });
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'secret' } });
-    fireEvent.change(screen.getByLabelText(/role/i), { target: { value: 'clinician' } });
+    fireEvent.click(screen.getByRole('radio', { name: /clinician/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /register/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {
       const raw = localStorage.getItem('reportx_session');
@@ -105,9 +105,9 @@ describe('Auth pages', () => {
 
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'bad-email' } });
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'Password123!' } });
-    fireEvent.change(screen.getByLabelText(/role/i), { target: { value: 'patient' } });
+    fireEvent.click(screen.getByRole('radio', { name: /patient/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /register/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/value is not a valid email address/i)).toBeInTheDocument();
@@ -124,7 +124,7 @@ describe('Auth pages', () => {
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@x.com' } });
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: '' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/email and password are required/i)).toBeInTheDocument();

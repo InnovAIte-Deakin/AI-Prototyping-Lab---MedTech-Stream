@@ -61,6 +61,18 @@ describe('Parse + Interpret flow', () => {
           { status: 200, headers: { 'Content-Type': 'application/json' } }
         );
       }
+      if (url.endsWith('/api/v1/reports') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            id: 'report-remote-1',
+            title: 'Report 1',
+            created_at: new Date().toISOString(),
+            observed_at: new Date().toISOString(),
+            panel_name: null,
+          }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
       throw new Error('Unexpected URL: ' + url);
     }) as any;
   });
@@ -78,8 +90,8 @@ describe('Parse + Interpret flow', () => {
       </AuthProvider>
     );
 
-    expect(screen.getByText('Understand Your Lab Report')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /review report/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /understand your lab results/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /process text summary/i })).toBeInTheDocument();
   });
 
   it('parses text, shows interpretation and supports translation', async () => {
@@ -99,7 +111,7 @@ describe('Parse + Interpret flow', () => {
     // Enter some text and submit form
     const textarea = screen.getByRole('textbox');
     fireEvent.change(textarea, { target: { value: 'Hemoglobin 13.5 g/dL (11-15)' } });
-    const parseBtn = screen.getByRole('button', { name: /review/i });
+    const parseBtn = screen.getByRole('button', { name: /process text summary/i });
     // Submit via form to trigger onSubmit reliably
     fireEvent.submit(parseBtn.closest('form') as HTMLFormElement);
 
@@ -153,7 +165,7 @@ describe('Parse + Interpret flow', () => {
     const textarea = screen.getByRole('textbox');
     fireEvent.change(textarea, { target: { value: 'Hemoglobin 13.5 g/dL (11-15)' } });
 
-    const parseBtn = screen.getByRole('button', { name: /review/i });
+    const parseBtn = screen.getByRole('button', { name: /process text summary/i });
     fireEvent.submit(parseBtn.closest('form') as HTMLFormElement);
 
     // Wait for parse result rendering
@@ -191,7 +203,7 @@ describe('Parse + Interpret flow', () => {
     const textarea = screen.getByRole('textbox');
     fireEvent.change(textarea, { target: { value: 'Hemoglobin 13.5 g/dL (11-15)' } });
 
-    const parseBtn = screen.getByRole('button', { name: /review/i });
+    const parseBtn = screen.getByRole('button', { name: /process text summary/i });
     fireEvent.submit(parseBtn.closest('form') as HTMLFormElement);
 
     await screen.findByText('Hemoglobin');

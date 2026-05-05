@@ -3,7 +3,13 @@ from app.services.parse_llm import ParseExtractionError, _load_rows_from_json
 
 
 def test_load_rows_from_json_repairs_wrapped_array_payload():
-    raw = "Here are rows:\n[\n  {\"test_name\":\"Glucose\",\"result\":\"92\",\"unit\":\"mg/dL\",\"reference_range\":\"70-99\",\"flag\":null}\n]\nThanks"
+    raw = (
+        "Here are rows:\n"
+        "[\n"
+        '  {"test_name":"Glucose","result":"92","unit":"mg/dL","reference_range":"70-99","flag":null}\n'
+        "]\n"
+        "Thanks"
+    )
     rows = _load_rows_from_json(raw)
 
     assert len(rows) == 1

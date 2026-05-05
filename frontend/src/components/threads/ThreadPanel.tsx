@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnchorContext } from './AnchorContext';
 import { MessageComposer } from './MessageComposer';
 import { MessageList, type ThreadMessage } from './MessageList';
@@ -48,13 +48,13 @@ export function ThreadPanel({
     }
   }, [isOpen, unreadCount, onMarkRead]);
 
-  const handleSend = async (text: string) => {
+  const handleSend = useCallback(async (text: string) => {
     const created = await onSend(text);
     if (created) {
       setLocalMessages((prev) => [...prev, created]);
       setScrolled(true);
     }
-  };
+  }, [onSend]);
 
   const body = useMemo(() => {
     if (loading) return <p>Loading thread…</p>;
@@ -77,7 +77,7 @@ export function ThreadPanel({
         <MessageComposer canWrite={canWrite} sending={false} onSend={handleSend} />
       </>
     );
-  }, [loading, error, onRetry, localMessages, currentUserId, currentUserRole, scrolled, canWrite]);
+  }, [loading, error, onRetry, localMessages, currentUserId, currentUserRole, scrolled, canWrite, handleSend]);
 
   if (!canView || !isOpen) {
     return unreadCount > 0 ? <span data-testid="thread-panel-unread-badge">{unreadCount}</span> : null;

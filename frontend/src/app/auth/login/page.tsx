@@ -67,6 +67,10 @@ export default function LoginPage() {
               />
             </div>
 
+<div className="auth-footer" style={{ textAlign: 'right', marginTop: '-0.5rem' }}>
+  <a href="/auth/forgot-password">Forgot password?</a>
+</div>
+
             {error && <p className="auth-error">{error}</p>}
 
             <button type="submit" className="auth-submit-btn">

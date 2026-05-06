@@ -35,7 +35,9 @@ export default function Header() {
 
   // Build center nav items based on role
   const centerLinks: { href: string; label: string }[] = [];
-  if (isAuth) {
+  if (isAuth && user?.role === 'clinician') {
+    centerLinks.push({ href: '/reports/shared', label: 'Shared Reports' });
+  } else if (isAuth) {
     centerLinks.push({ href: '/reports', label: 'My Reports' });
   }
   centerLinks.push({ href: '/health', label: 'Health Check' });

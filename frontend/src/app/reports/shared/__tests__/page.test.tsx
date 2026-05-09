@@ -8,10 +8,28 @@ const push = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push }),
   useSearchParams: () => new URLSearchParams('reportId=r1'),
+  usePathname: () => '/reports/shared',
 }));
 
 vi.mock('@/components/ProtectedView', () => ({
   ProtectedView: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+vi.mock('@/store/notificationsStore', () => ({
+  useNotifications: () => ({
+    unreadCount: 0,
+    drawerOpen: false,
+    drawerItems: [],
+    drawerLoading: false,
+    drawerError: null,
+    openDrawer: vi.fn(),
+    closeDrawer: vi.fn(),
+    toggleDrawer: vi.fn(),
+    refreshUnreadCount: vi.fn(),
+    refreshDrawerItems: vi.fn(),
+    handleMarkAllRead: vi.fn(),
+    handleMarkRead: vi.fn(),
+  }),
 }));
 
 describe('Shared reports page', () => {
@@ -35,7 +53,7 @@ describe('Shared reports page', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/patient one/i)).toBeInTheDocument();
-      expect(screen.getByText(/focused report loaded/i)).toBeInTheDocument();
+      expect(screen.getByText(/viewing shared report/i)).toBeInTheDocument();
     });
   });
 });

@@ -4,8 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ProtectedView } from '@/components/ProtectedView';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/Table';
+import { Badge } from '@/components/ui/Badge';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -37,6 +36,21 @@ function getAccessToken() {
   } catch {
     return '';
   }
+}
+
+function formatScopeLabel(scope: string): string {
+  switch (scope) {
+    case 'summary_only': return 'Summary Only';
+    case 'full_report': return 'Full Report';
+    case 'full_report_with_threads': return 'Full Report + Threads';
+    default: return scope.replace(/_/g, ' ');
+  }
+}
+
+function scopeBadgeVariant(scope: string): 'info' | 'optimal' | 'attention' {
+  if (scope === 'summary_only') return 'info';
+  if (scope === 'full_report_with_threads') return 'optimal';
+  return 'optimal';
 }
 
 function SharedReportsPageContent() {
@@ -74,62 +88,115 @@ function SharedReportsPageContent() {
 
   return (
     <ProtectedView>
-      <section className="shared-reports-shell">
-        <div className="notifications-page-header">
+      <section className="clinician-dashboard">
+        {/* Page header */}
+        <div className="clinician-dashboard-header">
           <div>
-            <h1 style={{ marginBottom: '0.25rem' }}>Shared Reports</h1>
-            <p className="muted-text" style={{ margin: 0 }}>Reports you can access through patient consent.</p>
+            <h1 className="clinician-dashboard-title">Shared Reports</h1>
+            <p className="clinician-dashboard-subtitle">
+              Reports shared with you by patients through secure consent.
+              {items.length > 0 && !loading ? ` You have ${items.length} active ${items.length === 1 ? 'share' : 'shares'}.` : ''}
+            </p>
           </div>
-          {focusedItem ? <span className="badge badge-info">Focused report loaded</span> : null}
+          {focusedItem ? <Badge variant="info">Viewing shared report</Badge> : null}
         </div>
 
-        {loading ? <div className="notifications-loading">Loading shared reports...</div> : null}
-        {error ? <div className="notifications-error">{error}</div> : null}
+        {loading ? (
+          <div className="clinician-dashboard-loading">
+            <div className="clinician-loading-spinner" />
+            <p>Loading shared reports...</p>
+          </div>
+        ) : null}
 
-        {!loading && !error ? (
-          <Card>
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Patient</TH>
-                  <TH>Report</TH>
-                  <TH>Scope</TH>
-                  <TH>Access</TH>
-                  <TH>Expires</TH>
-                  <TH />
-                </TR>
-              </THead>
-              <TBody>
+        {error ? (
+          <div className="clinician-dashboard-error">
+            <p>{error}</p>
+          </div>
+        ) : null}
+
+        {!loading && !error && items.length === 0 ? (
+          <div className="clinician-dashboard-empty">
+            <div className="clinician-empty-icon" aria-hidden="true">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="9" y1="15" x2="15" y2="15" />
+              </svg>
+            </div>
+            <h2 className="clinician-empty-title">No reports have been shared with you yet</h2>
+            <p className="clinician-empty-text">
+              When patients share their lab reports with you, they will appear here.
+              Shares are time-limited and can be revoked by the patient at any time.
+            </p>
+          </div>
+        ) : null}
+
+        {!loading && !error && items.length > 0 ? (
+          <div className="clinician-reports-table-wrap">
+            <table className="clinician-reports-table">
+              <thead>
+                <tr>
+                  <th>Patient</th>
+                  <th>Report</th>
+                  <th>Report Date</th>
+                  <th>Share Scope</th>
+                  <th>Expires</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
                 {items.map((item) => (
-                  <TR key={item.share_id} className={item.report_id === focusedReportId ? 'shared-report-row shared-report-row--focused' : 'shared-report-row'}>
-                    <TD>
-                      <div>{item.patient.display_name}</div>
-                      <div className="muted-text">{item.patient.email}</div>
-                    </TD>
-                    <TD>
-                      <div>{item.report.title || 'Untitled report'}</div>
-                      <div className="muted-text">{new Date(item.report.observed_at).toLocaleDateString()}</div>
-                    </TD>
-                    <TD>{item.scope}</TD>
-                    <TD>{item.access_level}</TD>
-                    <TD>{new Date(item.expires_at).toLocaleDateString()}</TD>
-                    <TD style={{ textAlign: 'right' }}>
-                      <Button variant="outline" size="sm" onClick={() => router.push(`/reports/${item.report_id}`)}>
-                        Open report
+                  <tr
+                    key={item.share_id}
+                    className={item.report_id === focusedReportId ? 'clinician-row clinician-row--focused' : 'clinician-row'}
+                  >
+                    <td>
+                      <div className="clinician-patient-cell">
+                        <div className="clinician-patient-avatar">
+                          {item.patient.display_name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="clinician-patient-name">{item.patient.display_name}</div>
+                          <div className="clinician-patient-email">{item.patient.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="clinician-report-title">{item.report.title || 'Untitled Report'}</div>
+                    </td>
+                    <td>
+                      <div className="clinician-report-date">
+                        {new Date(item.report.observed_at).toLocaleDateString(undefined, {
+                          year: 'numeric', month: 'short', day: 'numeric',
+                        })}
+                      </div>
+                    </td>
+                    <td>
+                      <Badge variant={scopeBadgeVariant(item.scope)}>
+                        {formatScopeLabel(item.scope)}
+                      </Badge>
+                    </td>
+                    <td>
+                      <div className="clinician-expiry-date">
+                        {new Date(item.expires_at).toLocaleDateString(undefined, {
+                          year: 'numeric', month: 'short', day: 'numeric',
+                        })}
+                      </div>
+                    </td>
+                    <td>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => router.push(`/reports/shared/${item.report_id}`)}
+                      >
+                        Open
                       </Button>
-                    </TD>
-                  </TR>
+                    </td>
+                  </tr>
                 ))}
-                {items.length === 0 ? (
-                  <TR>
-                    <TD colSpan={6}>
-                      <div className="notifications-page-empty">No shared reports available.</div>
-                    </TD>
-                  </TR>
-                ) : null}
-              </TBody>
-            </Table>
-          </Card>
+              </tbody>
+            </table>
+          </div>
         ) : null}
       </section>
     </ProtectedView>
@@ -141,8 +208,11 @@ export default function SharedReportsPage() {
     <Suspense
       fallback={(
         <ProtectedView>
-          <section className="shared-reports-shell">
-            <div className="notifications-loading">Loading shared reports...</div>
+          <section className="clinician-dashboard">
+            <div className="clinician-dashboard-loading">
+              <div className="clinician-loading-spinner" />
+              <p>Loading shared reports...</p>
+            </div>
           </section>
         </ProtectedView>
       )}

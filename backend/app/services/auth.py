@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import AuthSession, Role, User, UserRole
+from app.db.models import AuthSession, PasswordResetToken, Role, User, UserRole
 from app.db.seed import seed_core_roles_async
 
 PASSWORD_CONTEXT = CryptContext(
@@ -23,7 +23,14 @@ PASSWORD_CONTEXT = CryptContext(
 )
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 USER_ROLE_LOAD = selectinload(User.role_assignments).selectinload(UserRole.role)
-AUTH_SESSION_LOAD = selectinload(AuthSession.user).selectinload(User.role_assignments).selectinload(UserRole.role)
+AUTH_SESSION_LOAD = (
+    selectinload(AuthSession.user).selectinload(User.role_assignments).selectinload(UserRole.role)
+)
+
+PASSWORD_RESET_SUCCESS_MESSAGE = (
+    "If an account exists for that email, a password reset link has been sent."
+)
+PASSWORD_RESET_TTL_HOURS = 1
 
 
 class AuthError(Exception):
@@ -58,6 +65,14 @@ class TokenBundle:
     access_token_expires_at: datetime
     refresh_token: str
     refresh_token_expires_at: datetime
+
+
+@dataclass(frozen=True)
+class PasswordResetDispatch:
+    email: str
+    reset_url: str
+    token: str
+    expires_at: datetime
 
 
 def normalize_email(email: str) -> str:
@@ -96,9 +111,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 def role_names_for_user(user: User) -> list[str]:
     return sorted(
-        assignment.role.name
-        for assignment in user.role_assignments
-        if assignment.role is not None
+        assignment.role.name for assignment in user.role_assignments if assignment.role is not None
     )
 
 
@@ -170,7 +183,9 @@ async def _load_auth_session(session: AsyncSession, *, session_id: str) -> AuthS
     return await session.scalar(statement)
 
 
-def _validate_active_session(auth_session: AuthSession | None, *, expected_user_id: str) -> AuthSession:
+def _validate_active_session(
+    auth_session: AuthSession | None, *, expected_user_id: str
+) -> AuthSession:
     now = datetime.now(UTC)
     if auth_session is None or auth_session.user is None:
         raise AuthError("Invalid session", 401)
@@ -299,7 +314,9 @@ async def refresh_account_session(
     if not secrets.compare_digest(auth_session.refresh_token_hash, presented_hash):
         raise AuthError("Invalid refresh token", 401)
 
-    token_bundle = _build_token_bundle(user=auth_session.user, auth_session=auth_session, settings=settings)
+    token_bundle = _build_token_bundle(
+        user=auth_session.user, auth_session=auth_session, settings=settings
+    )
     await session.commit()
     return auth_session.user, token_bundle
 
@@ -308,6 +325,120 @@ async def revoke_session(session: AsyncSession, *, auth_session: AuthSession) ->
     if auth_session.revoked_at is None:
         auth_session.revoked_at = datetime.now(UTC)
         await session.commit()
+
+
+def build_password_reset_url(*, token: str) -> str:
+    base_url = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000").rstrip("/")
+    return f"{base_url}/reset-password?token={token}"
+
+
+async def request_password_reset(
+    session: AsyncSession,
+    *,
+    email: str,
+) -> PasswordResetDispatch | None:
+    normalized_email = normalize_email(email)
+    user = await _load_user_by_email(session, email=normalized_email)
+
+    # Always let the router return the same success message. Unknown emails must not
+    # reveal whether an account exists.
+    if user is None or not user.is_active:
+        return None
+
+    raw_token = secrets.token_urlsafe(32)
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(hours=PASSWORD_RESET_TTL_HOURS)
+
+    reset_token = PasswordResetToken(
+        user_id=user.id,
+        token_hash=hash_token(raw_token),
+        expires_at=expires_at,
+    )
+    session.add(reset_token)
+    await session.commit()
+
+    return PasswordResetDispatch(
+        email=user.email,
+        reset_url=build_password_reset_url(token=raw_token),
+        token=raw_token,
+        expires_at=expires_at,
+    )
+
+
+def dispatch_password_reset_email(app: Any, dispatch: PasswordResetDispatch) -> None:
+    # This project does not currently expose a committed SMTP/transactional email
+    # service. Keep dispatch behind one small function so it can be replaced later.
+    #
+    # The raw token is only placed in the in-memory test outbox when explicitly enabled.
+    # It is not logged and is never stored in the database.
+    outbox = getattr(app.state, "password_reset_outbox", None)
+    if outbox is None:
+        outbox = []
+        app.state.password_reset_outbox = outbox
+
+    payload = {
+        "to": dispatch.email,
+        "reset_url": dispatch.reset_url,
+        "expires_at": dispatch.expires_at.isoformat(),
+        "subject": "Reset your ReportX password",
+        "body": (
+            "Use the password reset link to choose a new password. "
+            "This link expires in 1 hour and can only be used once."
+        ),
+    }
+
+    if os.getenv("PASSWORD_RESET_TEST_OUTBOX", "0").strip() == "1":
+        payload["token"] = dispatch.token
+
+    outbox.append(payload)
+
+
+async def revoke_all_user_sessions(session: AsyncSession, *, user_id: str) -> None:
+    now = datetime.now(UTC)
+    result = await session.scalars(
+        select(AuthSession).where(
+            AuthSession.user_id == user_id,
+            AuthSession.revoked_at.is_(None),
+        )
+    )
+    for auth_session in result.all():
+        auth_session.revoked_at = now
+
+
+async def reset_account_password(
+    session: AsyncSession,
+    *,
+    token: str,
+    new_password: str,
+) -> None:
+    raw_token = (token or "").strip()
+    if not raw_token:
+        raise AuthError("Invalid password reset token", 400)
+
+    validated_password = validate_password(new_password)
+    token_hash = hash_token(raw_token)
+
+    reset_token = await session.scalar(
+        select(PasswordResetToken)
+        .options(selectinload(PasswordResetToken.user))
+        .where(PasswordResetToken.token_hash == token_hash)
+    )
+
+    if reset_token is None or reset_token.user is None:
+        raise AuthError("Invalid password reset token", 400)
+
+    now = datetime.now(UTC)
+
+    if ensure_utc(reset_token.expires_at) <= now:
+        raise AuthError("Password reset token expired", 400)
+
+    if reset_token.consumed_at is not None:
+        raise AuthError("Password reset token has already been used", 400)
+
+    reset_token.consumed_at = now
+    reset_token.user.password_hash = hash_password(validated_password)
+    await revoke_all_user_sessions(session, user_id=reset_token.user_id)
+    await session.commit()
 
 
 async def load_authenticated_session(

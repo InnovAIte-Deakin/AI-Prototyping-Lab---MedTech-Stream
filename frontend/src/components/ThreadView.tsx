@@ -22,21 +22,43 @@ interface ThreadViewProps {
   reportId: string;
   accessToken: string;
   onThreadsLoaded?: (threads: ConversationThread[]) => void;
+  onThreadCreated?: () => void;
   focusedThreadId?: string;
 }
 
-export function ThreadView({ reportId, accessToken, onThreadsLoaded, focusedThreadId }: ThreadViewProps) {
+function titleFromMessage(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length <= 60 ? trimmed : trimmed.slice(0, 57) + '…';
+}
+
+export function ThreadView({
+  reportId,
+  accessToken,
+  onThreadsLoaded,
+  onThreadCreated,
+  focusedThreadId,
+}: ThreadViewProps) {
   const { user } = useAuth();
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
   const [threads, setThreads] = useState<ConversationThread[]>([]);
   const [loading, setLoading] = useState(false);
-  const [replyText, setReplyText] = useState('');
-  
-  const [isClinicianMock, setIsClinicianMock] = useState(false);
-  const [clinicianMeaning, setClinicianMeaning] = useState('');
-  const [clinicianUrgency, setClinicianUrgency] = useState('routine');
-  const [clinicianAction, setClinicianAction] = useState('');
 
-  const backend = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+  // Per-thread reply state
+  const [replyText, setReplyText] = useState<Record<string, string>>({});
+  const [isClinicianMock, setIsClinicianMock] = useState<Record<string, boolean>>({});
+  const [clinicianMeaning, setClinicianMeaning] = useState<Record<string, string>>({});
+  const [clinicianUrgency, setClinicianUrgency] = useState<Record<string, string>>({});
+  const [clinicianAction, setClinicianAction] = useState<Record<string, string>>({});
+
+  // New-thread / prompt state
+  const [prompts, setPrompts] = useState<string[]>([]);
+  const [promptsLoading, setPromptsLoading] = useState(false);
+  const [selectedPromptIndex, setSelectedPromptIndex] = useState<number | null>(null);
+  const [newMessageText, setNewMessageText] = useState('');
+  const [freeText, setFreeText] = useState(false);
+  const [submittingNew, setSubmittingNew] = useState(false);
+  const [newThreadError, setNewThreadError] = useState('');
 
   const fetchThreads = useCallback(async () => {
     setLoading(true);
@@ -49,8 +71,8 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded, focusedThre
         setThreads(data || []);
         onThreadsLoaded?.(data || []);
       }
-    } catch (err) {
-      console.error('Failed to fetch threads', err);
+    } catch {
+      // silently ignore fetch errors
     } finally {
       setLoading(false);
     }
@@ -63,6 +85,26 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded, focusedThre
   }, [fetchThreads]);
 
   useEffect(() => {
+    async function fetchPrompts() {
+      setPromptsLoading(true);
+      try {
+        const response = await fetch(`${backend}/api/v1/reports/${reportId}/question-prompts`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setPrompts(data.prompts || []);
+        }
+      } catch {
+        // prompts are non-critical; fail silently
+      } finally {
+        setPromptsLoading(false);
+      }
+    }
+    fetchPrompts();
+  }, [reportId, accessToken, backend]);
+
+  useEffect(() => {
     if (!focusedThreadId) return;
     const node = document.getElementById(`thread-card-${focusedThreadId}`);
     if (node && typeof node.scrollIntoView === 'function') {
@@ -70,131 +112,175 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded, focusedThre
     }
   }, [focusedThreadId, threads]);
 
+  const handleSelectPrompt = (index: number) => {
+    setSelectedPromptIndex(index);
+    setNewMessageText(prompts[index]);
+    setFreeText(false);
+    setNewThreadError('');
+  };
+
+  const handleFreeText = () => {
+    setSelectedPromptIndex(null);
+    setNewMessageText('');
+    setFreeText(true);
+    setNewThreadError('');
+  };
+
+  const handleSendNewThread = async () => {
+    if (!newMessageText.trim()) return;
+    setSubmittingNew(true);
+    setNewThreadError('');
+    try {
+      const response = await fetch(`${backend}/api/v1/reports/${reportId}/threads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          initial_message: newMessageText.trim(),
+          title: titleFromMessage(newMessageText),
+        }),
+      });
+      if (!response.ok) throw new Error('Failed to send question');
+      setSelectedPromptIndex(null);
+      setNewMessageText('');
+      setFreeText(false);
+      await fetchThreads();
+      onThreadCreated?.();
+    } catch (err: any) {
+      setNewThreadError(err.message || 'Failed to submit question.');
+    } finally {
+      setSubmittingNew(false);
+    }
+  };
+
   const handleSendReply = async (threadId: string) => {
-    if (!replyText.trim()) return;
+    const text = replyText[threadId] || '';
+    if (!text.trim()) return;
     try {
       await fetch(`${backend}/api/v1/threads/${threadId}/messages`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ body: replyText }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ body: text }),
       });
-      setReplyText('');
+      setReplyText((prev) => ({ ...prev, [threadId]: '' }));
       fetchThreads();
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // ignore
     }
   };
 
   const handleSendClinicianTemplate = async (threadId: string) => {
-    if (!clinicianMeaning.trim() || !clinicianAction.trim()) return;
+    const meaning = clinicianMeaning[threadId] || '';
+    const action = clinicianAction[threadId] || '';
+    if (!meaning.trim() || !action.trim()) return;
     try {
       await fetch(`${backend}/api/v1/threads/${threadId}/messages`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({
           template_payload: {
-            meaning: clinicianMeaning,
-            urgency: clinicianUrgency,
-            action: clinicianAction,
-          }
+            meaning,
+            urgency: clinicianUrgency[threadId] || 'routine',
+            action,
+          },
         }),
       });
-      setClinicianMeaning('');
-      setClinicianUrgency('routine');
-      setClinicianAction('');
-      setIsClinicianMock(false);
+      setClinicianMeaning((prev) => ({ ...prev, [threadId]: '' }));
+      setClinicianUrgency((prev) => ({ ...prev, [threadId]: 'routine' }));
+      setClinicianAction((prev) => ({ ...prev, [threadId]: '' }));
+      setIsClinicianMock((prev) => ({ ...prev, [threadId]: false }));
       fetchThreads();
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // ignore
     }
   };
 
   if (loading && threads.length === 0) return <div>Loading threads...</div>;
-  if (threads.length === 0) return null;
+
+  const composerVisible = selectedPromptIndex !== null || freeText;
 
   return (
-    <div style={{ marginTop: '2rem' }}>
-      <h2>Conversations</h2>
-      <div style={{ display: 'flex', gap: '1rem', flexDirection: 'column' }}>
-        {threads.map((thread) => (
-          <div
-            key={thread.id}
-            id={`thread-card-${thread.id}`}
-            data-testid={`thread-card-${thread.id}`}
-            data-focused={thread.id === focusedThreadId ? 'true' : 'false'}
-            className="card"
-            style={{
-              padding: '1rem',
-              border: thread.id === focusedThreadId ? '2px solid #2563eb' : '1px solid #ccc',
-              boxShadow: thread.id === focusedThreadId ? '0 0 0 3px rgba(37,99,235,0.15)' : 'none',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ marginTop: '1rem' }}>
+      {/* ── Existing threads ── */}
+      {threads.length > 0 && (
+        <div style={{ display: 'flex', gap: '1rem', flexDirection: 'column', marginBottom: '2rem' }}>
+          {threads.map((thread) => (
+            <div
+              key={thread.id}
+              id={`thread-card-${thread.id}`}
+              data-testid={`thread-card-${thread.id}`}
+              data-focused={thread.id === focusedThreadId ? 'true' : 'false'}
+              className="card"
+              style={{
+                padding: '1rem',
+                border: thread.id === focusedThreadId ? '2px solid #2563eb' : '1px solid #ccc',
+                boxShadow: thread.id === focusedThreadId ? '0 0 0 3px rgba(37,99,235,0.15)' : 'none',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>{thread.title || 'Thread'}</h3>
                 <div>
-                   <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', background: '#ebf8ff', padding: '0.3rem', borderRadius: '4px' }}>
-                    <input type="checkbox" checked={isClinicianMock} onChange={e => setIsClinicianMock(e.target.checked)} />
+                  <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', background: '#ebf8ff', padding: '0.3rem', borderRadius: '4px' }}>
+                    <input
+                      type="checkbox"
+                      checked={isClinicianMock[thread.id] || false}
+                      onChange={(e) => setIsClinicianMock((prev) => ({ ...prev, [thread.id]: e.target.checked }))}
+                    />
                     Simulate Clinician Access
-                   </label>
+                  </label>
                 </div>
-            </div>
-            
-            <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {thread.messages.map((msg) => {
-                const isMe = msg.author_user_id === user?.id;
-                
-                if (msg.kind === 'template') {
-                  let payload: any = {};
-                  try { payload = JSON.parse(msg.body); } catch(e){}
-                  
+              </div>
+
+              <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {thread.messages.map((msg) => {
+                  const isMe = msg.author_user_id === user?.id;
+                  if (msg.kind === 'template') {
+                    let payload: any = {};
+                    try { payload = JSON.parse(msg.body); } catch { /* ignore */ }
+                    return (
+                      <div key={msg.id} style={{ alignSelf: 'flex-start', background: '#f0fdf4', padding: '1rem', borderRadius: '8px', borderLeft: '4px solid #16a34a', maxWidth: '80%' }}>
+                        <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#16a34a' }}>Clinician Response</div>
+                        <div style={{ marginBottom: '0.5rem' }}><strong>What it means:</strong> {payload.meaning}</div>
+                        <div style={{ marginBottom: '0.5rem' }}>
+                          <strong>Urgency:</strong>{' '}
+                          <span style={{ textTransform: 'capitalize', padding: '0.1rem 0.4rem', background: payload.urgency === 'urgent' ? '#fee2e2' : payload.urgency === 'soon' ? '#fef3c7' : '#e0e7ff', borderRadius: '4px' }}>
+                            {payload.urgency}
+                          </span>
+                        </div>
+                        <div><strong>Next step:</strong> {payload.action}</div>
+                        <small style={{ color: '#666', display: 'block', marginTop: '0.5rem' }}>{new Date(msg.created_at).toLocaleString()}</small>
+                      </div>
+                    );
+                  }
                   return (
-                    <div key={msg.id} style={{ alignSelf: 'flex-start', background: '#f0fdf4', padding: '1rem', borderRadius: '8px', borderLeft: '4px solid #16a34a', maxWidth: '80%' }}>
-                      <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '0.5rem', color: '#16a34a' }}>
-                        Clinician Response
-                      </div>
-                      <div style={{ marginBottom: '0.5rem' }}>
-                        <strong>What it means:</strong> {payload.meaning}
-                      </div>
-                      <div style={{ marginBottom: '0.5rem' }}>
-                        <strong>Urgency:</strong> <span style={{ textTransform: 'capitalize', padding: '0.1rem 0.4rem', background: payload.urgency === 'urgent' ? '#fee2e2' : payload.urgency === 'soon' ? '#fef3c7' : '#e0e7ff', borderRadius: '4px' }}>{payload.urgency}</span>
-                      </div>
-                      <div>
-                        <strong>Next step:</strong> {payload.action}
-                      </div>
-                      <small style={{ color: '#666', display: 'block', marginTop: '0.5rem' }}>{new Date(msg.created_at).toLocaleString()}</small>
+                    <div key={msg.id} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', background: isMe ? '#dbeafe' : '#f3f4f6', padding: '0.75rem', borderRadius: '8px', maxWidth: '70%' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '0.8rem', marginBottom: '0.2rem' }}>{msg.author_name}</div>
+                      <div>{msg.body}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.2rem', textAlign: 'right' }}>{new Date(msg.created_at).toLocaleString()}</div>
                     </div>
                   );
-                }
+                })}
+              </div>
 
-                return (
-                  <div key={msg.id} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', background: isMe ? '#dbeafe' : '#f3f4f6', padding: '0.75rem', borderRadius: '8px', maxWidth: '70%' }}>
-                    <div style={{ fontWeight: 'bold', fontSize: '0.8rem', marginBottom: '0.2rem' }}>{msg.author_name}</div>
-                    <div>{msg.body}</div>
-                    <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.2rem', textAlign: 'right' }}>
-                      {new Date(msg.created_at).toLocaleString()}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
-                {isClinicianMock ? (
+              <div style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
+                {isClinicianMock[thread.id] ? (
                   <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                     <h4 style={{ margin: '0 0 1rem 0' }}>Clinician Response Template</h4>
                     <div className="field" style={{ marginBottom: '0.5rem' }}>
                       <label>What the result means:</label>
-                      <textarea value={clinicianMeaning} onChange={e => setClinicianMeaning(e.target.value)} rows={2} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }} />
+                      <textarea
+                        value={clinicianMeaning[thread.id] || ''}
+                        onChange={(e) => setClinicianMeaning((prev) => ({ ...prev, [thread.id]: e.target.value }))}
+                        rows={2}
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                      />
                     </div>
                     <div className="field" style={{ marginBottom: '0.5rem' }}>
                       <label>Urgency:</label>
-                      <select value={clinicianUrgency} onChange={e => setClinicianUrgency(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}>
+                      <select
+                        value={clinicianUrgency[thread.id] || 'routine'}
+                        onChange={(e) => setClinicianUrgency((prev) => ({ ...prev, [thread.id]: e.target.value }))}
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                      >
                         <option value="routine">Routine</option>
                         <option value="soon">Soon</option>
                         <option value="urgent">Urgent</option>
@@ -202,26 +288,104 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded, focusedThre
                     </div>
                     <div className="field" style={{ marginBottom: '1rem' }}>
                       <label>Recommended action:</label>
-                      <textarea value={clinicianAction} onChange={e => setClinicianAction(e.target.value)} rows={2} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }} />
+                      <textarea
+                        value={clinicianAction[thread.id] || ''}
+                        onChange={(e) => setClinicianAction((prev) => ({ ...prev, [thread.id]: e.target.value }))}
+                        rows={2}
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                      />
                     </div>
-                    <button className="nav-btn nav-btn-primary" onClick={() => handleSendClinicianTemplate(thread.id)}>Submit Clinical Response</button>
+                    <button className="nav-btn nav-btn-primary" onClick={() => handleSendClinicianTemplate(thread.id)}>
+                      Submit Clinical Response
+                    </button>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <input 
-                      style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }} 
-                      type="text" 
-                      placeholder="Type a reply..." 
-                      value={replyText} 
-                      onChange={e => setReplyText(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleSendReply(thread.id); }}
+                    <input
+                      style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                      type="text"
+                      placeholder="Write a reply…"
+                      value={replyText[thread.id] || ''}
+                      onChange={(e) => setReplyText((prev) => ({ ...prev, [thread.id]: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSendReply(thread.id); }}
                     />
-                    <button className="nav-btn nav-btn-primary" onClick={() => handleSendReply(thread.id)}>Reply</button>
+                    <button className="nav-btn nav-btn-primary" onClick={() => handleSendReply(thread.id)}>Send</button>
                   </div>
                 )}
+              </div>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Ask a new question ── */}
+      <div style={{ borderTop: threads.length > 0 ? '1px solid #eee' : 'none', paddingTop: threads.length > 0 ? '1.5rem' : 0 }}>
+        <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem' }}>
+          {threads.length === 0 ? 'Ask your clinician a question' : 'Ask a new question'}
+        </h3>
+
+        {promptsLoading ? (
+          <p style={{ color: '#666', fontSize: '0.9rem' }}>Generating personalised questions…</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+            {prompts.map((prompt, index) => (
+              <button
+                key={index}
+                className="nav-btn"
+                style={{
+                  textAlign: 'left',
+                  background: selectedPromptIndex === index ? '#eff6ff' : 'white',
+                  border: selectedPromptIndex === index ? '1px solid #2563eb' : '1px solid #ccc',
+                  cursor: 'pointer',
+                  padding: '0.75rem',
+                  borderRadius: '4px',
+                  color: '#1e293b',
+                }}
+                onClick={() => handleSelectPrompt(index)}
+              >
+                {prompt}
+              </button>
+            ))}
+            <button
+              className="nav-btn"
+              style={{
+                textAlign: 'left',
+                background: freeText ? '#eff6ff' : 'white',
+                border: freeText ? '1px solid #2563eb' : '1px dashed #ccc',
+                cursor: 'pointer',
+                padding: '0.75rem',
+                borderRadius: '4px',
+                color: '#64748b',
+              }}
+              onClick={handleFreeText}
+            >
+              + Write your own question
+            </button>
           </div>
-        ))}
+        )}
+
+        {composerVisible && (
+          <div style={{ marginTop: '0.75rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600, fontSize: '0.9rem' }}>
+              Edit your message:
+            </label>
+            <textarea
+              value={newMessageText}
+              onChange={(e) => setNewMessageText(e.target.value)}
+              rows={3}
+              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', marginBottom: '0.5rem', boxSizing: 'border-box' }}
+              disabled={submittingNew}
+            />
+            {newThreadError && <p style={{ color: '#dc2626', fontSize: '0.85rem', marginBottom: '0.5rem' }}>{newThreadError}</p>}
+            <button
+              className="nav-btn nav-btn-primary"
+              onClick={handleSendNewThread}
+              disabled={submittingNew || !newMessageText.trim()}
+            >
+              {submittingNew ? 'Sending…' : 'Send to Clinician'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

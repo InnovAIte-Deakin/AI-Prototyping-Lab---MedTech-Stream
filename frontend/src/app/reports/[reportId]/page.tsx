@@ -12,7 +12,6 @@ import { AuditLogTimeline } from '@/components/AuditLogTimeline';
 import { shareStateFrom, type ShareLifecycleState } from '@/lib/auditLog';
 import { Badge } from '@/components/ui/Badge';
 import { SharingPreferencesPanel } from '@/components/SharingPreferencesPanel';
-import { PatientQuestions } from '@/components/PatientQuestions';
 
 function formatDate(ts: number) {
   return new Date(ts).toLocaleString();
@@ -608,29 +607,7 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
           </div>
         </div>
 
-        {/* ── Questions for My Clinician (FR11) ── */}
-        <div className="report-section-card">
-          <div className="card-section-header">
-            <div className="card-section-header-inner">
-              <div className="card-section-icon" aria-hidden="true">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                  <line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
-              </div>
-              <div className="card-section-text">
-                <p className="card-section-title">Questions for My Clinician</p>
-                <p className="card-section-subtitle">AI-generated questions based on your flagged findings — edit before sending</p>
-              </div>
-            </div>
-          </div>
-          <div className="card-section-body">
-            <PatientQuestions reportId={report.id} accessToken={accessToken} onThreadCreated={() => { setAuditReloadToken((n) => n + 1); }} />
-          </div>
-        </div>
-
-        {/* ── Conversation Threads (FR10) ── */}
+        {/* ── Clinician Conversation (FR10 + FR11) ── */}
         <div className="report-section-card">
           <div className="card-section-header">
             <div className="card-section-header-inner">
@@ -641,23 +618,22 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
               </div>
               <div className="card-section-text">
                 <p className="card-section-title">Clinician Conversation</p>
-                <p className="card-section-subtitle">Messages between you and your linked clinician, anchored to this report</p>
+                <p className="card-section-subtitle">AI-suggested questions based on your findings — edit before sending, or write your own</p>
               </div>
             </div>
           </div>
           <div className="card-section-body">
-            <ThreadView reportId={report.id} accessToken={accessToken} onThreadsLoaded={setThreads} />
+            <ThreadView
+              reportId={report.id}
+              accessToken={accessToken}
+              onThreadsLoaded={setThreads}
+              onThreadCreated={() => setAuditReloadToken((n) => n + 1)}
+              focusedThreadId={searchParams?.threadId}
+            />
           </div>
         </div>
 
         <AuditLogTimeline reportId={report.id} reloadToken={auditReloadToken} />
-
-        <ThreadView
-          reportId={report.id}
-          accessToken={accessToken}
-          onThreadsLoaded={setThreads}
-          focusedThreadId={searchParams?.threadId}
-        />
 
         <Disclaimer />
 

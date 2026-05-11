@@ -85,6 +85,7 @@ describe('Threads and Questions Flow', () => {
   it('fetches threads and renders message history', async () => {
     const mockThread = {
       id: 'thread-1',
+      finding_id: null,
       title: 'My Thread',
       status: 'open',
       messages: [

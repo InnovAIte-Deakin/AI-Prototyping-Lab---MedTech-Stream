@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -33,7 +33,7 @@ function validatePassword(password: string): string {
   return '';
 }
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
@@ -95,6 +95,65 @@ export default function ResetPasswordPage() {
   };
 
   return (
+    <div className="auth-card-body">
+      <form onSubmit={submit} noValidate className="auth-form">
+        <div className="auth-field">
+          <label className="auth-label" htmlFor="new-password">
+            New password
+          </label>
+          <input
+            id="new-password"
+            className="auth-input"
+            type="password"
+            required
+            autoComplete="new-password"
+            placeholder="Choose a strong password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+          />
+        </div>
+
+        <div className="auth-field">
+          <label className="auth-label" htmlFor="confirm-password">
+            Confirm password
+          </label>
+          <input
+            id="confirm-password"
+            className="auth-input"
+            type="password"
+            required
+            autoComplete="new-password"
+            placeholder="Re-enter your new password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+          />
+        </div>
+
+        {error && (
+          <div>
+            <p className="auth-error">{error}</p>
+            <p className="auth-footer">
+              <a href="/auth/forgot-password">Request a new reset link</a>
+            </p>
+          </div>
+        )}
+
+        {message && <p className="auth-success">{message}</p>}
+
+        <button type="submit" className="auth-submit-btn" disabled={isSubmitting}>
+          <span>{isSubmitting ? 'Resetting…' : 'Reset password'}</span>
+        </button>
+      </form>
+
+      <div className="auth-footer">
+        Back to <a href="/auth/login">sign in</a>
+      </div>
+    </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-card-header">
@@ -120,60 +179,9 @@ export default function ResetPasswordPage() {
           </p>
         </div>
 
-        <div className="auth-card-body">
-          <form onSubmit={submit} noValidate className="auth-form">
-            <div className="auth-field">
-              <label className="auth-label" htmlFor="new-password">
-                New password
-              </label>
-              <input
-                id="new-password"
-                className="auth-input"
-                type="password"
-                required
-                autoComplete="new-password"
-                placeholder="Choose a strong password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-              />
-            </div>
-
-            <div className="auth-field">
-              <label className="auth-label" htmlFor="confirm-password">
-                Confirm password
-              </label>
-              <input
-                id="confirm-password"
-                className="auth-input"
-                type="password"
-                required
-                autoComplete="new-password"
-                placeholder="Re-enter your new password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-              />
-            </div>
-
-            {error && (
-              <div>
-                <p className="auth-error">{error}</p>
-                <p className="auth-footer">
-                  <a href="/auth/forgot-password">Request a new reset link</a>
-                </p>
-              </div>
-            )}
-
-            {message && <p className="auth-success">{message}</p>}
-
-            <button type="submit" className="auth-submit-btn" disabled={isSubmitting}>
-              <span>{isSubmitting ? 'Resetting…' : 'Reset password'}</span>
-            </button>
-          </form>
-
-          <div className="auth-footer">
-            Back to <a href="/auth/login">sign in</a>
-          </div>
-        </div>
+        <Suspense fallback={<div className="auth-card-body" />}>
+          <ResetPasswordForm />
+        </Suspense>
       </div>
     </div>
   );

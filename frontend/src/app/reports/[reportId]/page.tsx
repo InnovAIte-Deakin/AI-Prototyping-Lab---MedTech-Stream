@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { fetchReportById, updateReportInHistory } from '@/lib/reportHistory';
@@ -12,8 +12,6 @@ import { AuditLogTimeline } from '@/components/AuditLogTimeline';
 import { shareStateFrom, type ShareLifecycleState } from '@/lib/auditLog';
 import { Badge } from '@/components/ui/Badge';
 import { SharingPreferencesPanel } from '@/components/SharingPreferencesPanel';
-import { fetchReportTrends, type BiomarkerTrend } from '@/lib/reportTrends';
-import { BiomarkerTrendChart } from '@/components/BiomarkerTrendChart';
 import { PatientQuestions } from '@/components/PatientQuestions';
 
 function formatDate(ts: number) {
@@ -28,14 +26,6 @@ const defaultSharingPreferences: SharingPreferences = {
   active: false,
 };
 
-const LANGUAGE_OPTIONS = [
-  { value: 'en', label: 'English' },
-  { value: 'es', label: 'Espanol' },
-  { value: 'ar', label: 'العربية' },
-  { value: 'zh', label: '中文 (普通话)' },
-  { value: 'hi', label: 'हिन्दी' },
-  { value: 'fr', label: 'Francais' },
-];
 
 export default function ReportDetailPage({ params, searchParams }: { params: { reportId: string }; searchParams?: { panel?: string; threadId?: string } }) {
   const { user } = useAuth();
@@ -53,17 +43,6 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
     }
   }, [searchParams?.panel]);
 
-  // Trend states
-  const [trends, setTrends] = useState<BiomarkerTrend[]>([]);
-  const [trendsLoading, setTrendsLoading] = useState(false);
-  const [trendsError, setTrendsError] = useState<string | null>(null);
-  const [trendLanguage, setTrendLanguage] = useState('en');
-  const [loadingTrendTranslations, setLoadingTrendTranslations] = useState(false);
-  const [trendTranslationError, setTrendTranslationError] = useState<string | null>(null);
-  const [trendNoteTranslations, setTrendNoteTranslations] = useState<Record<string, Record<string, string>>>({});
-  const [prefetchedTrendLanguages, setPrefetchedTrendLanguages] = useState<Record<string, Record<string, boolean>>>({});
-  const [biomarkerFilterText, setBiomarkerFilterText] = useState('');
-  const [selectedBiomarkerKey, setSelectedBiomarkerKey] = useState('');
 
 
   // Interpretation panel state
@@ -129,78 +108,6 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
       return null;
     }
   }
-
-  const loadTrends = useCallback(async (reportId: string) => {
-    setTrendsLoading(true);
-    setTrendsError(null);
-    try {
-      const data = await fetchReportTrends(reportId);
-      setTrends(Array.isArray(data.trends) ? data.trends : []);
-    } catch (err: any) {
-      const message = String(err?.message || 'Unable to load trends.');
-      if (message.includes('403')) {
-        setTrendsError('Trend details require full-report sharing access for clinician views.');
-      } else {
-        setTrendsError('Unable to load trends right now.');
-      }
-      setTrends([]);
-    } finally {
-      setTrendsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!report?.id) return;
-    void loadTrends(report.id);
-  }, [report?.id, loadTrends]);
-
-  const translateTrendNotesIfNeeded = useCallback(async (languageCode: string) => {
-    if (languageCode === 'en' || trends.length === 0) return;
-    const withEnoughPoints = trends.filter((item) => item.sparkline.length > 1);
-    const toTranslate = withEnoughPoints.filter(
-      (item) => !trendNoteTranslations[item.biomarker_key]?.[languageCode] && !prefetchedTrendLanguages[item.biomarker_key]?.[languageCode],
-    );
-    if (toTranslate.length === 0) return;
-    setLoadingTrendTranslations(true);
-    setTrendTranslationError(null);
-    try {
-      const translated = await Promise.all(
-        toTranslate.map(async (item) => {
-          const response = await fetch(`${backend}/api/v1/translate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: item.trend_note, target_language: languageCode, prefetch_all: true }),
-          });
-          if (!response.ok) throw new Error('Trend note translation failed.');
-          const payload = await response.json();
-          return { biomarkerKey: item.biomarker_key, translations: (payload?.translations ?? {}) as Record<string, string> };
-        }),
-      );
-      setTrendNoteTranslations((prev) => {
-        const next = { ...prev };
-        for (const item of translated) { next[item.biomarkerKey] = { ...(next[item.biomarkerKey] || {}), ...item.translations }; }
-        return next;
-      });
-      setPrefetchedTrendLanguages((prev) => {
-        const next = { ...prev };
-        for (const item of translated) {
-          const langMap = { ...(next[item.biomarkerKey] || {}) };
-          for (const lang of Object.keys(item.translations)) langMap[lang] = true;
-          next[item.biomarkerKey] = langMap;
-        }
-        return next;
-      });
-    } catch {
-      setTrendTranslationError('Unable to translate trend notes right now. Showing English.');
-      setTrendLanguage('en');
-    } finally {
-      setLoadingTrendTranslations(false);
-    }
-  }, [backend, prefetchedTrendLanguages, trendNoteTranslations, trends]);
-
-  useEffect(() => {
-    void translateTrendNotesIfNeeded(trendLanguage);
-  }, [trendLanguage, translateTrendNotesIfNeeded]);
 
   // ── Interpretation trigger ──
   async function triggerInterpretation() {

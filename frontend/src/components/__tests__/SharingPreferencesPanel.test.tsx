@@ -10,8 +10,10 @@ const defaultProps = {
   onShare: vi.fn(),
   clinicianEmail: '',
   onClinicianEmailChange: vi.fn(),
-  scope: 'summary' as const,
-  onScopeChange: vi.fn(),
+  viewScope: 'summary_only' as const,
+  onViewScopeChange: vi.fn(),
+  includeDoctorSummary: false,
+  onIncludeDoctorSummaryChange: vi.fn(),
   expiresAt: Date.now() + 86400000,
   onExpiresAtChange: vi.fn(),
 };

@@ -46,7 +46,8 @@ describe('reportHistory utility', () => {
     const updated = updateReportInHistory(report.id, {
       sharingPreferences: {
         clinicianEmail: 'clinician@health.org',
-        scope: 'summary',
+        viewScope: 'summary_only' as const,
+        includeDoctorSummary: false,
         expiresAt: Date.now() + 86400000,
         active: true,
       },

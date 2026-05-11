@@ -438,7 +438,8 @@ describe('Report history and sharing preference flow', () => {
   it('loads existing sharing preferences and preserves full scope value', async () => {
     const existingPrefs = {
       clinicianEmail: 'saved-doc@clinic.org',
-      scope: 'full' as const,
+      viewScope: 'full_report' as const,
+      includeDoctorSummary: false,
       expiresAt: Date.now() + 86400000,
       active: true,
     };

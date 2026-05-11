@@ -12,7 +12,9 @@ import { AuditLogTimeline } from '@/components/AuditLogTimeline';
 import { shareStateFrom, type ShareLifecycleState } from '@/lib/auditLog';
 import { Badge } from '@/components/ui/Badge';
 import { SharingPreferencesPanel } from '@/components/SharingPreferencesPanel';
+import { fetchReportTrends, type BiomarkerTrend } from '@/lib/reportTrends';
 import { BiomarkerTrendChart } from '@/components/BiomarkerTrendChart';
+import { PatientQuestions } from '@/components/PatientQuestions';
 
 function formatDate(ts: number) {
   return new Date(ts).toLocaleString();
@@ -127,6 +129,78 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
       return null;
     }
   }
+
+  const loadTrends = useCallback(async (reportId: string) => {
+    setTrendsLoading(true);
+    setTrendsError(null);
+    try {
+      const data = await fetchReportTrends(reportId);
+      setTrends(Array.isArray(data.trends) ? data.trends : []);
+    } catch (err: any) {
+      const message = String(err?.message || 'Unable to load trends.');
+      if (message.includes('403')) {
+        setTrendsError('Trend details require full-report sharing access for clinician views.');
+      } else {
+        setTrendsError('Unable to load trends right now.');
+      }
+      setTrends([]);
+    } finally {
+      setTrendsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!report?.id) return;
+    void loadTrends(report.id);
+  }, [report?.id, loadTrends]);
+
+  const translateTrendNotesIfNeeded = useCallback(async (languageCode: string) => {
+    if (languageCode === 'en' || trends.length === 0) return;
+    const withEnoughPoints = trends.filter((item) => item.sparkline.length > 1);
+    const toTranslate = withEnoughPoints.filter(
+      (item) => !trendNoteTranslations[item.biomarker_key]?.[languageCode] && !prefetchedTrendLanguages[item.biomarker_key]?.[languageCode],
+    );
+    if (toTranslate.length === 0) return;
+    setLoadingTrendTranslations(true);
+    setTrendTranslationError(null);
+    try {
+      const translated = await Promise.all(
+        toTranslate.map(async (item) => {
+          const response = await fetch(`${backend}/api/v1/translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: item.trend_note, target_language: languageCode, prefetch_all: true }),
+          });
+          if (!response.ok) throw new Error('Trend note translation failed.');
+          const payload = await response.json();
+          return { biomarkerKey: item.biomarker_key, translations: (payload?.translations ?? {}) as Record<string, string> };
+        }),
+      );
+      setTrendNoteTranslations((prev) => {
+        const next = { ...prev };
+        for (const item of translated) { next[item.biomarkerKey] = { ...(next[item.biomarkerKey] || {}), ...item.translations }; }
+        return next;
+      });
+      setPrefetchedTrendLanguages((prev) => {
+        const next = { ...prev };
+        for (const item of translated) {
+          const langMap = { ...(next[item.biomarkerKey] || {}) };
+          for (const lang of Object.keys(item.translations)) langMap[lang] = true;
+          next[item.biomarkerKey] = langMap;
+        }
+        return next;
+      });
+    } catch {
+      setTrendTranslationError('Unable to translate trend notes right now. Showing English.');
+      setTrendLanguage('en');
+    } finally {
+      setLoadingTrendTranslations(false);
+    }
+  }, [backend, prefetchedTrendLanguages, trendNoteTranslations, trends]);
+
+  useEffect(() => {
+    void translateTrendNotesIfNeeded(trendLanguage);
+  }, [trendLanguage, translateTrendNotesIfNeeded]);
 
   // ── Interpretation trigger ──
   async function triggerInterpretation() {
@@ -293,6 +367,20 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
   }
 
   const activeInterp = localInterpretation || report?.interpretation;
+  const trendItems = trends.filter((item) => item.sparkline.length > 1);
+  const normalizedFilter = biomarkerFilterText.trim().toLowerCase();
+  const filteredTrendItems = trendItems.filter((item) => {
+    if (!normalizedFilter) return true;
+    return `${item.display_name} ${item.biomarker_key}`.toLowerCase().includes(normalizedFilter);
+  });
+
+  useEffect(() => {
+    if (filteredTrendItems.length === 0) { setSelectedBiomarkerKey(''); return; }
+    const stillExists = filteredTrendItems.some((item) => item.biomarker_key === selectedBiomarkerKey);
+    if (!stillExists) setSelectedBiomarkerKey(filteredTrendItems[0].biomarker_key);
+  }, [filteredTrendItems, selectedBiomarkerKey]);
+
+  const selectedTrend = filteredTrendItems.find((item) => item.biomarker_key === selectedBiomarkerKey) || filteredTrendItems[0] || null;
 
   const shareState: ShareLifecycleState = shareStateFrom(
     { active: sharingPreferences.active, expiresAt: sharingPreferences.expiresAt },
@@ -752,8 +840,10 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
           onRevoke={sharingPreferences.active ? revokeShare : undefined}
           clinicianEmail={sharingPreferences.clinicianEmail}
           onClinicianEmailChange={(e) => setSharingPreferences({ ...sharingPreferences, clinicianEmail: e.target.value })}
-          scope={sharingPreferences.scope}
-          onScopeChange={(e) => setSharingPreferences({ ...sharingPreferences, scope: e.target.value as 'summary' | 'full' })}
+          viewScope={sharingPreferences.viewScope}
+          onViewScopeChange={(e) => setSharingPreferences({ ...sharingPreferences, viewScope: e.target.value as SharingPreferences['viewScope'] })}
+          includeDoctorSummary={sharingPreferences.includeDoctorSummary}
+          onIncludeDoctorSummaryChange={(e) => setSharingPreferences({ ...sharingPreferences, includeDoctorSummary: e.target.checked })}
           expiresAt={sharingPreferences.expiresAt}
           onExpiresAtChange={(e) => setSharingPreferences({ ...sharingPreferences, expiresAt: new Date(e.target.value).getTime() })}
           shareActive={sharingPreferences.active}

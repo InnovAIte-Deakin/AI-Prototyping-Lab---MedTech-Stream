@@ -274,20 +274,6 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
   }
 
   const activeInterp = localInterpretation || report?.interpretation;
-  const trendItems = trends.filter((item) => item.sparkline.length > 1);
-  const normalizedFilter = biomarkerFilterText.trim().toLowerCase();
-  const filteredTrendItems = trendItems.filter((item) => {
-    if (!normalizedFilter) return true;
-    return `${item.display_name} ${item.biomarker_key}`.toLowerCase().includes(normalizedFilter);
-  });
-
-  useEffect(() => {
-    if (filteredTrendItems.length === 0) { setSelectedBiomarkerKey(''); return; }
-    const stillExists = filteredTrendItems.some((item) => item.biomarker_key === selectedBiomarkerKey);
-    if (!stillExists) setSelectedBiomarkerKey(filteredTrendItems[0].biomarker_key);
-  }, [filteredTrendItems, selectedBiomarkerKey]);
-
-  const selectedTrend = filteredTrendItems.find((item) => item.biomarker_key === selectedBiomarkerKey) || filteredTrendItems[0] || null;
 
   const shareState: ShareLifecycleState = shareStateFrom(
     { active: sharingPreferences.active, expiresAt: sharingPreferences.expiresAt },
@@ -464,71 +450,6 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
-
-        {/* ── Interpretation card (shown inline if already interpreted) ── */}
-        <div className="report-section-card">
-          <div className="card-section-header">
-            <div className="card-section-header-inner">
-              <div className="card-section-icon" aria-hidden="true">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
-                </svg>
-              </div>
-              <div className="card-section-text">
-                <h2 className="card-section-title">Biomarker Trends</h2>
-                <p className="card-section-subtitle">Compare repeated biomarkers across saved reports</p>
-              </div>
-            </div>
-          </div>
-          <div className="card-section-body">
-            {trendsLoading ? <p className="muted-text">Loading trends...</p> : null}
-            {trendsError ? <p className="alert alert-error">{trendsError}</p> : null}
-            {!trendsLoading && !trendsError && selectedTrend ? (
-              <div className="stack-tight">
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
-                  <label className="field">
-                    <span>Filter biomarkers</span>
-                    <input
-                      className="input"
-                      aria-label="Filter biomarkers"
-                      value={biomarkerFilterText}
-                      onChange={(event) => setBiomarkerFilterText(event.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Biomarker</span>
-                    <select
-                      className="input"
-                      aria-label="Biomarker"
-                      value={selectedTrend.biomarker_key}
-                      onChange={(event) => setSelectedBiomarkerKey(event.target.value)}
-                    >
-                      {filteredTrendItems.map((item) => (
-                        <option key={item.biomarker_key} value={item.biomarker_key}>
-                          {item.display_name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <p className="muted-text">
-                  {trendNoteTranslations[selectedTrend.biomarker_key]?.[trendLanguage] || selectedTrend.trend_note}
-                </p>
-                {loadingTrendTranslations ? <p className="muted-text">Translating trend note...</p> : null}
-                {trendTranslationError ? <p className="alert alert-error">{trendTranslationError}</p> : null}
-                <BiomarkerTrendChart
-                  title={selectedTrend.display_name}
-                  points={selectedTrend.sparkline}
-                  unit={selectedTrend.unit}
-                  observationDates={trendItems.flatMap((item) => item.sparkline.map((point) => point.observed_at))}
-                />
-              </div>
-            ) : null}
-            {!trendsLoading && !trendsError && !selectedTrend ? (
-              <p className="muted-text">No repeat biomarker trend is available for this report yet.</p>
-            ) : null}
           </div>
         </div>
 

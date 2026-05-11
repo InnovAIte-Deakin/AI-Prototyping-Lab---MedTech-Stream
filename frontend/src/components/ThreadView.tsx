@@ -83,14 +83,10 @@ export function ThreadView({
   const [clinicianUrgency, setClinicianUrgency] = useState<Record<string, string>>({});
   const [clinicianAction, setClinicianAction] = useState<Record<string, string>>({});
 
-  // General conversation composer state
+  // Prompt suggestion state
   const [prompts, setPrompts] = useState<string[]>([]);
   const [promptsLoading, setPromptsLoading] = useState(false);
   const [selectedPromptIndex, setSelectedPromptIndex] = useState<number | null>(null);
-  const [newMessageText, setNewMessageText] = useState('');
-  const [freeText, setFreeText] = useState(false);
-  const [submittingNew, setSubmittingNew] = useState(false);
-  const [newThreadError, setNewThreadError] = useState('');
 
   // Clinician mock for the general conversation
   const [generalIsClinicianMock, setGeneralIsClinicianMock] = useState(false);
@@ -157,68 +153,41 @@ export function ThreadView({
   // The open general thread to post new messages to (first open one, or null)
   const openGeneralThread = generalThreads.find((t) => t.status === 'open') ?? generalThreads[0] ?? null;
 
+  // Selecting a chip pre-fills the reply input directly
   const handleSelectPrompt = (index: number) => {
     setSelectedPromptIndex(index);
-    setNewMessageText(prompts[index]);
-    setFreeText(false);
-    setNewThreadError('');
+    setGeneralReplyText(prompts[index]);
   };
 
   const handleFreeText = () => {
     setSelectedPromptIndex(null);
-    setNewMessageText('');
-    setFreeText(true);
-    setNewThreadError('');
+    setGeneralReplyText('');
   };
 
-  // Send new question: post to existing general thread, or create one
-  const handleSendNewThread = async () => {
-    if (!newMessageText.trim()) return;
-    setSubmittingNew(true);
-    setNewThreadError('');
+  // Send: post to existing thread if one exists, otherwise create the first thread
+  const handleSendGeneralReply = async () => {
+    if (!generalReplyText.trim()) return;
     try {
       if (openGeneralThread) {
-        // Add to the existing general conversation
-        const response = await fetch(`${backend}/api/v1/threads/${openGeneralThread.id}/messages`, {
+        await fetch(`${backend}/api/v1/threads/${openGeneralThread.id}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ body: newMessageText.trim() }),
+          body: JSON.stringify({ body: generalReplyText.trim() }),
         });
-        if (!response.ok) throw new Error('Failed to send message');
       } else {
-        // No general thread yet — create one
-        const response = await fetch(`${backend}/api/v1/reports/${reportId}/threads`, {
+        await fetch(`${backend}/api/v1/reports/${reportId}/threads`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
           body: JSON.stringify({
-            initial_message: newMessageText.trim(),
-            title: titleFromMessage(newMessageText),
+            initial_message: generalReplyText.trim(),
+            title: titleFromMessage(generalReplyText),
           }),
         });
-        if (!response.ok) throw new Error('Failed to create thread');
         onThreadCreated?.();
       }
-      setSelectedPromptIndex(null);
-      setNewMessageText('');
-      setFreeText(false);
-      await fetchThreads();
-    } catch (err: any) {
-      setNewThreadError(err.message || 'Failed to send.');
-    } finally {
-      setSubmittingNew(false);
-    }
-  };
-
-  const handleSendGeneralReply = async () => {
-    if (!generalReplyText.trim() || !openGeneralThread) return;
-    try {
-      await fetch(`${backend}/api/v1/threads/${openGeneralThread.id}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ body: generalReplyText }),
-      });
       setGeneralReplyText('');
-      fetchThreads();
+      setSelectedPromptIndex(null);
+      await fetchThreads();
     } catch { /* ignore */ }
   };
 
@@ -274,8 +243,6 @@ export function ThreadView({
 
   if (loading && threads.length === 0) return <div>Loading threads...</div>;
 
-  const composerVisible = selectedPromptIndex !== null || freeText;
-
   return (
     <div style={{ marginTop: '1rem' }}>
 
@@ -291,54 +258,50 @@ export function ThreadView({
           </div>
         )}
 
-        {/* Reply / clinician template for the open general thread */}
-        {openGeneralThread && generalMessages.length > 0 && (
-          <div style={{ borderTop: '1px solid #eee', paddingTop: '1rem', marginBottom: '1.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
-              <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', background: '#ebf8ff', padding: '0.3rem', borderRadius: '4px' }}>
+        {/* Clinician mock or reply input */}
+        <div style={{ borderTop: generalMessages.length > 0 ? '1px solid #eee' : 'none', paddingTop: generalMessages.length > 0 ? '1rem' : 0, marginBottom: '1.5rem' }}>
+          {generalIsClinicianMock ? (
+            <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <h4 style={{ margin: '0 0 1rem 0' }}>Clinician Response Template</h4>
+              <div className="field" style={{ marginBottom: '0.5rem' }}>
+                <label>What the result means:</label>
+                <textarea value={generalClinicianMeaning} onChange={(e) => setGeneralClinicianMeaning(e.target.value)} rows={2} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }} />
+              </div>
+              <div className="field" style={{ marginBottom: '0.5rem' }}>
+                <label>Urgency:</label>
+                <select value={generalClinicianUrgency} onChange={(e) => setGeneralClinicianUrgency(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}>
+                  <option value="routine">Routine</option>
+                  <option value="soon">Soon</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+              <div className="field" style={{ marginBottom: '1rem' }}>
+                <label>Recommended action:</label>
+                <textarea value={generalClinicianAction} onChange={(e) => setGeneralClinicianAction(e.target.value)} rows={2} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }} />
+              </div>
+              <button className="nav-btn nav-btn-primary" onClick={handleSendGeneralClinicianTemplate}>Submit Clinical Response</button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                type="text"
+                placeholder="Write a reply…"
+                value={generalReplyText}
+                onChange={(e) => { setGeneralReplyText(e.target.value); setSelectedPromptIndex(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSendGeneralReply(); }}
+              />
+              <button className="nav-btn nav-btn-primary" onClick={handleSendGeneralReply} disabled={!generalReplyText.trim()}>Send</button>
+              <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', background: '#ebf8ff', padding: '0.3rem 0.5rem', borderRadius: '4px', whiteSpace: 'nowrap' }}>
                 <input type="checkbox" checked={generalIsClinicianMock} onChange={(e) => setGeneralIsClinicianMock(e.target.checked)} />
                 Simulate Clinician Access
               </label>
             </div>
-            {generalIsClinicianMock ? (
-              <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <h4 style={{ margin: '0 0 1rem 0' }}>Clinician Response Template</h4>
-                <div className="field" style={{ marginBottom: '0.5rem' }}>
-                  <label>What the result means:</label>
-                  <textarea value={generalClinicianMeaning} onChange={(e) => setGeneralClinicianMeaning(e.target.value)} rows={2} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }} />
-                </div>
-                <div className="field" style={{ marginBottom: '0.5rem' }}>
-                  <label>Urgency:</label>
-                  <select value={generalClinicianUrgency} onChange={(e) => setGeneralClinicianUrgency(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}>
-                    <option value="routine">Routine</option>
-                    <option value="soon">Soon</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
-                </div>
-                <div className="field" style={{ marginBottom: '1rem' }}>
-                  <label>Recommended action:</label>
-                  <textarea value={generalClinicianAction} onChange={(e) => setGeneralClinicianAction(e.target.value)} rows={2} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }} />
-                </div>
-                <button className="nav-btn nav-btn-primary" onClick={handleSendGeneralClinicianTemplate}>Submit Clinical Response</button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input
-                  style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                  type="text"
-                  placeholder="Write a reply…"
-                  value={generalReplyText}
-                  onChange={(e) => setGeneralReplyText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSendGeneralReply(); }}
-                />
-                <button className="nav-btn nav-btn-primary" onClick={handleSendGeneralReply}>Send</button>
-              </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Prompt chips + new question composer */}
-        <div style={{ borderTop: generalMessages.length > 0 ? '1px solid #eee' : 'none', paddingTop: generalMessages.length > 0 ? '1.5rem' : 0 }}>
+        {/* Prompt chips — clicking pre-fills the reply input above */}
+        <div style={{ borderTop: '1px solid #eee', paddingTop: '1rem' }}>
           <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem' }}>
             {generalMessages.length === 0 ? 'Ask your clinician a question' : 'Ask another question'}
           </h3>
@@ -346,7 +309,7 @@ export function ThreadView({
           {promptsLoading ? (
             <p style={{ color: '#666', fontSize: '0.9rem' }}>Generating personalised questions…</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {prompts.map((prompt, index) => (
                 <button
                   key={index}
@@ -359,33 +322,10 @@ export function ThreadView({
               ))}
               <button
                 className="nav-btn"
-                style={{ textAlign: 'left', background: freeText ? '#eff6ff' : 'white', border: freeText ? '1px solid #2563eb' : '1px dashed #ccc', cursor: 'pointer', padding: '0.75rem', borderRadius: '4px', color: '#64748b' }}
+                style={{ textAlign: 'left', background: 'white', border: '1px dashed #ccc', cursor: 'pointer', padding: '0.75rem', borderRadius: '4px', color: '#64748b' }}
                 onClick={handleFreeText}
               >
                 + Write your own question
-              </button>
-            </div>
-          )}
-
-          {composerVisible && (
-            <div style={{ marginTop: '0.75rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600, fontSize: '0.9rem' }}>
-                {openGeneralThread ? 'Add to conversation:' : 'Your message:'}
-              </label>
-              <textarea
-                value={newMessageText}
-                onChange={(e) => setNewMessageText(e.target.value)}
-                rows={3}
-                style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', marginBottom: '0.5rem', boxSizing: 'border-box' }}
-                disabled={submittingNew}
-              />
-              {newThreadError && <p style={{ color: '#dc2626', fontSize: '0.85rem', marginBottom: '0.5rem' }}>{newThreadError}</p>}
-              <button
-                className="nav-btn nav-btn-primary"
-                onClick={handleSendNewThread}
-                disabled={submittingNew || !newMessageText.trim()}
-              >
-                {submittingNew ? 'Sending…' : 'Send to Clinician'}
               </button>
             </div>
           )}

@@ -2173,3 +2173,562 @@ button:not(.theme-toggle):not(.remove-file):not(.file-input):not(.nav-link):focu
   background-position: right 12px center;
   padding-right: var(--space-10);
 }
+
+/* ════════════════════════════════════════════════════════════════
+   T15 — Clinician Dashboard & Scoped Report View
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Clinician Dashboard ── */
+
+.clinician-dashboard {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-4);
+}
+
+.clinician-dashboard-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--space-8);
+}
+
+.clinician-dashboard-title {
+  font-family: var(--font-display);
+  font-size: var(--text-headline-lg);
+  font-weight: 700;
+  color: var(--on-surface);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.clinician-dashboard-subtitle {
+  font-family: var(--font-body);
+  font-size: var(--text-body-md);
+  color: var(--on-surface-muted);
+  margin: 0;
+}
+
+.clinician-dashboard-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-16) 0;
+  color: var(--on-surface-muted);
+  font-family: var(--font-body);
+  gap: var(--space-4);
+}
+
+.clinician-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--surface-container);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: clinician-spin 0.8s linear infinite;
+}
+
+@keyframes clinician-spin {
+  to { transform: rotate(360deg); }
+}
+
+.clinician-dashboard-error {
+  background: var(--danger-container, #fef2f2);
+  color: var(--danger, #C7383A);
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  text-align: center;
+  font-family: var(--font-body);
+}
+
+/* ── Empty state ── */
+.clinician-dashboard-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-16) var(--space-8);
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.clinician-empty-icon {
+  color: var(--on-surface-muted);
+  opacity: 0.4;
+  margin-bottom: var(--space-4);
+}
+
+.clinician-empty-title {
+  font-family: var(--font-display);
+  font-size: var(--text-title-lg);
+  font-weight: 600;
+  color: var(--on-surface);
+  margin: 0 0 var(--space-3) 0;
+}
+
+.clinician-empty-text {
+  font-family: var(--font-body);
+  font-size: var(--text-body-md);
+  color: var(--on-surface-muted);
+  max-width: 480px;
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ── Reports table ── */
+.clinician-reports-table-wrap {
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.clinician-reports-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+}
+
+.clinician-reports-table thead th {
+  font-size: var(--text-label-sm);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--on-surface-muted);
+  padding: var(--space-4) var(--space-5);
+  text-align: left;
+  background: var(--surface-container-low);
+}
+
+.clinician-reports-table tbody td {
+  padding: var(--space-4) var(--space-5);
+  vertical-align: middle;
+  font-size: var(--text-body-md);
+  color: var(--on-surface);
+}
+
+.clinician-row {
+  transition: background 0.15s ease;
+}
+
+.clinician-row:not(:last-child) td {
+  border-bottom: 1px solid rgba(195, 198, 215, 0.15);
+}
+
+.clinician-row:hover {
+  background: var(--surface-container-low);
+}
+
+.clinician-row--focused {
+  background: rgba(0, 74, 198, 0.04);
+}
+
+.clinician-patient-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.clinician-patient-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--gradient-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-body-sm);
+  flex-shrink: 0;
+}
+
+.clinician-patient-avatar--lg {
+  width: 48px;
+  height: 48px;
+  font-size: var(--text-title-md);
+}
+
+.clinician-patient-name {
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.clinician-patient-email {
+  font-size: var(--text-body-sm);
+  color: var(--on-surface-muted);
+}
+
+.clinician-report-title {
+  font-weight: 500;
+}
+
+.clinician-report-date,
+.clinician-expiry-date {
+  font-size: var(--text-body-sm);
+  color: var(--on-surface-muted);
+}
+
+/* ── Clinician Scoped Report View ── */
+
+.clinician-report-view {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-4);
+}
+
+.clinician-report-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-label-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-4);
+  color: var(--on-surface-muted);
+}
+
+.clinician-report-breadcrumb a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.clinician-report-breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb-sep {
+  color: var(--on-surface-muted);
+  font-size: 1rem;
+}
+
+/* Report header with patient info */
+.clinician-report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-8);
+  gap: var(--space-6);
+}
+
+.clinician-report-header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.clinician-report-title {
+  font-family: var(--font-display);
+  font-size: var(--text-headline-lg);
+  font-weight: 700;
+  color: var(--on-surface);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.clinician-report-patient-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  font-family: var(--font-body);
+  font-size: var(--text-body-sm);
+  color: var(--on-surface-muted);
+}
+
+.clinician-patient-name-lg {
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.clinician-patient-dob,
+.clinician-report-date-label {
+  color: var(--on-surface-muted);
+}
+
+.clinician-report-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.clinician-expiry-label {
+  font-family: var(--font-body);
+  font-size: var(--text-body-sm);
+  color: var(--on-surface-muted);
+}
+
+/* Clinical Summary card */
+.clinician-summary-card {
+  display: flex;
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  margin-bottom: var(--space-6);
+}
+
+.clinician-summary-accent {
+  width: 4px;
+  background: var(--secondary);
+  flex-shrink: 0;
+}
+
+.clinician-summary-content {
+  padding: var(--space-6);
+  flex: 1;
+}
+
+.clinician-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.clinician-summary-title {
+  font-family: var(--font-display);
+  font-size: var(--text-title-lg);
+  font-weight: 600;
+  color: var(--on-surface);
+  margin: 0;
+}
+
+.clinician-summary-text {
+  font-family: var(--font-body);
+  font-size: var(--text-body-md);
+  color: var(--on-surface);
+  line-height: 1.7;
+  margin: 0;
+}
+
+.clinician-status-indicators {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.clinician-status-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-lg);
+  flex: 1;
+}
+
+.clinician-status-normal {
+  background: var(--success-container, #ecfdf5);
+}
+
+.clinician-status-flagged {
+  background: var(--warning-container, #fffbeb);
+}
+
+.clinician-status-icon {
+  font-size: 1.25rem;
+}
+
+.clinician-status-label {
+  display: block;
+  font-size: var(--text-label-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--on-surface-muted);
+}
+
+.clinician-status-count {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--text-title-md);
+  font-weight: 700;
+  color: var(--on-surface);
+}
+
+/* Doctor Summary card */
+.clinician-doctor-summary-card {
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  border-left: 4px solid var(--primary);
+}
+
+.clinician-doctor-summary-title {
+  font-family: var(--font-display);
+  font-size: var(--text-title-lg);
+  font-weight: 600;
+  color: var(--on-surface);
+  margin: 0 0 var(--space-3) 0;
+}
+
+.clinician-doctor-summary-text {
+  font-family: var(--font-body);
+  font-size: var(--text-body-md);
+  color: var(--on-surface);
+  line-height: 1.7;
+  margin: 0 0 var(--space-4) 0;
+}
+
+.clinician-doctor-flagged ul {
+  margin: var(--space-2) 0 0 var(--space-5);
+  padding: 0;
+  list-style: disc;
+}
+
+.clinician-doctor-flagged li {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-body-sm);
+}
+
+/* Lab Results table */
+.clinician-lab-section {
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  margin-bottom: var(--space-6);
+}
+
+.clinician-lab-heading {
+  font-family: var(--font-display);
+  font-size: var(--text-title-lg);
+  font-weight: 600;
+  color: var(--on-surface);
+  padding: var(--space-6) var(--space-6) var(--space-3);
+  margin: 0;
+}
+
+.clinician-lab-table-wrap {
+  overflow-x: auto;
+}
+
+.clinician-lab-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+}
+
+.clinician-lab-table thead th {
+  font-size: var(--text-label-sm);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--on-surface-muted);
+  padding: var(--space-3) var(--space-6);
+  text-align: left;
+  background: var(--surface-container-low);
+}
+
+.clinician-lab-table tbody td {
+  padding: var(--space-4) var(--space-6);
+  font-size: var(--text-body-md);
+  color: var(--on-surface);
+}
+
+.clinician-lab-row:not(:last-child) td {
+  border-bottom: 1px solid rgba(195, 198, 215, 0.15);
+}
+
+.clinician-lab-row--flagged {
+  background: rgba(199, 56, 58, 0.03);
+}
+
+.clinician-biomarker-name {
+  font-weight: 500;
+}
+
+.clinician-value-flagged {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.clinician-value-unit {
+  font-size: var(--text-body-sm);
+  color: var(--on-surface-muted);
+}
+
+.clinician-ref-range {
+  color: var(--on-surface-muted);
+  font-size: var(--text-body-sm);
+}
+
+/* Threads section */
+.clinician-threads-section {
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+}
+
+.clinician-threads-heading {
+  font-family: var(--font-display);
+  font-size: var(--text-title-lg);
+  font-weight: 600;
+  color: var(--on-surface);
+  margin: 0 0 var(--space-4) 0;
+}
+
+/* ── Responsive: clinician dashboard ── */
+@media (max-width: 768px) {
+  .clinician-dashboard-header {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .clinician-reports-table-wrap {
+    overflow-x: auto;
+  }
+
+  .clinician-report-header {
+    flex-direction: column;
+  }
+
+  .clinician-report-header-right {
+    align-items: flex-start;
+    flex-direction: row;
+    gap: var(--space-3);
+  }
+
+  .clinician-status-indicators {
+    flex-direction: column;
+  }
+}
+
+/* ── Dark mode overrides for T15 ── */
+[data-theme='dark'] .clinician-dashboard-empty,
+[data-theme='dark'] .clinician-reports-table-wrap,
+[data-theme='dark'] .clinician-summary-card,
+[data-theme='dark'] .clinician-doctor-summary-card,
+[data-theme='dark'] .clinician-lab-section,
+[data-theme='dark'] .clinician-threads-section {
+  background: var(--surface-container);
+}
+
+[data-theme='dark'] .clinician-reports-table thead th,
+[data-theme='dark'] .clinician-lab-table thead th {
+  background: var(--surface-container-highest);
+}
+
+[data-theme='dark'] .clinician-dashboard-error {
+  background: rgba(199, 56, 58, 0.15);
+}
+
+[data-theme='dark'] .clinician-status-normal {
+  background: rgba(14, 159, 110, 0.12);
+}
+
+[data-theme='dark'] .clinician-status-flagged {
+  background: rgba(194, 120, 3, 0.12);
+}
+
+[data-theme='dark'] .clinician-lab-row--flagged {
+  background: rgba(199, 56, 58, 0.08);
+}

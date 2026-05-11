@@ -11,11 +11,15 @@ from app.db.models import User
 from app.db.session import get_db_session
 from app.dependencies.auth import AuthContext, get_current_auth_context
 from app.services.auth import (
+    PASSWORD_RESET_SUCCESS_MESSAGE,
     AuthError,
     TokenBundle,
+    dispatch_password_reset_email,
     login_account,
     refresh_account_session,
     register_account,
+    request_password_reset,
+    reset_account_password,
     revoke_session,
     role_names_for_user,
 )
@@ -47,6 +51,19 @@ class RegisterResponse(BaseModel):
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+
+class PasswordResetMessageResponse(BaseModel):
+    message: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=16)
+    new_password: str = Field(min_length=8)
 
 
 class RefreshRequest(BaseModel):
@@ -131,6 +148,40 @@ async def login_endpoint(
         _raise_auth_http_error(exc)
 
     return _tokens_response(user=user, token_bundle=token_bundle)
+
+
+@router.post("/forgot-password", response_model=PasswordResetMessageResponse)
+async def forgot_password_endpoint(
+    payload: ForgotPasswordRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> PasswordResetMessageResponse:
+    try:
+        dispatch = await request_password_reset(session, email=payload.email)
+    except AuthError as exc:
+        _raise_auth_http_error(exc)
+
+    if dispatch is not None:
+        dispatch_password_reset_email(request.app, dispatch)
+
+    return PasswordResetMessageResponse(message=PASSWORD_RESET_SUCCESS_MESSAGE)
+
+
+@router.post("/reset-password", response_model=PasswordResetMessageResponse)
+async def reset_password_endpoint(
+    payload: ResetPasswordRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> PasswordResetMessageResponse:
+    try:
+        await reset_account_password(
+            session,
+            token=payload.token,
+            new_password=payload.new_password,
+        )
+    except AuthError as exc:
+        _raise_auth_http_error(exc)
+
+    return PasswordResetMessageResponse(message="Password has been reset successfully.")
 
 
 @router.post("/refresh", response_model=AuthTokensResponse)

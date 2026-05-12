@@ -314,25 +314,25 @@ export default function ReportsPage() {
                         </Badge>
                       </td>
                       <td>
-                        <div className="rh-actions" style={{ justifyContent: 'flex-end' }}>
+                        <div className="rh-actions" style={{ justifyContent: 'flex-end', gap: '0.5rem' }}>
                           <button
-                            className="rh-action-btn"
                             onClick={() => (window.location.href = `/reports/${entry.id}`)}
                             aria-label={`Open report ${panelName}`}
                             title="View report"
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: '50%', border: '1.5px solid #2563eb', background: '#eff6ff', cursor: 'pointer', padding: 0 }}
                           >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                               <circle cx="12" cy="12" r="3" />
                             </svg>
                           </button>
                           <button
-                            className="rh-action-btn"
                             onClick={() => beginSharing(entry)}
                             aria-label={`Share report ${panelName}`}
                             title="Share report"
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: '50%', border: '1.5px solid #6b7280', background: '#f9fafb', cursor: 'pointer', padding: 0 }}
                           >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                               <circle cx="18" cy="5" r="3" />
                               <circle cx="6" cy="12" r="3" />
                               <circle cx="18" cy="19" r="3" />

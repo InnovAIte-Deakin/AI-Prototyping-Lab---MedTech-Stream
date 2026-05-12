@@ -18,10 +18,16 @@ depends_on = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("reports") as batch_op:
-        batch_op.add_column(
-            sa.Column("chat_history_json", sa.JSON(), nullable=True)
+    conn = op.get_bind()
+    exists = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='reports' AND column_name='chat_history_json'"
         )
+    ).fetchone()
+    if not exists:
+        with op.batch_alter_table("reports") as batch_op:
+            batch_op.add_column(sa.Column("chat_history_json", sa.JSON(), nullable=True))
 
 
 def downgrade() -> None:

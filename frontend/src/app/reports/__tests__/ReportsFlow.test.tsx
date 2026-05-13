@@ -375,12 +375,10 @@ describe('Report history and sharing preference flow', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('img', { name: /biomarker timeline chart/i })).toBeInTheDocument();
+      expect(screen.getByText(/You have 3 clinical reports available for review/i)).toBeInTheDocument();
     });
-    expect(screen.getAllByLabelText(/select biomarker/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('option', { name: /alanine aminotransferase/i }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('option', { name: /aspartate aminotransferase/i }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('option', { name: /alkaline phosphatase/i }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('img', { name: /biomarker timeline chart/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/select biomarker/i)).not.toBeInTheDocument();
   });
 
 
@@ -614,7 +612,9 @@ describe('Report history and sharing preference flow', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/trend details require full-report sharing access for clinician views/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Report E' })).toBeInTheDocument();
     });
+    expect(screen.queryByText(/trend details require full-report sharing access for clinician views/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /biomarker timeline chart/i })).not.toBeInTheDocument();
   });
 });

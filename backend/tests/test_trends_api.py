@@ -349,6 +349,13 @@ def test_trends_skip_mixed_unit_series(trends_api: TrendsApiHarness):
         role="patient",
         display_name="Patient Mixed Units",
     )
+    register_user(
+        trends_api,
+        email="clinician.mixedunits@example.com",
+        password="Password123!",
+        role="clinician",
+        display_name="Clinician Mixed Units",
+    )
 
     create_report_with_findings(
         trends_api.session_factory,
@@ -369,10 +376,24 @@ def test_trends_skip_mixed_unit_series(trends_api: TrendsApiHarness):
         hemoglobin_unit="mmol/L",
     )
 
-    login = login_user(trends_api, email="patient.mixedunits@example.com", password="Password123!")
+    patient_login = login_user(trends_api, email="patient.mixedunits@example.com", password="Password123!")
+    share_response = trends_api.client.post(
+        f"/api/v1/reports/{newer_report_id}/share",
+        headers=auth_headers(patient_login["access_token"]),
+        json={
+            "clinician_email": "clinician.mixedunits@example.com",
+            "scope": "patient",
+            "access_level": "read",
+            "expires_at": (datetime.now(UTC) + timedelta(days=3)).isoformat(),
+            "view_scope": "full_report",
+        },
+    )
+    assert share_response.status_code == 201, share_response.text
+
+    clinician_login = login_user(trends_api, email="clinician.mixedunits@example.com", password="Password123!")
     response = trends_api.client.get(
         f"/api/v1/reports/{newer_report_id}/trends",
-        headers=auth_headers(login["access_token"]),
+        headers=auth_headers(clinician_login["access_token"]),
     )
     assert response.status_code == 200, response.text
     assert response.json()["trends"] == []

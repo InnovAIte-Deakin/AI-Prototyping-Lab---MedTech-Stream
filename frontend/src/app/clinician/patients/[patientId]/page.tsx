@@ -112,7 +112,7 @@ function getToken(): string | null {
   }
 }
 
-export default function ClinicianPatientProfilePage({ params }: { params: { patientId: string } }) {
+export default function ClinicianPatientProfilePage({ params }: any) {
   const { status } = useAuth();
   const [summary, setSummary] = useState<PatientSummary | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);

@@ -61,7 +61,7 @@ describe('Clinician shared reports dashboard', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Alice Patient')).toBeDefined();
-      expect(screen.getByText(/summary_only/i)).toBeDefined();
+      expect(screen.getByText(/summary only/i)).toBeDefined();
     });
     expect(screen.queryByText(/no reports/i) ?? null).toBeNull();
   });

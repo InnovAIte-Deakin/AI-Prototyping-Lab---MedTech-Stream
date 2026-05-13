@@ -104,7 +104,7 @@ function getToken(): string | null {
   }
 }
 
-export default function ClinicianReportViewPage({ params }: { params: { reportId: string } }) {
+export default function ClinicianReportViewPage({ params }: any) {
   const { status } = useAuth();
   const [view, setView] = useState<ReportView | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);

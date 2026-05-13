@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/store/authStore';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
+import { formatUtcDate } from '@/lib/dateFormatting';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -36,7 +37,7 @@ function scopeBadgeVariant(scope: string): 'info' | 'optimal' | 'attention' {
 }
 
 function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(iso));
+  return formatUtcDate(iso);
 }
 
 export default function ClinicianDashboardPage() {

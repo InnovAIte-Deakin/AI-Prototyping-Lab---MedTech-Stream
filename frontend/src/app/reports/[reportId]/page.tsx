@@ -26,7 +26,7 @@ const defaultSharingPreferences: SharingPreferences = {
 };
 
 
-export default function ReportDetailPage({ params, searchParams }: { params: { reportId: string }; searchParams?: { panel?: string; threadId?: string } }) {
+export default function ReportDetailPage({ params, searchParams }: any) {
   const { user } = useAuth();
   const [report, setReport] = useState<ReportHistoryEntry | undefined>(undefined);
   const [sharingPreferences, setSharingPreferences] = useState<SharingPreferences>(defaultSharingPreferences);

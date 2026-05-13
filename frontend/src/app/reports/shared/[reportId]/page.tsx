@@ -65,7 +65,7 @@ function flagBadgeLabel(flag: string | null | undefined): string {
   return flag.toUpperCase();
 }
 
-export default function ClinicianReportViewPage({ params }: { params: { reportId: string } }) {
+export default function ClinicianReportViewPage({ params }: any) {
   const { user } = useAuth();
   const [data, setData] = useState<SharedReportData | null>(null);
   const [loading, setLoading] = useState(true);

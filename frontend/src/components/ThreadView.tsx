@@ -78,7 +78,6 @@ export function ThreadView({
 
   // Anchored-thread reply state (keyed by thread id)
   const [replyText, setReplyText] = useState<Record<string, string>>({});
-  const [isClinicianMock, setIsClinicianMock] = useState<Record<string, boolean>>({});
   const [clinicianMeaning, setClinicianMeaning] = useState<Record<string, string>>({});
   const [clinicianUrgency, setClinicianUrgency] = useState<Record<string, string>>({});
   const [clinicianAction, setClinicianAction] = useState<Record<string, string>>({});
@@ -88,8 +87,6 @@ export function ThreadView({
   const [promptsLoading, setPromptsLoading] = useState(false);
   const [selectedPromptIndex, setSelectedPromptIndex] = useState<number | null>(null);
 
-  // Clinician mock for the general conversation
-  const [generalIsClinicianMock, setGeneralIsClinicianMock] = useState(false);
   const [generalClinicianMeaning, setGeneralClinicianMeaning] = useState('');
   const [generalClinicianUrgency, setGeneralClinicianUrgency] = useState('routine');
   const [generalClinicianAction, setGeneralClinicianAction] = useState('');
@@ -204,7 +201,6 @@ export function ThreadView({
       setGeneralClinicianMeaning('');
       setGeneralClinicianUrgency('routine');
       setGeneralClinicianAction('');
-      setGeneralIsClinicianMock(false);
       fetchThreads();
     } catch { /* ignore */ }
   };
@@ -236,18 +232,26 @@ export function ThreadView({
       setClinicianMeaning((prev) => ({ ...prev, [threadId]: '' }));
       setClinicianUrgency((prev) => ({ ...prev, [threadId]: 'routine' }));
       setClinicianAction((prev) => ({ ...prev, [threadId]: '' }));
-      setIsClinicianMock((prev) => ({ ...prev, [threadId]: false }));
       fetchThreads();
     } catch { /* ignore */ }
   };
 
   if (loading && threads.length === 0) return <div>Loading threads...</div>;
+  const isClinician = user?.role === 'clinician';
+  const focusedGeneralThread = generalThreads.find((thread) => thread.id === focusedThreadId) ?? null;
+  const generalCardThreadId = focusedGeneralThread?.id ?? openGeneralThread?.id ?? null;
 
   return (
     <div style={{ marginTop: '1rem' }}>
 
       {/* ── GENERAL CONVERSATION (all non-anchored threads merged) ── */}
-      <div className="card" style={{ padding: '1rem', marginBottom: anchoredThreads.length > 0 ? '1.5rem' : 0 }}>
+      <div
+        id={generalCardThreadId ? `thread-card-${generalCardThreadId}` : undefined}
+        data-testid={generalCardThreadId ? `thread-card-${generalCardThreadId}` : undefined}
+        data-focused={focusedGeneralThread ? 'true' : 'false'}
+        className="card"
+        style={{ padding: '1rem', marginBottom: anchoredThreads.length > 0 ? '1.5rem' : 0 }}
+      >
 
         {/* Merged message history */}
         {generalMessages.length > 0 && (
@@ -258,9 +262,9 @@ export function ThreadView({
           </div>
         )}
 
-        {/* Clinician mock or reply input */}
+        {/* Clinician response template or patient reply input */}
         <div style={{ borderTop: generalMessages.length > 0 ? '1px solid #eee' : 'none', paddingTop: generalMessages.length > 0 ? '1rem' : 0, marginBottom: '1.5rem' }}>
-          {generalIsClinicianMock ? (
+          {isClinician && openGeneralThread ? (
             <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
               <h4 style={{ margin: '0 0 1rem 0' }}>Clinician Response Template</h4>
               <div className="field" style={{ marginBottom: '0.5rem' }}>
@@ -292,10 +296,6 @@ export function ThreadView({
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSendGeneralReply(); }}
               />
               <button className="nav-btn nav-btn-primary" onClick={handleSendGeneralReply} disabled={!generalReplyText.trim()}>Send</button>
-              <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', background: '#ebf8ff', padding: '0.3rem 0.5rem', borderRadius: '4px', whiteSpace: 'nowrap' }}>
-                <input type="checkbox" checked={generalIsClinicianMock} onChange={(e) => setGeneralIsClinicianMock(e.target.checked)} />
-                Simulate Clinician Access
-              </label>
             </div>
           )}
         </div>
@@ -344,10 +344,6 @@ export function ThreadView({
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ margin: 0 }}>{thread.title || 'Thread'}</h3>
-            <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', background: '#ebf8ff', padding: '0.3rem', borderRadius: '4px' }}>
-              <input type="checkbox" checked={isClinicianMock[thread.id] || false} onChange={(e) => setIsClinicianMock((prev) => ({ ...prev, [thread.id]: e.target.checked }))} />
-              Simulate Clinician Access
-            </label>
           </div>
 
           <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -357,7 +353,7 @@ export function ThreadView({
           </div>
 
           <div style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
-            {isClinicianMock[thread.id] ? (
+            {isClinician ? (
               <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 <h4 style={{ margin: '0 0 1rem 0' }}>Clinician Response Template</h4>
                 <div className="field" style={{ marginBottom: '0.5rem' }}>

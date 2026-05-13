@@ -333,16 +333,21 @@ describe('Report history and sharing preference flow', () => {
     fireEvent.click(screen.getByRole('button', { name: /start sharing/i }));
 
     await waitFor(() => {
-      expect(
-        vi.mocked(global.fetch).mock.calls.some(
-          ([url, init]) =>
-            String(url).includes('/api/v1/reports/') &&
-            String(url).endsWith('/share') &&
-            init?.method === 'POST' &&
-            init?.headers &&
-            (init.headers as Record<string, string>).Authorization === 'Bearer access-token',
-        ),
-      ).toBe(true);
+      const shareCall = vi.mocked(global.fetch).mock.calls.find(
+        ([url, init]) =>
+          String(url).includes('/api/v1/reports/') &&
+          String(url).endsWith('/share') &&
+          init?.method === 'POST' &&
+          init?.headers &&
+          (init.headers as Record<string, string>).Authorization === 'Bearer access-token',
+      );
+      expect(shareCall).toBeTruthy();
+      expect(JSON.parse(String(shareCall?.[1]?.body))).toEqual(
+        expect.objectContaining({
+          scope: 'report',
+          access_level: 'comment',
+        })
+      );
     });
   });
 

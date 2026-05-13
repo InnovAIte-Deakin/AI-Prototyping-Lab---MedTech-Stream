@@ -431,6 +431,7 @@ class ConsentShare(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         default=ConsentAccessLevel.READ,
     )
+    include_doctor_summary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     purpose: Mapped[str | None] = mapped_column(String(255), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -4,9 +4,11 @@ import React from 'react';
 import { PatientQuestions } from '../../../components/PatientQuestions';
 import { ThreadView } from '../../../components/ThreadView';
 
+let mockUser = { id: 'patient-user', email: 'patient@example.com', role: 'patient' };
+
 vi.mock('@/store/authStore', () => ({
   useAuth: () => ({
-    user: { id: 'patient-user', email: 'patient@example.com', role: 'patient' },
+    user: mockUser,
     status: 'authenticated',
   }),
 }));
@@ -15,6 +17,7 @@ process.env.NEXT_PUBLIC_BACKEND_URL = 'http://test';
 
 describe('Threads and Questions Flow', () => {
   beforeEach(() => {
+    mockUser = { id: 'patient-user', email: 'patient@example.com', role: 'patient' };
     global.fetch = vi.fn() as any;
     vi.clearAllMocks();
   });
@@ -75,5 +78,77 @@ describe('Threads and Questions Flow', () => {
     expect(screen.getByText('It means nothing.')).toBeInTheDocument();
     expect(screen.getByText('routine')).toBeInTheDocument();
     expect(screen.getByText('Rest.')).toBeInTheDocument();
+  });
+
+  it('shows the structured response template to clinicians without patient-visible simulation controls', async () => {
+    mockUser = { id: 'clinician-user', email: 'clinician@example.com', role: 'clinician' };
+    const mockThread = {
+      id: 'thread-1',
+      title: 'Glucose question',
+      messages: [
+        {
+          id: 'msg-1',
+          author_user_id: 'patient-user',
+          author_name: 'Patient User',
+          kind: 'text',
+          body: 'What does high glucose mean?',
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+
+    (global.fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([mockThread]),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 'msg-2',
+          kind: 'template',
+          body: JSON.stringify({ meaning: 'It may reflect recent diet.', urgency: 'routine', action: 'Repeat testing.' }),
+          created_at: new Date().toISOString(),
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([mockThread]),
+      });
+
+    render(<ThreadView reportId="123" accessToken="token" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Clinician Response Template')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Simulate Clinician Access')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('What the result means:'), {
+      target: { value: 'It may reflect recent diet.' },
+    });
+    fireEvent.change(screen.getByLabelText('Urgency:'), {
+      target: { value: 'soon' },
+    });
+    fireEvent.change(screen.getByLabelText('Recommended action:'), {
+      target: { value: 'Repeat fasting labs.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Clinical Response' }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://test/api/v1/threads/thread-1/messages',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            template_payload: {
+              meaning: 'It may reflect recent diet.',
+              urgency: 'soon',
+              action: 'Repeat fasting labs.',
+            },
+          }),
+        })
+      );
+    });
   });
 });

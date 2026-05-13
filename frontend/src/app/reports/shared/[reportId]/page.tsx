@@ -144,8 +144,14 @@ export default function ClinicianReportViewPage({ params }: { params: any }) {
 
   const { share, patient, report } = data;
   const scope = share.scope;
-  const showFindings = scope === 'full_report' || scope === 'full_report_with_threads';
-  const showThreads = scope === 'full_report_with_threads';
+  const canComment = share.access_level === 'comment' || share.access_level === 'manage';
+  const showFindings = (
+    scope === 'full_report'
+    || scope === 'full_report_with_threads'
+    || scope === 'patient'
+    || canComment
+  );
+  const showThreads = scope === 'full_report_with_threads' || canComment;
   const showDoctorSummary = share.include_doctor_summary === true;
 
   const flaggedCount = report.findings.filter(
@@ -332,12 +338,14 @@ function formatScopeLabel(scope: string): string {
     case 'summary_only': return 'Summary Only';
     case 'full_report': return 'Full Report';
     case 'full_report_with_threads': return 'Full Report + Threads';
+    case 'report': return 'Summary Only';
+    case 'patient': return 'Full Report + Threads';
     default: return scope.replace(/_/g, ' ');
   }
 }
 
 function scopeBadgeVariant(scope: string): 'info' | 'optimal' | 'attention' {
-  if (scope === 'summary_only') return 'info';
-  if (scope === 'full_report_with_threads') return 'optimal';
+  if (scope === 'summary_only' || scope === 'report') return 'info';
+  if (scope === 'full_report_with_threads' || scope === 'patient') return 'optimal';
   return 'optimal';
 }

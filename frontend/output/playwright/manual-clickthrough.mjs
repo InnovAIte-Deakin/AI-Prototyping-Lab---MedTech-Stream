@@ -1,6 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { chromium } from 'playwright';
+import { pathToFileURL } from 'node:url';
+
+const playwrightImport = process.env.PLAYWRIGHT_MODULE
+  ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href
+  : 'playwright';
+const playwright = await import(playwrightImport);
+const { chromium } = playwright.chromium ? playwright : playwright.default;
 
 const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 const outDir = path.resolve('output/playwright/manual-clickthrough');
@@ -262,6 +268,7 @@ await step('report detail interpretation sidebar, chat, export, and patient ques
   await page.locator('#export-doctor-summary-btn').click();
   const printCalls = await page.evaluate(() => window.__printCalls || 0);
   assert(printCalls >= 1, 'Export PDF did not call window.print()');
+  await page.pdf({ path: path.join(outDir, 'doctor-summary-print.pdf'), format: 'A4', printBackground: true });
   await expectText('Questions for My Clinician', 30000);
   await page.getByRole('button', { name: '+ Ask something else (Free text)' }).click();
   await page.locator('textarea').last().fill('Can we discuss my glucose trend?');
@@ -316,6 +323,16 @@ await step('clinician login, shared reports dashboard, shared detail, and notifi
     await clinicianPage.getByRole('button', { name: /^Open$/ }).first().click();
     await clinicianPage.waitForURL((url) => /\/reports\/shared\/[^/]+$/.test(url.pathname), { timeout: 15000 });
     await clinicianPage.getByText('Clinical Summary', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
+    await clinicianPage.getByText('Doctor Summary', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
+    await clinicianPage.getByText('Lab Results & Biomarkers', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
+    await clinicianPage.getByText('Conversation Threads', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
+    await clinicianPage.getByText('Clinician Response Template', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
+    await clinicianPage.getByLabel('What the result means:').fill('This pattern can fit recent meals or early glucose intolerance.');
+    await clinicianPage.getByLabel('Urgency:').selectOption('soon');
+    await clinicianPage.getByLabel('Recommended action:').fill('Book a non-urgent follow-up and repeat fasting labs.');
+    await clinicianPage.getByRole('button', { name: 'Submit Clinical Response' }).click();
+    await clinicianPage.getByText('Clinician Response', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
+    await clinicianPage.screenshot({ path: path.join(outDir, 'clinician-shared-detail.png'), fullPage: true });
     await clinicianPage.getByRole('link', { name: 'Shared Reports' }).first().click();
     await clinicianPage.waitForURL((url) => url.href.includes('/reports/shared'), { timeout: 15000 });
     await clinicianPage.getByRole('button', { name: 'Notifications' }).click();
@@ -325,7 +342,6 @@ await step('clinician login, shared reports dashboard, shared detail, and notifi
     await clinicianPage.waitForURL((url) => url.href.includes('/notifications'), { timeout: 15000 });
     await clinicianPage.getByRole('button', { name: /^Unread$/ }).click();
     await clinicianPage.getByRole('button', { name: /^All$/ }).click();
-    await clinicianPage.screenshot({ path: path.join(outDir, 'clinician-shared-detail.png'), fullPage: true });
   } finally {
     await clinicianContext.close();
   }

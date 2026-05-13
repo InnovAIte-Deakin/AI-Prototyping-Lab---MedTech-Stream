@@ -45,6 +45,7 @@ def _share_report(
     clinician_email: str,
     scope: str = "report",
     access_level: str = "read",
+    include_doctor_summary: bool = False,
 ) -> dict:
     response = consent_api.client.post(
         f"/api/v1/reports/{report_id}/share",
@@ -52,6 +53,7 @@ def _share_report(
             "clinician_email": clinician_email,
             "scope": scope,
             "access_level": access_level,
+            "include_doctor_summary": include_doctor_summary,
             "expires_at": (datetime.now(UTC) + timedelta(days=7)).isoformat(),
         },
         headers=auth_headers(patient_token),
@@ -69,6 +71,20 @@ def _list_shared_reports(consent_api: ConsentApiHarness, *, clinician_token: str
     payload = response.json()
     assert isinstance(payload, list)
     return payload
+
+
+def _get_shared_report_detail(
+    consent_api: ConsentApiHarness,
+    *,
+    clinician_token: str,
+    report_id: str,
+) -> dict:
+    response = consent_api.client.get(
+        f"/api/v1/reports/shared-reports/{report_id}",
+        headers=auth_headers(clinician_token),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
 def test_clinician_can_list_actively_shared_reports(consent_api: ConsentApiHarness) -> None:
@@ -329,3 +345,39 @@ def test_overlap_patient_and_report_scope_is_deduped_by_report(consent_api: Cons
     assert ids.count(report_a.id) == 1
     report_a_row = next(item for item in payload if item["report"]["id"] == report_a.id)
     assert report_a_row["scope"] == "report"
+
+
+def test_shared_report_detail_preserves_doctor_summary_flag(consent_api: ConsentApiHarness) -> None:
+    patient_email = "patient-doctor-summary-detail@example.com"
+    clinician_email = "clinician-doctor-summary-detail@example.com"
+
+    with consent_api.session_factory() as session:
+        seed_user(session, email=patient_email, role="patient")
+        seed_user(session, email=clinician_email, role="clinician")
+        report = seed_report(
+            session,
+            subject_email=patient_email,
+            created_by_email=patient_email,
+        )
+
+    patient_token = login(consent_api, email=patient_email)
+    _share_report(
+        consent_api,
+        report_id=report.id,
+        patient_token=patient_token,
+        clinician_email=clinician_email,
+        scope="patient",
+        access_level="comment",
+        include_doctor_summary=True,
+    )
+
+    clinician_token = login(consent_api, email=clinician_email)
+    detail = _get_shared_report_detail(
+        consent_api,
+        clinician_token=clinician_token,
+        report_id=report.id,
+    )
+
+    assert detail["share"]["scope"] == "patient"
+    assert detail["share"]["access_level"] == "comment"
+    assert detail["share"]["include_doctor_summary"] is True

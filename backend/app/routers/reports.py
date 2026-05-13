@@ -38,6 +38,7 @@ class ReportShareRequest(BaseModel):
     scope: ConsentScope = ConsentScope.REPORT
     access_level: ConsentAccessLevel = ConsentAccessLevel.READ
     expires_at: datetime
+    include_doctor_summary: bool = False
 
 
 class ReportCreateFinding(BaseModel):
@@ -175,6 +176,7 @@ class ReportShareResponse(BaseModel):
     scope: str
     access_level: str
     expires_at: datetime
+    include_doctor_summary: bool = False
 
 
 @router.post("/{report_id}/share", response_model=ReportShareResponse, status_code=status.HTTP_201_CREATED)
@@ -193,6 +195,7 @@ async def share_report(
             scope=payload.scope,
             access_level=payload.access_level,
             expires_at=payload.expires_at,
+            include_doctor_summary=payload.include_doctor_summary,
         )
     except ReportServiceError as exc:
         _raise_report_http_error(exc)
@@ -203,6 +206,7 @@ async def share_report(
         scope=result.share.scope.value,
         access_level=result.share.access_level.value,
         expires_at=result.share.expires_at,
+        include_doctor_summary=result.share.include_doctor_summary,
     )
 
 
@@ -375,6 +379,7 @@ async def get_clinician_shared_report_detail(
             scope=share.scope.value,
             access_level=share.access_level.value,
             expires_at=share.expires_at,
+            include_doctor_summary=share.include_doctor_summary,
         ),
         patient=UserOut(
             id=patient.id,

@@ -2,7 +2,7 @@
 
 ## Abstract
 
-This QA pass verified latest `origin/main` from a clean worktree, launched the full Docker stack, tested backend and frontend automation, and then completed a real browser click-through of the main user workflows. Nine defects were found and fixed during the pass. The final state is strong: backend tests pass, frontend lint/typecheck/Vitest/build pass, production dependency audit is clean, Docker health checks pass, and the browser-driven click-through completed 13 workflow groups with zero failed steps.
+This QA pass verified latest `origin/main` from a clean worktree, launched the full Docker stack, tested backend and frontend automation, and then completed a real browser click-through of the main user workflows. Thirteen defects were found and fixed during the pass. The final state is strong: backend tests pass, frontend lint/typecheck/Vitest/build pass, production dependency audit is clean, Docker health checks pass, and the browser-driven click-through completed 13 workflow groups with zero failed steps.
 
 The only material limitation is environment-related: no real `OPENAI_API_KEY` was available in this worktree, so live OpenAI interpretation/translation quality was not verified. The UI and API fallback behavior for missing-key conditions was verified instead.
 
@@ -96,6 +96,10 @@ Final screenshot from the passing browser click-through run.
 | QA-007 | Batch 7 | Patient question/thread UI exposure | `/reports/{id}` | Open a patient report detail and try to create a question for the clinician from the browser | Patient can click suggested/free-text questions and send them to create a thread | The `PatientQuestions` component existed but was not rendered on the report detail page | Rendered `PatientQuestions` for patient report detail; browser click-through created a thread and sent a reply | high | retest passed | local branch `codex/full-main-qa` |
 | QA-008 | Batch 2 | Unsupported upload error visibility | `/parse` | Select only an unsupported file type from the file picker | Clear visible error explains only PDF/PNG/JPEG are supported | Error state was set but hidden because the selected-files panel only renders when valid files exist | Rendered upload alert even when no valid file is selected; browser click-through verified visible validation | medium | retest passed | local branch `codex/full-main-qa` |
 | QA-009 | Batch 6 | Clinician shared report detail API | `/reports/shared/{reportId}` -> `/api/v1/reports/shared-reports/{reportId}` | As clinician, click `Open` from the Shared Reports dashboard | Shared report detail loads with clinical summary/findings | Dashboard listed the share, but `Open` hit a missing backend route and showed “Unable to load this shared report” | Added `GET /api/v1/reports/shared-reports/{report_id}`; browser click-through verified clinician open flow | high | retest passed | local branch `codex/full-main-qa` |
+| QA-010 | Batch 7 | Clinician structured response templates | `/reports/shared/{reportId}` and `/api/v1/threads/{threadId}/messages` | As clinician, open a shared report with a patient thread and try to answer with the structured template | Clinician sees the structured response form directly and can submit meaning, urgency, and action | Template UI was behind a patient-visible `Simulate Clinician Access` toggle and was not exercised by the browser pass | Removed simulation toggle, role-gated the template form to clinicians, added frontend coverage, and browser retested clinician template submission | high | retest passed | local branch `codex/full-main-qa` |
+| QA-011 | Batch 6/7 | Full-report sharing scope | `/reports/{id}/share` | Share one report as `Full report`, then open it from clinician dashboard after patient has multiple reports | Full report grants comment/thread access to the exact report being shared | UI sent patient-wide scope, so clinician dashboard could open another patient report first and miss the thread/template path | Changed full-report share payload to `scope: report` with `access_level: comment`; added frontend payload coverage and browser retest | high | retest passed | local branch `codex/full-main-qa` |
+| QA-012 | Batch 8 | Doctor-summary include flag persistence | `/reports/{id}/share` -> `/reports/shared/{reportId}` | Check `Include Doctor-Ready Summary PDF`, share with clinician, then open shared detail as clinician | Clinician shared detail receives `include_doctor_summary: true` and shows Doctor Summary | Share API accepted no persisted include flag; clinician detail always received false | Added persisted `include_doctor_summary` field, Alembic migration, API request/response wiring, backend test, and browser retest | high | retest passed | local branch `codex/full-main-qa` |
+| QA-013 | Batch 8 | Doctor-ready print CSS | Browser print/PDF for `/reports/{id}` | Export the hidden doctor-summary print target to PDF and render it | PDF is nonblank, readable, and fits on one A4 page | Initial real PDF render was blank/dark; after print visibility fix it rendered but produced blank extra pages | Replaced print hiding rules with visibility-based isolation plus layout removal for the report page; PDF retest is one page with extracted ReportX/Flagged Values text | high | retest passed | local branch `codex/full-main-qa` |
 
 ## Batch Evidence
 
@@ -107,7 +111,7 @@ Final screenshot from the passing browser click-through run.
 - Initial `npm audit --omit=dev` found production vulnerabilities in `next`/`postcss`; logged as QA-002 and fixed.
 - Final `npm run lint`: passed.
 - Final `npm run typecheck`: passed.
-- Final `npm test`: passed, 36 files / 175 tests.
+- Final `npm test`: passed, 36 files / 177 tests.
 - Final `npm run build`: passed on Next.js 15.5.18.
 - Final `npm audit --omit=dev`: passed, 0 vulnerabilities.
 
@@ -169,14 +173,16 @@ Final screenshot from the passing browser click-through run.
 - Clinician message role was preserved as `clinician`.
 - Notifications list returned 4 items, unread count was 4, and mark-all-read reduced unread count to 0.
 - Unauthorized caregiver access to shared-report notification target returned HTTP 403.
-- Browser click-through verified patient Questions for My Clinician UI, free-text send, thread render, reply button, notification drawer, notification page filters, clinician shared report dashboard, and clinician shared report open.
+- Browser click-through verified patient Questions for My Clinician UI, free-text send, thread render, reply button, clinician structured response template submission, notification drawer, notification page filters, clinician shared report dashboard, and clinician shared report open.
 
 ### Batch 8 - Doctor Summary And Export
 
 - Existing automated tests cover doctor-ready summary rendering, flagged findings, interpretation summary, thread/patient questions, and Export PDF button presence.
+- Added backend and browser coverage for preserving the doctor-summary include flag through sharing and showing the Doctor Summary section to the clinician.
+- Added a real browser PDF render check for the doctor-ready summary. Final artifact `frontend/output/playwright/manual-clickthrough/doctor-summary-print.pdf` is one page and contains extracted ReportX/Flagged Values text.
 - Report detail smoke verified interpreted reports are available for the doctor-summary print/export path.
 - No server-side export persistence was observed in the API smoke; export remains client print/PDF behavior.
-- One-page physical print/PDF output still needs a manual browser print-preview pass.
+- One-page browser PDF output was rendered and verified after QA-013: `doctor-summary-print.pdf` is one A4 page, nonblank, and contains extracted ReportX/Flagged Values text.
 
 ### Batch 9 - Frontend Quality Pass
 
@@ -192,13 +198,13 @@ Final screenshot from the passing browser click-through run.
 - Backend `python -m pytest -q`: passed, with one skipped OCR smoke test and one pytest rewrite warning.
 - Frontend `npm run lint`: passed.
 - Frontend `npm run typecheck`: passed.
-- Frontend `npm test`: passed, 36 files / 175 tests. Existing React `act(...)` warnings remain in test output.
+- Frontend `npm test`: passed, 36 files / 177 tests. Existing React `act(...)` warnings remain in test output.
 - Frontend `npm audit --omit=dev`: passed, 0 vulnerabilities.
 - Frontend `npm run build`: passed on Next.js 15.5.18.
 - Docker stack remains running with PostgreSQL on host port `5433`, frontend on `3000`, backend on `8000`.
 - Final live smoke passed: frontend home, frontend health, backend health with request ID, parse, interpret fallback, register, login, refresh, reports create/list/detail, trends, share, clinician access, revoke, question prompts fallback, thread messages, notifications unread/read-all.
-- Final browser click-through passed: home/nav, forgot password, clinician registration, patient registration, upload validation, parse/explain/translate/copy/print, second report, history search/sort/trends/open detail, AI chat, doctor-summary export, patient questions/thread/reply, share with clinician, patient notifications, clinician shared reports/detail/notifications, and revoke share.
-- Post-browser-fix regression passed again: backend pytest, frontend lint, typecheck, Vitest 36 files / 175 tests, production audit, production build, Docker frontend health, and Docker backend health.
+- Final browser click-through passed: home/nav, forgot password, clinician registration, patient registration, upload validation, parse/explain/translate/copy/print, second report, history search/sort/trends/open detail, AI chat, doctor-summary export, patient questions/thread/reply, share with clinician including doctor-summary flag, patient notifications, clinician shared reports/detail/doctor summary/structured response template/notifications, and revoke share.
+- Post-browser-fix regression passed again: backend pytest, frontend lint, typecheck, Vitest 36 files / 177 tests, production audit, production build, Docker frontend health, Docker backend health, and one-page browser PDF verification.
 - Backend logs after smoke contain expected `missing_api_key` fallback traces during question generation because this QA worktree still does not have a real `OPENAI_API_KEY`. Live OpenAI interpretation and translation quality checks are still blocked until that local secret is supplied.
 
 ## Conclusion

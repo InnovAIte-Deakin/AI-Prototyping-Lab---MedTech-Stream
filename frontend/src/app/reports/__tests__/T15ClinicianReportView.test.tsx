@@ -40,12 +40,12 @@ function setupClinicianAuth() {
   }));
 }
 
-function makeSharedReportResponse(scope: string, options?: { include_doctor_summary?: boolean }) {
+function makeSharedReportResponse(scope: string, options?: { include_doctor_summary?: boolean; access_level?: string }) {
   return {
     share: {
       share_id: 's1',
       scope,
-      access_level: 'read',
+      access_level: options?.access_level ?? 'read',
       expires_at: '2025-12-31T23:59:59Z',
       include_doctor_summary: options?.include_doctor_summary ?? false,
     },
@@ -64,7 +64,7 @@ function makeSharedReportResponse(scope: string, options?: { include_doctor_summ
   };
 }
 
-function mockSharedReportApi(scope: string, options?: { include_doctor_summary?: boolean }) {
+function mockSharedReportApi(scope: string, options?: { include_doctor_summary?: boolean; access_level?: string }) {
   const data = makeSharedReportResponse(scope, options);
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -174,6 +174,20 @@ describe('T15 — Clinician Scoped Report View', () => {
     });
 
     expect(screen.getByText(/conversation threads/i)).toBeInTheDocument();
+  });
+
+  it('raw patient scope with comment access shows findings and thread panel from the real API contract', async () => {
+    mockSharedReportApi('patient', { access_level: 'comment', include_doctor_summary: true });
+
+    render(<AuthProvider><ClinicianReportViewPage params={{ reportId: 'r1' }} /></AuthProvider>);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Comprehensive Metabolic Panel' })).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Glucose, Serum')).toBeInTheDocument();
+    expect(screen.getByText(/conversation threads/i)).toBeInTheDocument();
+    expect(screen.getByText(/doctor summary/i)).toBeInTheDocument();
   });
 
   it('shows doctor summary section when include_doctor_summary is true', async () => {

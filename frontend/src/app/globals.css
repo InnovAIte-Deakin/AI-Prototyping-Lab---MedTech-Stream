@@ -1229,10 +1229,38 @@ button:not(.theme-toggle):not(.remove-file):not(.file-input):not(.nav-link):focu
    Print styles — FR13 Doctor-Ready PDF Summary
    ============================================================ */
 @media print {
-  body > *:not(#__next):not(#doctor-summary-print-target) { display: none !important; }
-  #__next > *, header, nav, footer, .nav-header, .footer, .no-print,
-  [class*="navbar"], [class*="sidebar"] { display: none !important; }
-  #doctor-summary-print-target { display: block !important; }
+  html,
+  body {
+    background: #fff !important;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  header,
+  nav,
+  footer,
+  .nav-header,
+  .footer,
+  .report-detail-page,
+  .interp-sidebar,
+  .sharing-panel,
+  .sharing-panel-overlay,
+  .no-print,
+  [class*="navbar"],
+  [class*="sidebar"] {
+    display: none !important;
+  }
+  #doctor-summary-print-target,
+  #doctor-summary-print-target * {
+    visibility: visible !important;
+  }
+  #doctor-summary-print-target {
+    display: block !important;
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    background: #fff !important;
+  }
   .doctor-summary-print {
     display: block !important;
     font-family: var(--font-body);

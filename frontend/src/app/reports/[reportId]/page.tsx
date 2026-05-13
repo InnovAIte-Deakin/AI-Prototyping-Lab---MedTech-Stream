@@ -333,8 +333,9 @@ export default function ReportDetailPage({ params, searchParams }: { params: any
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({
           clinician_email: sharingPreferences.clinicianEmail,
-          scope: sharingPreferences.scope === 'full' ? 'patient' : 'report',
+          scope: 'report',
           access_level: sharingPreferences.scope === 'full' ? 'comment' : 'read',
+          include_doctor_summary: includeSummaryPDF,
           expires_at: new Date(sharingPreferences.expiresAt).toISOString(),
         }),
       });

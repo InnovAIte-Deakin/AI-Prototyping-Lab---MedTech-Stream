@@ -30,8 +30,7 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded, focusedThre
   const [threads, setThreads] = useState<ConversationThread[]>([]);
   const [loading, setLoading] = useState(false);
   const [replyText, setReplyText] = useState('');
-  
-  const [isClinicianMock, setIsClinicianMock] = useState(false);
+
   const [clinicianMeaning, setClinicianMeaning] = useState('');
   const [clinicianUrgency, setClinicianUrgency] = useState('routine');
   const [clinicianAction, setClinicianAction] = useState('');
@@ -108,7 +107,6 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded, focusedThre
       setClinicianMeaning('');
       setClinicianUrgency('routine');
       setClinicianAction('');
-      setIsClinicianMock(false);
       fetchThreads();
     } catch (err) {
       console.error(err);
@@ -117,6 +115,8 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded, focusedThre
 
   if (loading && threads.length === 0) return <div>Loading threads...</div>;
   if (threads.length === 0) return null;
+
+  const isClinician = user?.role === 'clinician';
 
   return (
     <div style={{ marginTop: '2rem' }}>
@@ -137,12 +137,6 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded, focusedThre
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>{thread.title || 'Thread'}</h3>
-                <div>
-                   <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', background: '#ebf8ff', padding: '0.3rem', borderRadius: '4px' }}>
-                    <input type="checkbox" checked={isClinicianMock} onChange={e => setIsClinicianMock(e.target.checked)} />
-                    Simulate Clinician Access
-                   </label>
-                </div>
             </div>
             
             <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -185,24 +179,24 @@ export function ThreadView({ reportId, accessToken, onThreadsLoaded, focusedThre
             </div>
 
             <div style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
-                {isClinicianMock ? (
+                {isClinician ? (
                   <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                     <h4 style={{ margin: '0 0 1rem 0' }}>Clinician Response Template</h4>
                     <div className="field" style={{ marginBottom: '0.5rem' }}>
-                      <label>What the result means:</label>
-                      <textarea value={clinicianMeaning} onChange={e => setClinicianMeaning(e.target.value)} rows={2} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }} />
+                      <label htmlFor={`clinician-meaning-${thread.id}`}>What the result means:</label>
+                      <textarea id={`clinician-meaning-${thread.id}`} value={clinicianMeaning} onChange={e => setClinicianMeaning(e.target.value)} rows={2} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }} />
                     </div>
                     <div className="field" style={{ marginBottom: '0.5rem' }}>
-                      <label>Urgency:</label>
-                      <select value={clinicianUrgency} onChange={e => setClinicianUrgency(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}>
+                      <label htmlFor={`clinician-urgency-${thread.id}`}>Urgency:</label>
+                      <select id={`clinician-urgency-${thread.id}`} value={clinicianUrgency} onChange={e => setClinicianUrgency(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}>
                         <option value="routine">Routine</option>
                         <option value="soon">Soon</option>
                         <option value="urgent">Urgent</option>
                       </select>
                     </div>
                     <div className="field" style={{ marginBottom: '1rem' }}>
-                      <label>Recommended action:</label>
-                      <textarea value={clinicianAction} onChange={e => setClinicianAction(e.target.value)} rows={2} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }} />
+                      <label htmlFor={`clinician-action-${thread.id}`}>Recommended action:</label>
+                      <textarea id={`clinician-action-${thread.id}`} value={clinicianAction} onChange={e => setClinicianAction(e.target.value)} rows={2} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }} />
                     </div>
                     <button className="nav-btn nav-btn-primary" onClick={() => handleSendClinicianTemplate(thread.id)}>Submit Clinical Response</button>
                   </div>

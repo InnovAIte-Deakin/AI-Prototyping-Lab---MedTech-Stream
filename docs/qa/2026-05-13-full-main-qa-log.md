@@ -2,9 +2,9 @@
 
 ## Abstract
 
-This QA pass verified latest `origin/main` from a clean worktree, launched the full Docker stack, tested backend and frontend automation, and then completed a real browser click-through of the main user workflows. Thirteen defects were found and fixed during the pass. The final state is strong: backend tests pass, frontend lint/typecheck/Vitest/build pass, production dependency audit is clean, Docker health checks pass, and the browser-driven click-through completed 13 workflow groups with zero failed steps.
+This QA pass verified latest `origin/main` from a clean worktree, launched the full Docker stack, tested backend and frontend automation, and then completed a real browser click-through of the main user workflows. Fourteen defects were found and fixed during the pass, including a live OpenAI parse integration issue found after a real key was supplied locally. The final state is strong: backend tests pass, frontend lint/typecheck/Vitest/build pass, production dependency audit is clean, Docker health checks pass, and the browser-driven click-through completed 13 workflow groups with zero failed steps.
 
-The only material limitation is environment-related: no real `OPENAI_API_KEY` was available in this worktree, so live OpenAI interpretation/translation quality was not verified. The UI and API fallback behavior for missing-key conditions was verified instead.
+The original missing-key limitation has been cleared for the core AI paths. A local, git-ignored `.env` was updated with a real OpenAI key after the first pass, and the live smoke verified OpenAI auth, parse extraction, interpretation, Spanish translation, and AI-generated patient questions without committing any secret.
 
 ## Table Of Contents
 
@@ -38,7 +38,9 @@ Source commit: `9223861 Merge pull request #24 from InnovAIte-Deakin/feature/t16
 ## Environment Notes
 
 - `.env` was created locally from `.env.example` and is git-ignored.
-- `OPENAI_API_KEY` was not available in the process environment at QA setup time. Live AI checks require a real key to be added locally before Batch 2 and Batch 3 can be fully completed.
+- `OPENAI_API_KEY` was not available in the process environment at initial QA setup time, so missing-key fallback behavior was tested first.
+- A real OpenAI key was later added only to local `.env`, which remains git-ignored and was not committed.
+- Live OpenAI smoke after the key was added: parse returned 3 rows, interpretation returned a 1416-character summary, Spanish translation returned 1615 characters and changed the source text, and AI question generation returned 3 non-generic patient questions.
 
 ## Screenshot Evidence
 
@@ -100,6 +102,7 @@ Final screenshot from the passing browser click-through run.
 | QA-011 | Batch 6/7 | Full-report sharing scope | `/reports/{id}/share` | Share one report as `Full report`, then open it from clinician dashboard after patient has multiple reports | Full report grants comment/thread access to the exact report being shared | UI sent patient-wide scope, so clinician dashboard could open another patient report first and miss the thread/template path | Changed full-report share payload to `scope: report` with `access_level: comment`; added frontend payload coverage and browser retest | high | retest passed | local branch `codex/full-main-qa` |
 | QA-012 | Batch 8 | Doctor-summary include flag persistence | `/reports/{id}/share` -> `/reports/shared/{reportId}` | Check `Include Doctor-Ready Summary PDF`, share with clinician, then open shared detail as clinician | Clinician shared detail receives `include_doctor_summary: true` and shows Doctor Summary | Share API accepted no persisted include flag; clinician detail always received false | Added persisted `include_doctor_summary` field, Alembic migration, API request/response wiring, backend test, and browser retest | high | retest passed | local branch `codex/full-main-qa` |
 | QA-013 | Batch 8 | Doctor-ready print CSS | Browser print/PDF for `/reports/{id}` | Export the hidden doctor-summary print target to PDF and render it | PDF is nonblank, readable, and fits on one A4 page | Initial real PDF render was blank/dark; after print visibility fix it rendered but produced blank extra pages | Replaced print hiding rules with visibility-based isolation plus layout removal for the report page; PDF retest is one page with extracted ReportX/Flagged Values text | high | retest passed | local branch `codex/full-main-qa` |
+| QA-014 | Batch 2/3 | Live OpenAI parse extraction with `gpt-5` | `POST /api/v1/parse` | Add a real `OPENAI_API_KEY`, restart backend, and parse pasted lab text through the live OpenAI extraction path | OpenAI parse extraction succeeds or falls back only for content/availability issues | Responses API rejected `temperature` for `gpt-5`, so parse extraction fell back even though auth worked | Added regression test and omitted `temperature` for `gpt-5`, `o*`, `omni`, and `gpt-4.1` models; live smoke retested parse, interpretation, translation, and question generation | high | retest passed | local branch `codex/full-main-qa` |
 
 ## Batch Evidence
 
@@ -129,9 +132,10 @@ Final screenshot from the passing browser click-through run.
 
 - API smoke with pasted lab text parsed 3 rows; first row `Hemoglobin`.
 - Parsed response includes extracted source text and finding fields consumed by the editable frontend table.
-- Interpretation endpoint returned a safe fallback summary because no live OpenAI key is configured in this QA worktree.
+- Initial no-key run verified safe interpretation fallback behavior. After a real key was added locally, live interpretation returned a 1416-character OpenAI-generated summary.
 - Public parse UI captured on desktop and mobile; Batch 9 logged and fixed the only visible mobile overlap found.
 - Browser click-through verified unsupported file validation, valid PNG selection/removal, pasted text parse, explain, translation fallback, copy, and print/download click behavior.
+- Live OpenAI retest after QA-014 verified pasted lab text parsed 3 rows through the corrected extraction path.
 - File upload variants, unsupported file type, and oversized-file behavior still need a live manual browser pass with representative local files.
 
 ### Batch 3 - Translation And AI Fallback Behavior
@@ -139,7 +143,8 @@ Final screenshot from the passing browser click-through run.
 - Missing-key translation path returns HTTP 503 with a clear `missing_api_key` style failure instead of fabricated translation.
 - Unsupported language path returns HTTP 400.
 - Interpretation/chat fallback returns safe non-diagnostic text when live OpenAI is unavailable.
-- Live English-to-Spanish/Arabic/Chinese/Hindi/French quality checks remain blocked until a real `OPENAI_API_KEY` is placed in the local `.env`.
+- Live English-to-Spanish translation with the supplied local key returned 1615 characters and preserved the medical context while changing the language.
+- Full live Spanish, Arabic, Chinese, Hindi, and French browser quality comparison remains a manual language-review task; the backend live OpenAI path itself is no longer blocked by missing credentials.
 
 ### Batch 4 - Auth And Roles
 
@@ -169,6 +174,7 @@ Final screenshot from the passing browser click-through run.
 ### Batch 7 - Threads, Questions, And Notifications
 
 - Patient question generation returned 3 prompts.
+- Live OpenAI question generation with flagged hemoglobin/glucose findings returned 3 non-generic patient questions and did not use the generic fallback.
 - Anchored thread created; patient and clinician messages persisted in chronological flow.
 - Clinician message role was preserved as `clinician`.
 - Notifications list returned 4 items, unread count was 4, and mark-all-read reduced unread count to 0.
@@ -202,13 +208,14 @@ Final screenshot from the passing browser click-through run.
 - Frontend `npm audit --omit=dev`: passed, 0 vulnerabilities.
 - Frontend `npm run build`: passed on Next.js 15.5.18.
 - Docker stack remains running with PostgreSQL on host port `5433`, frontend on `3000`, backend on `8000`.
-- Final live smoke passed: frontend home, frontend health, backend health with request ID, parse, interpret fallback, register, login, refresh, reports create/list/detail, trends, share, clinician access, revoke, question prompts fallback, thread messages, notifications unread/read-all.
+- Final live smoke passed: frontend home, frontend health, backend health with request ID, parse, live OpenAI interpret, live Spanish translation, register, login, refresh, reports create/list/detail, trends, share, clinician access, revoke, live question prompts, thread messages, notifications unread/read-all.
 - Final browser click-through passed: home/nav, forgot password, clinician registration, patient registration, upload validation, parse/explain/translate/copy/print, second report, history search/sort/trends/open detail, AI chat, doctor-summary export, patient questions/thread/reply, share with clinician including doctor-summary flag, patient notifications, clinician shared reports/detail/doctor summary/structured response template/notifications, and revoke share.
 - Post-browser-fix regression passed again: backend pytest, frontend lint, typecheck, Vitest 36 files / 177 tests, production audit, production build, Docker frontend health, Docker backend health, and one-page browser PDF verification.
-- Backend logs after smoke contain expected `missing_api_key` fallback traces during question generation because this QA worktree still does not have a real `OPENAI_API_KEY`. Live OpenAI interpretation and translation quality checks are still blocked until that local secret is supplied.
+- After the key was supplied, OpenAI auth was confirmed with a direct `LIVE_CHECK_OK` response and the app-level live smoke passed for parse, interpretation, translation, and patient question generation.
+- Post-QA-014 verification passed: backend `python -m pytest -q`, Docker backend health 200, live parse 3 rows, live interpretation 1416 summary characters, live Spanish translation 1615 characters, and live AI question generation 3 non-generic prompts.
 
 ## Conclusion
 
-The full-main QA pass is complete for the environment available here. The application now launches cleanly in Docker, passes the backend and frontend regression suites, and has been exercised through the core product flows in a real browser. The browser run did not only confirm behavior; it found additional frontend/backend integration defects that were fixed and retested.
+The full-main QA pass is complete for the environment available here. The application now launches cleanly in Docker, passes the backend and frontend regression suites, has been exercised through the core product flows in a real browser, and has now also passed core live OpenAI smoke testing with a local key. The browser and live-key runs did not only confirm behavior; they found additional frontend/backend/AI integration defects that were fixed and retested.
 
-Final signoff status: conditionally passed. The condition is that live OpenAI quality checks still require adding a real `OPENAI_API_KEY` to the local `.env` and rerunning the AI-specific parse/explain/translation cases. Everything else covered by this pass is green.
+Final signoff status: passed for the tested scope. Remaining manual QA beyond this pass is language-quality review across Spanish, Arabic, Chinese, Hindi, and French by fluent reviewers, plus any product-owner review of clinical wording.

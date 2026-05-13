@@ -255,10 +255,10 @@ def _fallback_rows_from_text(text: str) -> list[LabResultRow]:
 def _run_openai_extraction(text: str) -> str:
     client = _get_openai_client()
     model = _resolve_model(os.getenv("OPENAI_MODEL", "gpt-5"))
-    response = client.responses.create(
-        model=model,
-        instructions=SYSTEM_PROMPT,
-        text={
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "instructions": SYSTEM_PROMPT,
+        "text": {
             "format": {
                 "type": "json_schema",
                 "name": "lab_result_rows",
@@ -267,7 +267,7 @@ def _run_openai_extraction(text: str) -> str:
                 "strict": True,
             }
         },
-        input=[
+        "input": [
             {
                 "role": "user",
                 "content": [
@@ -279,9 +279,18 @@ def _run_openai_extraction(text: str) -> str:
                 ],
             }
         ],
-        max_output_tokens=_max_tokens(),
-        temperature=0,
-    )
+        "max_output_tokens": _max_tokens(),
+    }
+    lower_model = model.lower()
+    if not (
+        model.startswith("gpt-5")
+        or lower_model.startswith("o")
+        or "omni" in lower_model
+        or lower_model.startswith("gpt-4.1")
+    ):
+        kwargs["temperature"] = 0
+
+    response = client.responses.create(**kwargs)
 
     out_text = getattr(response, "output_text", None)
     if isinstance(out_text, str) and out_text.strip():

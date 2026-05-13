@@ -15,7 +15,7 @@
     "chartjs-adapter-date-fns": "^3.0.0",
     "chartjs-plugin-annotation": "^3.1.0",
     "date-fns": "^4.1.0",
-    "next": "14.2.5",
+    "next": "15.5.18",
     "react": "18.3.1",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "18.3.1"
@@ -28,7 +28,7 @@
     "@types/react": "18.2.66",
     "@types/react-dom": "18.2.22",
     "eslint": "8.57.0",
-    "eslint-config-next": "14.2.5",
+    "eslint-config-next": "15.5.18",
     "jsdom": "24.1.0",
     "prettier": "3.3.2",
     "rollup": "^4.21.2",
@@ -37,5 +37,8 @@
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "4.21.2"
+  },
+  "overrides": {
+    "postcss": "8.5.10"
   }
 }

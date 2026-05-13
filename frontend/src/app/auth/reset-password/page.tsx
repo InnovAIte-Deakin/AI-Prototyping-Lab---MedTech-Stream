@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -33,7 +33,7 @@ function validatePassword(password: string): string {
   return '';
 }
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
@@ -176,5 +176,19 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={(
+      <div className="auth-page">
+        <div className="auth-card">
+          <div className="auth-card-body">Loading reset form...</div>
+        </div>
+      </div>
+    )}>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }

@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ThreadView } from '@/components/ThreadView';
+import { formatLocalDate, formatUtcDate } from '@/lib/dateFormatting';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -65,7 +66,15 @@ function flagBadgeLabel(flag: string | null | undefined): string {
   return flag.toUpperCase();
 }
 
-export default function ClinicianReportViewPage({ params }: { params: { reportId: string } }) {
+function useRouteValue<T>(value: T | Promise<T>): T {
+  if (value && typeof (value as Promise<T>).then === 'function') {
+    return use(value as Promise<T>);
+  }
+  return value as T;
+}
+
+export default function ClinicianReportViewPage({ params }: { params: any }) {
+  const routeParams = useRouteValue<{ reportId: string }>(params);
   const { user } = useAuth();
   const [data, setData] = useState<SharedReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,7 +85,7 @@ export default function ClinicianReportViewPage({ params }: { params: { reportId
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${BACKEND_URL}/api/v1/reports/shared-reports/${params.reportId}`, {
+        const response = await fetch(`${BACKEND_URL}/api/v1/reports/shared-reports/${routeParams.reportId}`, {
           headers: { Authorization: `Bearer ${getAccessToken()}` },
         });
         if (!response.ok) {
@@ -91,10 +100,10 @@ export default function ClinicianReportViewPage({ params }: { params: { reportId
       }
     }
 
-    if (params.reportId) {
+    if (routeParams.reportId) {
       void loadSharedReport();
     }
-  }, [params.reportId]);
+  }, [routeParams.reportId]);
 
   if (!user) {
     return <ProtectedView><div>Loading...</div></ProtectedView>;
@@ -168,15 +177,11 @@ export default function ClinicianReportViewPage({ params }: { params: { reportId
                 <span className="clinician-patient-name-lg">{patient.display_name}</span>
                 {patient.date_of_birth ? (
                   <span className="clinician-patient-dob">
-                    DOB: {new Date(patient.date_of_birth).toLocaleDateString(undefined, {
-                      year: 'numeric', month: 'short', day: 'numeric',
-                    })}
+                    DOB: {formatLocalDate(patient.date_of_birth)}
                   </span>
                 ) : null}
                 <span className="clinician-report-date-label">
-                  Report Date: {new Date(report.observed_at).toLocaleDateString(undefined, {
-                    year: 'numeric', month: 'short', day: 'numeric',
-                  })}
+                  Report Date: {formatLocalDate(report.observed_at)}
                 </span>
               </div>
             </div>
@@ -186,9 +191,7 @@ export default function ClinicianReportViewPage({ params }: { params: { reportId
               {formatScopeLabel(scope)}
             </Badge>
             <span className="clinician-expiry-label">
-              Expires {new Date(share.expires_at).toLocaleDateString(undefined, {
-                year: 'numeric', month: 'short', day: 'numeric',
-              })}
+              Expires {formatUtcDate(share.expires_at)}
             </span>
           </div>
         </div>

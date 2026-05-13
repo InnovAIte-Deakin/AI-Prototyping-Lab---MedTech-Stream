@@ -1,0 +1,173 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "patientEmail": "qa.patient.browser.1778661953018@example.com",
+  "clinicianEmail": "qa.clinician.browser.1778661953018@example.com",
+  "results": [
+    {
+      "name": "home header and public navigation buttons",
+      "status": "passed",
+      "durationMs": 802,
+      "data": null
+    },
+    {
+      "name": "forgot password form and login/register links",
+      "status": "passed",
+      "durationMs": 595,
+      "data": null
+    },
+    {
+      "name": "register clinician through UI and logout",
+      "status": "passed",
+      "durationMs": 262,
+      "data": null
+    },
+    {
+      "name": "register patient through UI",
+      "status": "passed",
+      "durationMs": 223,
+      "data": null
+    },
+    {
+      "name": "parse page file upload controls and validation",
+      "status": "passed",
+      "durationMs": 88,
+      "data": null
+    },
+    {
+      "name": "parse pasted text, explain, translation fallback, copy, and print",
+      "status": "passed",
+      "durationMs": 632,
+      "data": null
+    },
+    {
+      "name": "create second parsed report through UI for report history trends",
+      "status": "passed",
+      "durationMs": 136,
+      "data": null
+    },
+    {
+      "name": "reports history controls, search, sort, trend buttons, and open detail",
+      "status": "passed",
+      "durationMs": 630,
+      "data": null
+    },
+    {
+      "name": "report detail interpretation sidebar, chat, export, and patient question thread",
+      "status": "passed",
+      "durationMs": 509,
+      "data": null
+    },
+    {
+      "name": "share report from detail page with clinician and include doctor summary print",
+      "status": "passed",
+      "durationMs": 910,
+      "data": null
+    },
+    {
+      "name": "patient notification drawer and notifications page controls",
+      "status": "passed",
+      "durationMs": 217,
+      "data": null
+    },
+    {
+      "name": "clinician login, shared reports dashboard, shared detail, and notification controls",
+      "status": "passed",
+      "durationMs": 1062,
+      "data": null
+    },
+    {
+      "name": "patient login and revoke share through report detail UI",
+      "status": "passed",
+      "durationMs": 317,
+      "data": null
+    }
+  ],
+  "browserEvents": [
+    {
+      "type": "requestfailed",
+      "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://fonts.gstatic.com/s/manrope/v20/xn7gYHE41ni1AdIRggexSg.woff2",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/notifications/unread-count",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/notifications/unread-count",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/auth/register",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/auth/logout",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/notifications/unread-count",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/auth/register",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/notifications/unread-count",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/notifications/unread-count",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "console:error",
+      "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/reports/a2d4b74d-30c7-4711-9cc2-452b27d3b066/trends",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/reports/a2d4b74d-30c7-4711-9cc2-452b27d3b066/question-prompts",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/reports/a2d4b74d-30c7-4711-9cc2-452b27d3b066/interpretation",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/threads/48a33f4c-df19-4208-a3a1-dab73548cf41/messages",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/reports/a2d4b74d-30c7-4711-9cc2-452b27d3b066/share/revoke",
+      "failure": "net::ERR_ABORTED"
+    },
+    {
+      "type": "requestfailed",
+      "url": "http://localhost:8000/api/v1/auth/logout",
+      "failure": "net::ERR_ABORTED"
+    }
+  ],
+  "passed": 13,
+  "failed": 0
+}

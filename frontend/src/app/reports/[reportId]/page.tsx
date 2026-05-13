@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { use, useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { fetchReportById, updateReportInHistory } from '@/lib/reportHistory';
@@ -14,6 +14,7 @@ import { shareStateFrom, type ShareLifecycleState } from '@/lib/auditLog';
 import { Badge } from '@/components/ui/Badge';
 import { SharingPreferencesPanel } from '@/components/SharingPreferencesPanel';
 import { BiomarkerTrendChart } from '@/components/BiomarkerTrendChart';
+import { PatientQuestions } from '@/components/PatientQuestions';
 
 function formatDate(ts: number) {
   return new Date(ts).toLocaleString();
@@ -35,21 +36,32 @@ const LANGUAGE_OPTIONS = [
   { value: 'fr', label: 'Francais' },
 ];
 
-export default function ReportDetailPage({ params, searchParams }: { params: { reportId: string }; searchParams?: { panel?: string; threadId?: string } }) {
+function useRouteValue<T>(value: T | Promise<T> | undefined): T | undefined {
+  if (value && typeof (value as Promise<T>).then === 'function') {
+    return use(value as Promise<T>);
+  }
+  return value as T | undefined;
+}
+
+export default function ReportDetailPage({ params, searchParams }: { params: any; searchParams?: any }) {
+  const routeParams = useRouteValue<{ reportId: string }>(params);
+  const routeSearchParams = useRouteValue<{ panel?: string; threadId?: string }>(searchParams);
+  const reportId = routeParams?.reportId;
   const { user } = useAuth();
   const [report, setReport] = useState<ReportHistoryEntry | undefined>(undefined);
   const [sharingPreferences, setSharingPreferences] = useState<SharingPreferences>(defaultSharingPreferences);
   const [statusMessage, setStatusMessage] = useState('');
   const [includeSummaryPDF, setIncludeSummaryPDF] = useState(false);
   const [threads, setThreads] = useState<ConversationThread[]>([]);
+  const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
   const [auditReloadToken, setAuditReloadToken] = useState(0);
   const [sharingPanelOpen, setSharingPanelOpen] = useState(false);
 
   useEffect(() => {
-    if (searchParams?.panel === 'sharing') {
+    if (routeSearchParams?.panel === 'sharing') {
       setSharingPanelOpen(true);
     }
-  }, [searchParams?.panel]);
+  }, [routeSearchParams?.panel]);
 
   // Trend states
   const [trends, setTrends] = useState<BiomarkerTrend[]>([]);
@@ -75,12 +87,12 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
 
   useEffect(() => {
     async function loadReport() {
-      if (!params.reportId || !user) {
+      if (!reportId || !user) {
         setReport(undefined);
         return;
       }
       try {
-        const candidate = await fetchReportById(params.reportId);
+        const candidate = await fetchReportById(reportId);
         if (!candidate) {
           setReport(undefined);
           setStatusMessage('Report not found.');
@@ -95,7 +107,7 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
       }
     }
     void loadReport();
-  }, [params.reportId, user]);
+  }, [reportId, user]);
 
   useEffect(() => {
     if (!report) return;
@@ -786,11 +798,20 @@ export default function ReportDetailPage({ params, searchParams }: { params: { r
 
         <AuditLogTimeline reportId={report.id} reloadToken={auditReloadToken} />
 
+        {user.role === 'patient' && accessToken ? (
+          <PatientQuestions
+            reportId={report.id}
+            accessToken={accessToken}
+            onThreadCreated={(threadId) => setFocusedThreadId(threadId)}
+          />
+        ) : null}
+
         <ThreadView
+          key={`${report.id}-${focusedThreadId || 'latest'}`}
           reportId={report.id}
           accessToken={accessToken}
           onThreadsLoaded={setThreads}
-          focusedThreadId={searchParams?.threadId}
+          focusedThreadId={focusedThreadId || routeSearchParams?.threadId}
         />
 
         <Disclaimer />

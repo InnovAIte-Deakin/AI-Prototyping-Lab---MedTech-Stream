@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-reportx}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reportx}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - reportx-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +23,7 @@ services:
     environment:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,testserver,backend,frontend}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://reportx:reportx@postgres:5432/reportx}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+asyncpg://reportx:reportx@postgres:5432/reportx}
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
       OPENAI_API_KEY: ${OPENAI_API_KEY}

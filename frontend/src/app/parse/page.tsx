@@ -404,6 +404,9 @@ export default function ParsePage() {
                   </div>
                 )}
               </div>
+              {uploadError && files.length === 0 ? (
+                <div className="upload-alert" role="alert">{uploadError}</div>
+              ) : null}
             </div>
 
             <div className="method-divider">

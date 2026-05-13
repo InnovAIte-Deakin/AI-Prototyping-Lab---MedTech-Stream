@@ -34,6 +34,7 @@ def enum_column(enum_cls: type[Enum], *, name: str) -> SAEnum:
         enum_cls,
         name=name,
         native_enum=False,
+        length=max(len(value) for value in enum_values(enum_cls)),
         validate_strings=True,
         values_callable=enum_values,
     )

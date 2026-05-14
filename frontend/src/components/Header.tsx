@@ -33,6 +33,8 @@ export default function Header() {
     );
   };
 
+  const isClinician = user?.role === 'clinician';
+
   // Build center nav items based on role
   const centerLinks: { href: string; label: string }[] = [];
   if (isAuth && user?.role === 'clinician') {
@@ -66,13 +68,15 @@ export default function Header() {
 
           {/* Right actions */}
           <div className="nav-right">
-            <button
-              onClick={() => (window.location.href = '/parse')}
-              className="nav-cta"
-              type="button"
-            >
-              Review My Report
-            </button>
+            {!isClinician && (
+              <button
+                onClick={() => (window.location.href = '/parse')}
+                className="nav-cta"
+                type="button"
+              >
+                Review My Report
+              </button>
+            )}
 
             {isAuth ? (
               <>

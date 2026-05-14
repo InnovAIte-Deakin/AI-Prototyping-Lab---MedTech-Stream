@@ -176,8 +176,8 @@ describe('T15 — Clinician Scoped Report View', () => {
     expect(screen.getByText(/conversation threads/i)).toBeInTheDocument();
   });
 
-  it('raw patient scope with comment access shows findings and thread panel from the real API contract', async () => {
-    mockSharedReportApi('patient', { access_level: 'comment', include_doctor_summary: true });
+  it('full_report_with_threads scope with doctor summary shows findings, thread panel, and doctor summary', async () => {
+    mockSharedReportApi('full_report_with_threads', { access_level: 'comment', include_doctor_summary: true });
 
     render(<AuthProvider><ClinicianReportViewPage params={{ reportId: 'r1' }} /></AuthProvider>);
 

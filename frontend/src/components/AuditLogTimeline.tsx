@@ -42,10 +42,13 @@ function contextSummary(event: AuditEvent): string | null {
   return parts.length > 0 ? parts.join(' • ') : null;
 }
 
+const PAGE_SIZE = 3;
+
 export function AuditLogTimeline({ reportId, reloadToken = 0 }: Props) {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,58 +85,68 @@ export function AuditLogTimeline({ reportId, reloadToken = 0 }: Props) {
       ) : null}
 
       {events.length > 0 ? (
-        <ol
-          role="list"
-          style={{
-            listStyle: 'none',
-            padding: 0,
-            margin: '0.75rem 0 0',
-            borderLeft: '2px solid #e5e7eb',
-            paddingLeft: '1rem',
-          }}
-        >
-          {events.map((event) => {
-            const accent = eventAccent(event.action);
-            const summary = contextSummary(event);
-            return (
-              <li
-                key={event.event_id}
-                data-testid={`audit-event-${event.action}`}
-                style={{
-                  position: 'relative',
-                  padding: '0.75rem 0.9rem',
-                  marginBottom: '0.75rem',
-                  background: accent.bg,
-                  borderRadius: '8px',
-                  borderLeft: `4px solid ${accent.border}`,
-                }}
-              >
-                <span
-                  aria-hidden="true"
+        <>
+          <ol
+            role="list"
+            style={{
+              listStyle: 'none',
+              padding: 0,
+              margin: '0.75rem 0 0',
+              borderLeft: '2px solid #e5e7eb',
+              paddingLeft: '1rem',
+            }}
+          >
+            {(showAll ? events : events.slice(0, PAGE_SIZE)).map((event) => {
+              const accent = eventAccent(event.action);
+              const summary = contextSummary(event);
+              return (
+                <li
+                  key={event.event_id}
+                  data-testid={`audit-event-${event.action}`}
                   style={{
-                    position: 'absolute',
-                    left: '-1.45rem',
-                    top: '1rem',
-                    width: '0.75rem',
-                    height: '0.75rem',
-                    borderRadius: '50%',
-                    background: accent.dot,
-                    boxShadow: '0 0 0 3px #fff',
+                    position: 'relative',
+                    padding: '0.75rem 0.9rem',
+                    marginBottom: '0.75rem',
+                    background: accent.bg,
+                    borderRadius: '8px',
+                    borderLeft: `4px solid ${accent.border}`,
                   }}
-                />
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                  <strong style={{ color: accent.label }}>{describeAuditAction(event.action)}</strong>
-                  <time dateTime={event.occurred_at} style={{ color: '#4b5563', fontSize: '0.85rem' }}>
-                    {formatTime(event.occurred_at)}
-                  </time>
-                </div>
-                {summary ? (
-                  <div style={{ color: '#374151', fontSize: '0.9rem', marginTop: '0.25rem' }}>{summary}</div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ol>
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      left: '-1.45rem',
+                      top: '1rem',
+                      width: '0.75rem',
+                      height: '0.75rem',
+                      borderRadius: '50%',
+                      background: accent.dot,
+                      boxShadow: '0 0 0 3px #fff',
+                    }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                    <strong style={{ color: accent.label }}>{describeAuditAction(event.action)}</strong>
+                    <time dateTime={event.occurred_at} style={{ color: '#4b5563', fontSize: '0.85rem' }}>
+                      {formatTime(event.occurred_at)}
+                    </time>
+                  </div>
+                  {summary ? (
+                    <div style={{ color: '#374151', fontSize: '0.9rem', marginTop: '0.25rem' }}>{summary}</div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+          {events.length > PAGE_SIZE && (
+            <button
+              onClick={() => setShowAll((v) => !v)}
+              style={{ marginTop: '0.5rem', background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '0.9rem', padding: '0.25rem 0' }}
+            >
+              {showAll ? `Show less` : `Show ${events.length - PAGE_SIZE} more`}
+            </button>
+          )}
+        </>
       ) : null}
     </div>
   );

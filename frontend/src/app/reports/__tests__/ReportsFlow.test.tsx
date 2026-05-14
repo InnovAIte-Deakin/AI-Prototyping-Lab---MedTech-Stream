@@ -141,6 +141,94 @@ describe('Report history and sharing preference flow', () => {
     global.fetch = vi.fn();
   });
 
+  it('trends endpoint returns 403 for patient requesting trends', async () => {
+    const report = addReportToHistory({
+      patientEmail: 'patient@example.com',
+      title: 'Report Trends Denied',
+      rows: [
+        {
+          test_name: 'Hemoglobin',
+          value: 13.5,
+          unit: 'g/dL',
+          reference_range: '11-15',
+          flag: 'normal',
+          confidence: 1,
+        },
+      ],
+      unparsed: [],
+    });
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/v1/reports')) {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/v1/reports/') && url.endsWith('/trends')) {
+        return new Response(JSON.stringify({ detail: 'Only clinicians may access trends' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/v1/reports/') && url.endsWith('/threads')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/api/v1/reports/') && url.endsWith('/question-prompts')) {
+        return new Response(JSON.stringify({ prompts: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/api/v1/reports/') && url.endsWith('/audit')) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/api/v1/reports/') && !url.includes('/share')) {
+        // report detail endpoint - no trends in response
+        const reportId = url.split('/').pop();
+        return new Response(JSON.stringify({
+          report: {
+            id: reportId,
+            subject_user_id: 'patient-id',
+            created_by_user_id: 'patient-id',
+            title: 'Report Trends Denied',
+            source_kind: 'text',
+            sharing_mode: 'private',
+            created_at: new Date().toISOString(),
+            observed_at: new Date().toISOString(),
+            findings: [
+              {
+                id: 'f1',
+                biomarker_key: 'Hgb',
+                display_name: 'Hemoglobin',
+                value_numeric: 13.5,
+                value_text: null,
+                unit: 'g/dL',
+                flag: 'normal',
+                reference_range_text: '11-15',
+              },
+            ],
+            interpretation: null,
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    render(
+      <AuthProvider>
+        <ReportDetailPage params={{ reportId: report.id }} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1, name: /report trends denied/i })).toBeInTheDocument();
+    });
+
+    // Verify trend chart is NOT in the document (patient should not see trends)
+    expect(screen.queryByRole('img', { name: /biomarker trend chart/i })).toBeNull();
+    expect(screen.queryByLabelText(/select biomarker/i)).toBeNull();
+    expect(screen.queryByText(/biomarker trends/i)).toBeNull();
+  });
+
   it('shows only patient reports in history and provides action buttons', async () => {
     addReportToHistory({ patientEmail: 'patient@example.com', title: 'Report A', rows: [], unparsed: [] });
     addReportToHistory({ patientEmail: 'other@example.com', title: 'Report B', rows: [], unparsed: [] });
@@ -287,13 +375,12 @@ describe('Report history and sharing preference flow', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('img', { name: /biomarker timeline chart/i })).toBeInTheDocument();
+      expect(screen.getByText(/You have 3 clinical reports available for review/i)).toBeInTheDocument();
     });
-    expect(screen.getAllByLabelText(/select biomarker/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('option', { name: /alanine aminotransferase/i }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('option', { name: /aspartate aminotransferase/i }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('option', { name: /alkaline phosphatase/i }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('img', { name: /biomarker timeline chart/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/select biomarker/i)).not.toBeInTheDocument();
   });
+
 
   it('navigates into report detail and allows sharing preference update', async () => {
     const report = addReportToHistory({
@@ -324,7 +411,7 @@ describe('Report history and sharing preference flow', () => {
 
     const emailInput = screen.getByLabelText(/clinician email/i);
     fireEvent.change(emailInput, { target: { value: 'doc@clinic.org' } });
-    fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full' } });
+    fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full_report' } });
 
     await waitFor(() => {
       expect((screen.getByLabelText(/clinician email/i) as HTMLInputElement).value).toBe('doc@clinic.org');
@@ -354,7 +441,8 @@ describe('Report history and sharing preference flow', () => {
   it('loads existing sharing preferences and preserves full scope value', async () => {
     const existingPrefs = {
       clinicianEmail: 'saved-doc@clinic.org',
-      scope: 'full' as const,
+      viewScope: 'full_report' as const,
+      includeDoctorSummary: false,
       expiresAt: Date.now() + 86400000,
       active: true,
     };
@@ -424,32 +512,6 @@ describe('Report history and sharing preference flow', () => {
         ),
       ).toBe(true);
     });
-  });
-
-  it('renders biomarker trend chart with filter controls on report detail', async () => {
-    const report = addReportToHistory({
-      patientEmail: 'patient@example.com',
-      title: 'Report D',
-      rows: [],
-      unparsed: [],
-    });
-
-    render(
-      <AuthProvider>
-        <ReportDetailPage params={{ reportId: report.id }} />
-      </AuthProvider>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /biomarker trends/i })).toBeInTheDocument();
-    });
-
-    expect(screen.getByLabelText(/filter biomarkers/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^biomarker$/i)).toBeInTheDocument();
-    expect(screen.getByText(/hemoglobin trend appears to be improving/i)).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /biomarker trend chart/i })).toBeInTheDocument();
-    expect(screen.getByText(/x-axis: observation date/i)).toBeInTheDocument();
-    expect(screen.getByText(/y-axis: value/i)).toBeInTheDocument();
   });
 
   it('keeps and shows generated interpretation on report detail after reload', async () => {
@@ -555,7 +617,9 @@ describe('Report history and sharing preference flow', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/trend details require full-report sharing access for clinician views/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Report E' })).toBeInTheDocument();
     });
+    expect(screen.queryByText(/trend details require full-report sharing access for clinician views/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /biomarker timeline chart/i })).not.toBeInTheDocument();
   });
 });

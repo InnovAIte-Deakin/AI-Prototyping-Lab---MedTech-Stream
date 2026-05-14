@@ -16,6 +16,7 @@ from starlette.responses import Response
 from .db.session import build_database_manager
 from .routers.audit import router as audit_router
 from .routers.auth import router as auth_router
+from .routers.clinician import router as clinician_router
 from .routers.health import router as health_router
 from .routers.interpret import router as interpret_router
 from .routers.notifications import router as notifications_router
@@ -232,6 +233,7 @@ def create_app() -> FastAPI:
     app.include_router(interpret_router, prefix="/api/v1")
     app.include_router(audit_router, prefix="/api/v1")
     app.include_router(reports_router, prefix="/api/v1")
+    app.include_router(clinician_router, prefix="/api/v1")
     app.include_router(threads_router, prefix="/api/v1")
     app.include_router(notifications_router, prefix="/api/v1")
     app.include_router(translate_router, prefix="/api/v1")

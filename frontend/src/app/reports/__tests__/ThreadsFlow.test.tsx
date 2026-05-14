@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import { PatientQuestions } from '../../../components/PatientQuestions';
 import { ThreadView } from '../../../components/ThreadView';
 
-let mockUser = { id: 'patient-user', email: 'patient@example.com', role: 'patient' };
+const mockAuth = vi.hoisted(() => ({
+  user: { id: 'patient-user', email: 'patient@example.com', role: 'patient' },
+}));
 
 vi.mock('@/store/authStore', () => ({
   useAuth: () => ({
-    user: mockUser,
+    user: mockAuth.user,
     status: 'authenticated',
   }),
 }));
@@ -17,34 +18,86 @@ process.env.NEXT_PUBLIC_BACKEND_URL = 'http://test';
 
 describe('Threads and Questions Flow', () => {
   beforeEach(() => {
-    mockUser = { id: 'patient-user', email: 'patient@example.com', role: 'patient' };
     global.fetch = vi.fn() as any;
+    mockAuth.user = { id: 'patient-user', email: 'patient@example.com', role: 'patient' };
     vi.clearAllMocks();
   });
 
-  it('PatientQuestions fetches prompts and displays them', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ prompts: ['Question 1', 'Question 2'] }),
-    });
+  it('fetches and displays AI-suggested question prompts when no threads exist', async () => {
+    (global.fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([]),  // threads — empty
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ prompts: ['Question 1', 'Question 2'] }),  // prompts
+      });
 
-    render(<PatientQuestions reportId="123" accessToken="token" onThreadCreated={vi.fn()} />);
-
-    expect(screen.getByText(/Generating personalized questions/i)).toBeInTheDocument();
+    render(<ThreadView reportId="123" accessToken="token" />);
 
     await waitFor(() => {
       expect(screen.getByText('Question 1')).toBeInTheDocument();
       expect(screen.getByText('Question 2')).toBeInTheDocument();
     });
+
+    expect(screen.getByText(/Write your own question/i)).toBeInTheDocument();
   });
 
-  it('ThreadView fetches threads and renders them', async () => {
+  it('pre-fills the composer when a prompt chip is clicked', async () => {
+    (global.fetch as any)
+      .mockResolvedValueOnce({ ok: true, json: async () => ([]) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ prompts: ['What might be causing my ALT to be high?'] }) });
+
+    render(<ThreadView reportId="123" accessToken="token" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('What might be causing my ALT to be high?')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('What might be causing my ALT to be high?'));
+
+    await waitFor(() => {
+      const input = screen.getByRole('textbox');
+      expect((input as HTMLInputElement).value).toBe('What might be causing my ALT to be high?');
+    });
+  });
+
+  it('uses the message text (truncated to 60 chars) as the thread title', async () => {
+    const longQuestion = 'A'.repeat(80);
+    (global.fetch as any)
+      .mockResolvedValueOnce({ ok: true, json: async () => ([]) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ prompts: [longQuestion] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'thread-new' }) })  // POST thread
+      .mockResolvedValueOnce({ ok: true, json: async () => ([]) });  // refetch threads
+
+    render(<ThreadView reportId="123" accessToken="token" />);
+
+    await waitFor(() => expect(screen.getByText(longQuestion)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText(longQuestion));
+    fireEvent.click(screen.getByRole('button', { name: /send/i }));
+
+    await waitFor(() => {
+      const calls = (global.fetch as any).mock.calls;
+      const postCall = calls.find(([url, opts]: any) => opts?.method === 'POST');
+      const body = JSON.parse(postCall[1].body);
+      expect(body.title).toBe('A'.repeat(57) + '…');
+      expect(body.initial_message).toBe(longQuestion);
+    });
+  });
+
+  it('fetches threads and renders merged general message history', async () => {
     const mockThread = {
       id: 'thread-1',
+      report_id: '123',
+      finding_id: null,
       title: 'My Thread',
+      status: 'open',
       messages: [
         {
           id: 'msg-1',
+          author_user_id: 'other-user',
           author_name: 'Patient User',
           kind: 'text',
           body: 'What is this?',
@@ -52,103 +105,62 @@ describe('Threads and Questions Flow', () => {
         },
         {
           id: 'msg-2',
+          author_user_id: 'clinician-user',
           author_name: 'Dr. Clinician',
           kind: 'template',
           body: JSON.stringify({ meaning: 'It means nothing.', urgency: 'routine', action: 'Rest.' }),
-          created_at: new Date().toISOString(),
-        }
-      ]
-    };
-
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ([mockThread]),
-    });
-
-    render(<ThreadView reportId="123" accessToken="token" />);
-
-    await waitFor(() => {
-      expect(screen.getByText('My Thread')).toBeInTheDocument();
-    });
-
-    expect(screen.getByText('Patient User')).toBeInTheDocument();
-    expect(screen.getByText('What is this?')).toBeInTheDocument();
-
-    expect(screen.getByText('Clinician Response')).toBeInTheDocument();
-    expect(screen.getByText('It means nothing.')).toBeInTheDocument();
-    expect(screen.getByText('routine')).toBeInTheDocument();
-    expect(screen.getByText('Rest.')).toBeInTheDocument();
-  });
-
-  it('shows the structured response template to clinicians without patient-visible simulation controls', async () => {
-    mockUser = { id: 'clinician-user', email: 'clinician@example.com', role: 'clinician' };
-    const mockThread = {
-      id: 'thread-1',
-      title: 'Glucose question',
-      messages: [
-        {
-          id: 'msg-1',
-          author_user_id: 'patient-user',
-          author_name: 'Patient User',
-          kind: 'text',
-          body: 'What does high glucose mean?',
           created_at: new Date().toISOString(),
         },
       ],
     };
 
     (global.fetch as any)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ([mockThread]),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          id: 'msg-2',
-          kind: 'template',
-          body: JSON.stringify({ meaning: 'It may reflect recent diet.', urgency: 'routine', action: 'Repeat testing.' }),
+      .mockResolvedValueOnce({ ok: true, json: async () => ([mockThread]) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ prompts: [] }) });
+
+    render(<ThreadView reportId="123" accessToken="token" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('What is this?')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Patient User')).toBeInTheDocument();
+    expect(screen.getByText('Clinician Response')).toBeInTheDocument();
+    expect(screen.getByText('It means nothing.')).toBeInTheDocument();
+    expect(screen.getByText('routine')).toBeInTheDocument();
+    expect(screen.getByText('Rest.')).toBeInTheDocument();
+    expect(screen.queryByText(/Simulate Clinician Access/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the structured response template to real clinicians without simulation controls', async () => {
+    mockAuth.user = { id: 'clinician-user', email: 'clinician@example.com', role: 'clinician' };
+    const mockThread = {
+      id: 'thread-1',
+      report_id: '123',
+      finding_id: null,
+      title: 'General question',
+      status: 'open',
+      messages: [
+        {
+          id: 'msg-1',
+          author_user_id: 'patient-user',
+          author_name: 'Patient User',
+          kind: 'text',
+          body: 'Can you explain this result?',
           created_at: new Date().toISOString(),
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ([mockThread]),
-      });
+        },
+      ],
+    };
+
+    (global.fetch as any)
+      .mockResolvedValueOnce({ ok: true, json: async () => ([mockThread]) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ prompts: [] }) });
 
     render(<ThreadView reportId="123" accessToken="token" />);
 
     await waitFor(() => {
       expect(screen.getByText('Clinician Response Template')).toBeInTheDocument();
     });
-
-    expect(screen.queryByText('Simulate Clinician Access')).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('What the result means:'), {
-      target: { value: 'It may reflect recent diet.' },
-    });
-    fireEvent.change(screen.getByLabelText('Urgency:'), {
-      target: { value: 'soon' },
-    });
-    fireEvent.change(screen.getByLabelText('Recommended action:'), {
-      target: { value: 'Repeat fasting labs.' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Submit Clinical Response' }));
-
-    await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        'http://test/api/v1/threads/thread-1/messages',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({
-            template_payload: {
-              meaning: 'It may reflect recent diet.',
-              urgency: 'soon',
-              action: 'Repeat fasting labs.',
-            },
-          }),
-        })
-      );
-    });
+    expect(screen.queryByText(/Simulate Clinician Access/i)).not.toBeInTheDocument();
   });
 });

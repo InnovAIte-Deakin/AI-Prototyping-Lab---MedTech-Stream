@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ProtectedView } from '@/components/ProtectedView';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { formatLocalDate, formatUtcDate } from '@/lib/dateFormatting';
+import { formatUtcDate } from '@/lib/dateFormatting';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -167,7 +167,7 @@ function SharedReportsPageContent() {
                     </td>
                     <td>
                       <div className="clinician-report-date">
-                        {formatLocalDate(item.report.observed_at)}
+                        {formatUtcDate(item.report.observed_at)}
                       </div>
                     </td>
                     <td>

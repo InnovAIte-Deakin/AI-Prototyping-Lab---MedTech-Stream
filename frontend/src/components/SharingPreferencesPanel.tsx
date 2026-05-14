@@ -2,6 +2,8 @@
 
 import React, { useEffect } from 'react';
 
+export type ViewScope = 'summary_only' | 'full_report' | 'full_report_with_threads';
+
 export type SharingPreferencesPanelProps = {
   open: boolean;
   onClose: () => void;
@@ -9,8 +11,10 @@ export type SharingPreferencesPanelProps = {
   onRevoke?: () => void;
   clinicianEmail: string;
   onClinicianEmailChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  scope: 'summary' | 'full';
-  onScopeChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  viewScope: ViewScope;
+  onViewScopeChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  includeDoctorSummary: boolean;
+  onIncludeDoctorSummaryChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   expiresAt: number;
   onExpiresAtChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   shareActive?: boolean;
@@ -24,8 +28,10 @@ export function SharingPreferencesPanel({
   onRevoke,
   clinicianEmail,
   onClinicianEmailChange,
-  scope,
-  onScopeChange,
+  viewScope,
+  onViewScopeChange,
+  includeDoctorSummary,
+  onIncludeDoctorSummaryChange,
   expiresAt,
   onExpiresAtChange,
   shareActive,
@@ -88,11 +94,13 @@ export function SharingPreferencesPanel({
               <select
                 id="sp-access-scope"
                 className="input"
-                value={scope}
-                onChange={onScopeChange}
+                aria-label="Access scope"
+                value={viewScope}
+                onChange={onViewScopeChange}
               >
-                <option value="summary">Summary only</option>
-                <option value="full">Full report</option>
+                <option value="summary_only">Summary only</option>
+                <option value="full_report">Full report</option>
+                <option value="full_report_with_threads">Full report + threads</option>
               </select>
             </div>
 
@@ -108,6 +116,21 @@ export function SharingPreferencesPanel({
                 onChange={onExpiresAtChange}
               />
             </div>
+          </div>
+
+          <div className="sharing-panel-field">
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', cursor: 'pointer', fontSize: 'var(--text-body-sm)' }}
+            >
+              <input
+                type="checkbox"
+                aria-label="Include doctor summary"
+                checked={includeDoctorSummary}
+                onChange={onIncludeDoctorSummaryChange}
+                style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
+              />
+              Include doctor-ready summary in clinician view
+            </label>
           </div>
 
           <button

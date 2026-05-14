@@ -1,12 +1,11 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/store/authStore';
 import { ProtectedView } from '@/components/ProtectedView';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ThreadView } from '@/components/ThreadView';
-import { formatLocalDate, formatUtcDate } from '@/lib/dateFormatting';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -66,15 +65,7 @@ function flagBadgeLabel(flag: string | null | undefined): string {
   return flag.toUpperCase();
 }
 
-function useRouteValue<T>(value: T | Promise<T>): T {
-  if (value && typeof (value as Promise<T>).then === 'function') {
-    return use(value as Promise<T>);
-  }
-  return value as T;
-}
-
-export default function ClinicianReportViewPage({ params }: { params: any }) {
-  const routeParams = useRouteValue<{ reportId: string }>(params);
+export default function ClinicianReportViewPage({ params }: any) {
   const { user } = useAuth();
   const [data, setData] = useState<SharedReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,7 +76,7 @@ export default function ClinicianReportViewPage({ params }: { params: any }) {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${BACKEND_URL}/api/v1/reports/shared-reports/${routeParams.reportId}`, {
+        const response = await fetch(`${BACKEND_URL}/api/v1/reports/shared-reports/${params.reportId}`, {
           headers: { Authorization: `Bearer ${getAccessToken()}` },
         });
         if (!response.ok) {
@@ -100,10 +91,10 @@ export default function ClinicianReportViewPage({ params }: { params: any }) {
       }
     }
 
-    if (routeParams.reportId) {
+    if (params.reportId) {
       void loadSharedReport();
     }
-  }, [routeParams.reportId]);
+  }, [params.reportId]);
 
   if (!user) {
     return <ProtectedView><div>Loading...</div></ProtectedView>;
@@ -144,14 +135,8 @@ export default function ClinicianReportViewPage({ params }: { params: any }) {
 
   const { share, patient, report } = data;
   const scope = share.scope;
-  const canComment = share.access_level === 'comment' || share.access_level === 'manage';
-  const showFindings = (
-    scope === 'full_report'
-    || scope === 'full_report_with_threads'
-    || scope === 'patient'
-    || canComment
-  );
-  const showThreads = scope === 'full_report_with_threads' || canComment;
+  const showFindings = scope === 'full_report' || scope === 'full_report_with_threads';
+  const showThreads = scope === 'full_report_with_threads';
   const showDoctorSummary = share.include_doctor_summary === true;
 
   const flaggedCount = report.findings.filter(
@@ -183,11 +168,15 @@ export default function ClinicianReportViewPage({ params }: { params: any }) {
                 <span className="clinician-patient-name-lg">{patient.display_name}</span>
                 {patient.date_of_birth ? (
                   <span className="clinician-patient-dob">
-                    DOB: {formatLocalDate(patient.date_of_birth)}
+                    DOB: {new Date(patient.date_of_birth).toLocaleDateString(undefined, {
+                      year: 'numeric', month: 'short', day: 'numeric',
+                    })}
                   </span>
                 ) : null}
                 <span className="clinician-report-date-label">
-                  Report Date: {formatLocalDate(report.observed_at)}
+                  Report Date: {new Date(report.observed_at).toLocaleDateString(undefined, {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                  })}
                 </span>
               </div>
             </div>
@@ -197,7 +186,9 @@ export default function ClinicianReportViewPage({ params }: { params: any }) {
               {formatScopeLabel(scope)}
             </Badge>
             <span className="clinician-expiry-label">
-              Expires {formatUtcDate(share.expires_at)}
+              Expires {new Date(share.expires_at).toLocaleDateString(undefined, {
+                year: 'numeric', month: 'short', day: 'numeric',
+              })}
             </span>
           </div>
         </div>
@@ -338,14 +329,12 @@ function formatScopeLabel(scope: string): string {
     case 'summary_only': return 'Summary Only';
     case 'full_report': return 'Full Report';
     case 'full_report_with_threads': return 'Full Report + Threads';
-    case 'report': return 'Summary Only';
-    case 'patient': return 'Full Report + Threads';
     default: return scope.replace(/_/g, ' ');
   }
 }
 
 function scopeBadgeVariant(scope: string): 'info' | 'optimal' | 'attention' {
-  if (scope === 'summary_only' || scope === 'report') return 'info';
-  if (scope === 'full_report_with_threads' || scope === 'patient') return 'optimal';
+  if (scope === 'summary_only') return 'info';
+  if (scope === 'full_report_with_threads') return 'optimal';
   return 'optimal';
 }

@@ -243,6 +243,7 @@ async def register_account(
     password: str,
     role_name: str,
     display_name: str | None,
+    date_of_birth=None,
 ) -> User:
     normalized_email = normalize_email(email)
     validate_password(password)
@@ -261,6 +262,7 @@ async def register_account(
         email=normalized_email,
         display_name=cleaned_display_name,
         password_hash=hash_password(password),
+        date_of_birth=date_of_birth,
     )
     user.assign_role(role)
     session.add(user)

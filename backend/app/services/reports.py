@@ -17,6 +17,7 @@ from app.db.models import (
     ReportFinding,
     ReportSharingMode,
     ReportSourceKind,
+    ShareViewScope,
     User,
 )
 from app.services.notifications import emit_notification
@@ -193,6 +194,7 @@ async def share_report_with_user(
     scope: ConsentScope,
     access_level: ConsentAccessLevel,
     expires_at: datetime,
+    view_scope: ShareViewScope = ShareViewScope.SUMMARY_ONLY,
     include_doctor_summary: bool = False,
 ) -> ReportShareResult:
     _require_report_owner(report=report, owner_user_id=owner_user_id, action="grant sharing")
@@ -227,15 +229,17 @@ async def share_report_with_user(
             report_id=target_report_id,
             scope=scope,
             access_level=access_level,
-            include_doctor_summary=include_doctor_summary,
             expires_at=expires_at,
+            view_scope=view_scope,
+            include_doctor_summary=include_doctor_summary,
         )
         session.add(share)
     else:
         existing_share.access_level = access_level
         existing_share.expires_at = expires_at
-        existing_share.include_doctor_summary = include_doctor_summary
         existing_share.revoked_at = None
+        existing_share.view_scope = view_scope
+        existing_share.include_doctor_summary = include_doctor_summary
         share = existing_share
 
     await session.flush()
@@ -252,7 +256,6 @@ async def share_report_with_user(
             "report_id": report.id if scope == ConsentScope.REPORT else None,
             "scope": scope.value,
             "access_level": access_level.value,
-            "include_doctor_summary": include_doctor_summary,
             "expires_at": expires_at.isoformat(),
             "grantee_email": grantee.email,
         },
@@ -268,12 +271,7 @@ async def share_report_with_user(
         resource_type=resource_type,
         resource_id=resource_id,
         report_id=report.id if scope == ConsentScope.REPORT else None,
-        payload={
-            "report_id": report.id,
-            "grantee_email": grantee.email,
-            "scope": scope.value,
-            "include_doctor_summary": include_doctor_summary,
-        },
+        payload={"report_id": report.id, "grantee_email": grantee.email, "scope": scope.value},
     )
     await emit_notification(
         session,
@@ -283,12 +281,7 @@ async def share_report_with_user(
         resource_type=resource_type,
         resource_id=resource_id,
         report_id=report.id if scope == ConsentScope.REPORT else None,
-        payload={
-            "report_id": report.id,
-            "subject_user_id": report.subject_user_id,
-            "scope": scope.value,
-            "include_doctor_summary": include_doctor_summary,
-        },
+        payload={"report_id": report.id, "subject_user_id": report.subject_user_id, "scope": scope.value},
     )
     
     await sync_subject_report_sharing_modes(session, subject_user_id=report.subject_user_id)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -31,6 +31,7 @@ class UserOut(BaseModel):
     id: str
     email: str
     display_name: str
+    date_of_birth: date | None = None
     roles: list[str]
     is_active: bool
 
@@ -40,6 +41,7 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8)
     role: Literal["patient", "caregiver", "clinician"]
     display_name: str | None = Field(default=None, max_length=120)
+    date_of_birth: date | None = None
 
 
 class RegisterResponse(BaseModel):
@@ -86,6 +88,7 @@ def _user_out(user: User) -> UserOut:
         id=user.id,
         email=user.email,
         display_name=user.display_name,
+        date_of_birth=user.date_of_birth,
         roles=role_names_for_user(user),
         is_active=user.is_active,
     )
@@ -119,6 +122,7 @@ async def register_endpoint(
             password=payload.password,
             role_name=payload.role,
             display_name=payload.display_name,
+            date_of_birth=payload.date_of_birth,
         )
     except AuthError as exc:
         _raise_auth_http_error(exc)

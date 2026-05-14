@@ -54,3 +54,28 @@ def test_run_openai_extraction_requests_strict_json_schema(monkeypatch):
     assert captured["text"]["format"]["type"] == "json_schema"
     assert captured["text"]["format"]["strict"] is True
     assert captured["temperature"] == 0
+
+
+def test_run_openai_extraction_omits_temperature_for_gpt5(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeResponses:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+
+            class FakeResponse:
+                output_text = (
+                    '{"rows":[{"test_name":"Glucose","result":"92","unit":"mg/dL","reference_range":"70-99","flag":null}]}'
+                )
+
+            return FakeResponse()
+
+    class FakeClient:
+        responses = FakeResponses()
+
+    monkeypatch.setattr(parse_llm, "_get_openai_client", lambda: FakeClient())
+    monkeypatch.setattr(parse_llm, "_resolve_model", lambda default: "gpt-5")
+
+    parse_llm._run_openai_extraction("report text")
+
+    assert "temperature" not in captured

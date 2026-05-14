@@ -15,6 +15,7 @@ from app.db.models import (
     ReportFinding,
     ReportSourceKind,
     ShareViewScope,
+    User,
 )
 from app.db.session import get_db_session
 from app.dependencies.auth import AuthContext, get_current_auth_context
@@ -291,6 +292,20 @@ class ClinicianSharedReportOut(BaseModel):
     expires_at: datetime
 
 
+class SharedReportShareOut(BaseModel):
+    share_id: str
+    scope: str
+    access_level: str
+    expires_at: datetime
+    include_doctor_summary: bool = False
+
+
+class SharedReportDetailResponse(BaseModel):
+    share: SharedReportShareOut
+    patient: UserOut
+    report: ReportOut
+
+
 @router.get("/shared-reports", response_model=list[ClinicianSharedReportOut])
 async def list_clinician_shared_reports(
     auth: AuthContext = Depends(get_current_auth_context),
@@ -326,6 +341,65 @@ async def list_clinician_shared_reports(
         )
         for item in items
     ]
+
+
+@router.get("/shared-reports/{report_id}", response_model=SharedReportDetailResponse)
+async def get_clinician_shared_report_detail(
+    report_id: str,
+    auth: AuthContext = Depends(get_current_auth_context),
+    session: AsyncSession = Depends(get_db_session),
+) -> SharedReportDetailResponse:
+    """Return one shared report detail for the authenticated clinician."""
+    if "clinician" not in auth.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only clinicians may view shared reports",
+        )
+
+    report = await get_accessible_report(report_id=report_id, auth=auth, session=session)
+    now = datetime.now(UTC)
+    share = await session.scalar(
+        select(ConsentShare)
+        .where(
+            ConsentShare.subject_user_id == report.subject_user_id,
+            ConsentShare.grantee_user_id == auth.user.id,
+            ConsentShare.revoked_at.is_(None),
+            ConsentShare.expires_at > now,
+            (
+                (ConsentShare.scope == ConsentScope.PATIENT)
+                & (ConsentShare.report_id.is_(None))
+            )
+            | (
+                (ConsentShare.scope == ConsentScope.REPORT)
+                & (ConsentShare.report_id == report.id)
+            ),
+        )
+        .order_by(ConsentShare.created_at.desc())
+        .limit(1)
+    )
+    if share is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Shared report access not found")
+
+    patient = await session.get(User, report.subject_user_id)
+    if patient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+
+    return SharedReportDetailResponse(
+        share=SharedReportShareOut(
+            share_id=share.id,
+            scope=share.scope.value,
+            access_level=share.access_level.value,
+            expires_at=share.expires_at,
+            include_doctor_summary=share.include_doctor_summary,
+        ),
+        patient=UserOut(
+            id=patient.id,
+            email=patient.email,
+            display_name=patient.display_name,
+            preferred_language=patient.preferred_language,
+        ),
+        report=_report_out(report),
+    )
 
 
 @router.get("/{report_id}", response_model=ReportDetailResponse)

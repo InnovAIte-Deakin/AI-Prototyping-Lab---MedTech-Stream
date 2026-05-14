@@ -35,6 +35,7 @@ def enum_column(enum_cls: type[Enum], *, name: str) -> SAEnum:
         enum_cls,
         name=name,
         native_enum=False,
+        length=max(len(value) for value in enum_values(enum_cls)),
         validate_strings=True,
         values_callable=enum_values,
     )
@@ -438,6 +439,7 @@ class ConsentShare(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         default=ConsentAccessLevel.READ,
     )
+    include_doctor_summary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     purpose: Mapped[str | None] = mapped_column(String(255), nullable=True)
     view_scope: Mapped[ShareViewScope] = mapped_column(
         enum_column(ShareViewScope, name="share_view_scope"),

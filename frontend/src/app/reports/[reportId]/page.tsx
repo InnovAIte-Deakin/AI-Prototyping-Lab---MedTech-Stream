@@ -576,7 +576,11 @@ export default function ReportDetailPage({ params, searchParams }: any) {
                   id="include-summary-pdf"
                   type="checkbox"
                   checked={includeSummaryPDF}
-                  onChange={(e) => setIncludeSummaryPDF(e.target.checked)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setIncludeSummaryPDF(checked);
+                    setSharingPreferences((prev) => ({ ...prev, includeDoctorSummary: checked }));
+                  }}
                   style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
                 />
                 <label htmlFor="include-summary-pdf" style={{ cursor: 'pointer', fontSize: 'var(--text-body-sm)', fontWeight: 500 }}>

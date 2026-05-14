@@ -38,6 +38,7 @@ type TrendOut = {
 type ThreadMessageOut = {
   id: string;
   author_user_id: string;
+  kind?: 'text' | 'template' | 'system';
   body: string;
   created_at: string;
 };
@@ -104,6 +105,26 @@ function getToken(): string | null {
   }
 }
 
+function renderThreadMessageBody(msg: ThreadMessageOut) {
+  if (msg.kind === 'template') {
+    let payload: { meaning?: string; urgency?: string; action?: string } = {};
+    try {
+      payload = JSON.parse(msg.body);
+    } catch {
+      payload = {};
+    }
+    return (
+      <div>
+        <p style={{ margin: '0 0 var(--space-1)', fontWeight: 700, color: 'var(--success)' }}>Clinician Response</p>
+        {payload.meaning && <p style={{ margin: 0 }}><strong>What it means:</strong> {payload.meaning}</p>}
+        {payload.urgency && <p style={{ margin: 0 }}><strong>Urgency:</strong> {payload.urgency}</p>}
+        {payload.action && <p style={{ margin: 0 }}><strong>Recommended action:</strong> {payload.action}</p>}
+      </div>
+    );
+  }
+  return <p style={{ margin: 0 }}>{msg.body}</p>;
+}
+
 export default function ClinicianReportViewPage({ params }: any) {
   const { status } = useAuth();
   const [view, setView] = useState<ReportView | null>(null);
@@ -113,6 +134,11 @@ export default function ClinicianReportViewPage({ params }: any) {
   const [replyText, setReplyText] = useState<Record<string, string>>({});
   const [replySending, setReplySending] = useState<Record<string, boolean>>({});
   const [replyError, setReplyError] = useState<Record<string, string | null>>({});
+  const [templateMeaning, setTemplateMeaning] = useState<Record<string, string>>({});
+  const [templateUrgency, setTemplateUrgency] = useState<Record<string, string>>({});
+  const [templateAction, setTemplateAction] = useState<Record<string, string>>({});
+  const [templateSending, setTemplateSending] = useState<Record<string, boolean>>({});
+  const [templateError, setTemplateError] = useState<Record<string, string | null>>({});
   const [localThreads, setLocalThreads] = useState<ThreadOut[]>([]);
   const [selectedTrendKey, setSelectedTrendKey] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -172,6 +198,36 @@ export default function ClinicianReportViewPage({ params }: any) {
       setReplyError((prev) => ({ ...prev, [threadId]: err instanceof Error ? err.message : 'Failed to send.' }));
     } finally {
       setReplySending((prev) => ({ ...prev, [threadId]: false }));
+    }
+  }
+
+  async function sendTemplate(threadId: string) {
+    const meaning = templateMeaning[threadId]?.trim() ?? '';
+    const urgency = templateUrgency[threadId] || 'routine';
+    const action = templateAction[threadId]?.trim() ?? '';
+    if (!meaning || !action || templateSending[threadId]) return;
+    setTemplateSending((prev) => ({ ...prev, [threadId]: true }));
+    setTemplateError((prev) => ({ ...prev, [threadId]: null }));
+    try {
+      const token = getToken();
+      const res = await fetch(`${BACKEND_URL}/api/v1/threads/${threadId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ template_payload: { meaning, urgency, action } }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || `Error ${res.status}`);
+      }
+      const msg: ThreadMessageOut = await res.json();
+      setLocalThreads((prev) => prev.map((t) => t.id === threadId ? { ...t, messages: [...t.messages, msg] } : t));
+      setTemplateMeaning((prev) => ({ ...prev, [threadId]: '' }));
+      setTemplateUrgency((prev) => ({ ...prev, [threadId]: 'routine' }));
+      setTemplateAction((prev) => ({ ...prev, [threadId]: '' }));
+    } catch (err: unknown) {
+      setTemplateError((prev) => ({ ...prev, [threadId]: err instanceof Error ? err.message : 'Failed to send clinical response.' }));
+    } finally {
+      setTemplateSending((prev) => ({ ...prev, [threadId]: false }));
     }
   }
 
@@ -359,7 +415,7 @@ export default function ClinicianReportViewPage({ params }: any) {
                   <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
                     {thread.messages.map((msg) => (
                       <div key={msg.id} style={{ padding: 'var(--space-2) var(--space-3)', background: 'var(--surface)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-body-sm)' }}>
-                        <p style={{ margin: 0 }}>{msg.body}</p>
+                        {renderThreadMessageBody(msg)}
                         <p style={{ margin: '2px 0 0', color: 'var(--on-surface-muted)', fontSize: 'var(--text-label-sm)' }}>{formatDateTime(msg.created_at)}</p>
                       </div>
                     ))}
@@ -383,6 +439,51 @@ export default function ClinicianReportViewPage({ params }: any) {
                   )}
                   {replyError[thread.id] && (
                     <p style={{ color: 'var(--danger)', fontSize: 'var(--text-body-sm)', marginTop: 'var(--space-2)' }}>{replyError[thread.id]}</p>
+                  )}
+                  {canReply && thread.status === 'open' && (
+                    <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3)', background: 'var(--surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)' }}>
+                      <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-body-md)' }}>Clinician Response Template</h3>
+                      <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                        <label htmlFor={`template-meaning-${thread.id}`} style={{ fontSize: 'var(--text-label-sm)', fontWeight: 600 }}>What the result means:</label>
+                        <textarea
+                          id={`template-meaning-${thread.id}`}
+                          rows={2}
+                          value={templateMeaning[thread.id] ?? ''}
+                          onChange={(e) => setTemplateMeaning((prev) => ({ ...prev, [thread.id]: e.target.value }))}
+                          style={{ width: '100%', resize: 'vertical', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', fontSize: 'var(--text-body-sm)' }}
+                        />
+                        <label htmlFor={`template-urgency-${thread.id}`} style={{ fontSize: 'var(--text-label-sm)', fontWeight: 600 }}>Urgency:</label>
+                        <select
+                          id={`template-urgency-${thread.id}`}
+                          value={templateUrgency[thread.id] ?? 'routine'}
+                          onChange={(e) => setTemplateUrgency((prev) => ({ ...prev, [thread.id]: e.target.value }))}
+                          style={{ width: '100%', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', fontSize: 'var(--text-body-sm)' }}
+                        >
+                          <option value="routine">Routine</option>
+                          <option value="soon">Soon</option>
+                          <option value="urgent">Urgent</option>
+                        </select>
+                        <label htmlFor={`template-action-${thread.id}`} style={{ fontSize: 'var(--text-label-sm)', fontWeight: 600 }}>Recommended action:</label>
+                        <textarea
+                          id={`template-action-${thread.id}`}
+                          rows={2}
+                          value={templateAction[thread.id] ?? ''}
+                          onChange={(e) => setTemplateAction((prev) => ({ ...prev, [thread.id]: e.target.value }))}
+                          style={{ width: '100%', resize: 'vertical', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', fontSize: 'var(--text-body-sm)' }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          disabled={!templateMeaning[thread.id]?.trim() || !templateAction[thread.id]?.trim() || templateSending[thread.id]}
+                          onClick={() => void sendTemplate(thread.id)}
+                        >
+                          Submit Clinical Response
+                        </button>
+                        {templateError[thread.id] && (
+                          <p style={{ color: 'var(--danger)', fontSize: 'var(--text-body-sm)', margin: 0 }}>{templateError[thread.id]}</p>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               ))}

@@ -1,93 +1,88 @@
 {
-  "baseUrl": "http://localhost:3000",
-  "patientEmail": "qa.patient.browser.1778676348497@example.com",
-  "clinicianEmail": "qa.clinician.browser.1778676348497@example.com",
+  "baseUrl": "http://localhost:3100",
+  "patientEmail": "qa.patient.browser.1778741500867@example.com",
+  "clinicianEmail": "qa.clinician.browser.1778741500867@example.com",
   "results": [
     {
       "name": "home header and public navigation buttons",
       "status": "passed",
-      "durationMs": 1213,
+      "durationMs": 910,
       "data": null
     },
     {
       "name": "forgot password form and login/register links",
       "status": "passed",
-      "durationMs": 608,
+      "durationMs": 620,
       "data": null
     },
     {
       "name": "register clinician through UI and logout",
       "status": "passed",
-      "durationMs": 280,
+      "durationMs": 405,
       "data": null
     },
     {
       "name": "register patient through UI",
       "status": "passed",
-      "durationMs": 143,
+      "durationMs": 190,
       "data": null
     },
     {
       "name": "parse page file upload controls and validation",
       "status": "passed",
-      "durationMs": 83,
+      "durationMs": 92,
       "data": null
     },
     {
       "name": "parse pasted text, explain, translation fallback, copy, and print",
       "status": "passed",
-      "durationMs": 652,
+      "durationMs": 706,
       "data": null
     },
     {
       "name": "create second parsed report through UI for report history trends",
       "status": "passed",
-      "durationMs": 160,
+      "durationMs": 173,
       "data": null
     },
     {
       "name": "reports history controls, search, sort, trend buttons, and open detail",
       "status": "passed",
-      "durationMs": 676,
+      "durationMs": 639,
       "data": null
     },
     {
       "name": "report detail interpretation sidebar, chat, export, and patient question thread",
       "status": "passed",
-      "durationMs": 1204,
+      "durationMs": 1257,
       "data": null
     },
     {
       "name": "share report from detail page with clinician and include doctor summary print",
       "status": "passed",
-      "durationMs": 923,
+      "durationMs": 1007,
       "data": null
     },
     {
       "name": "patient notification drawer and notifications page controls",
       "status": "passed",
-      "durationMs": 186,
+      "durationMs": 275,
       "data": null
     },
     {
       "name": "clinician login, shared reports dashboard, shared detail, and notification controls",
       "status": "passed",
-      "durationMs": 1183,
+      "durationMs": 1243,
       "data": null
     },
     {
       "name": "patient login and revoke share through report detail UI",
       "status": "passed",
-      "durationMs": 262,
+      "durationMs": 434,
       "data": null
     }
   ],
   "browserEvents": [
-    {
-      "type": "requestfailed",
-      "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
-      "failure": "net::ERR_ABORTED"
-    },
     {
       "type": "requestfailed",
       "url": "https://fonts.gstatic.com/s/manrope/v20/xn7gYHE41ni1AdIRggexSg.woff2",
@@ -95,51 +90,37 @@
     },
     {
       "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/health",
-      "failure": "net::ERR_EMPTY_RESPONSE"
-    },
-    {
-      "type": "console:error",
-      "message": "Failed to load resource: net::ERR_EMPTY_RESPONSE"
-    },
-    {
-      "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/notifications/unread-count",
+      "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
       "failure": "net::ERR_ABORTED"
     },
     {
       "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/auth/register",
+      "url": "http://localhost:8100/api/v1/notifications/unread-count",
       "failure": "net::ERR_ABORTED"
     },
     {
       "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/notifications/unread-count",
+      "url": "http://localhost:8100/api/v1/notifications/unread-count",
       "failure": "net::ERR_ABORTED"
     },
     {
       "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/auth/logout",
+      "url": "http://localhost:8100/api/v1/auth/logout",
       "failure": "net::ERR_ABORTED"
     },
     {
       "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/notifications/unread-count",
+      "url": "http://localhost:8100/api/v1/notifications/unread-count",
       "failure": "net::ERR_ABORTED"
     },
     {
       "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/auth/register",
+      "url": "http://localhost:8100/api/v1/auth/register",
       "failure": "net::ERR_ABORTED"
     },
     {
       "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/notifications/unread-count",
-      "failure": "net::ERR_ABORTED"
-    },
-    {
-      "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/notifications/unread-count",
+      "url": "http://localhost:8100/api/v1/notifications/unread-count",
       "failure": "net::ERR_ABORTED"
     },
     {
@@ -148,27 +129,27 @@
     },
     {
       "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/reports/7a671276-ccbf-4825-8f9b-cdab769b0195/trends",
+      "url": "http://localhost:8100/api/v1/reports/a658f8e7-fd85-4b7b-9d6c-c339afc4db8a/interpretation",
       "failure": "net::ERR_ABORTED"
     },
     {
       "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/reports/7a671276-ccbf-4825-8f9b-cdab769b0195/interpretation",
+      "url": "http://localhost:8100/api/v1/reports/c0bfa758-93b7-42e0-b0f2-81a663f7a202/interpretation",
       "failure": "net::ERR_ABORTED"
     },
     {
       "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/threads/6b91ac0e-8c17-49a7-a63e-c3c340430cfa/messages",
+      "url": "http://localhost:8100/api/v1/threads/0ba8380b-64fa-4450-96c4-7e5a3c1e43af/messages",
       "failure": "net::ERR_ABORTED"
     },
     {
       "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/reports/7a671276-ccbf-4825-8f9b-cdab769b0195/share/revoke",
+      "url": "http://localhost:8100/api/v1/reports/c0bfa758-93b7-42e0-b0f2-81a663f7a202/share/revoke",
       "failure": "net::ERR_ABORTED"
     },
     {
       "type": "requestfailed",
-      "url": "http://localhost:8000/api/v1/auth/logout",
+      "url": "http://localhost:8100/api/v1/auth/logout",
       "failure": "net::ERR_ABORTED"
     }
   ],

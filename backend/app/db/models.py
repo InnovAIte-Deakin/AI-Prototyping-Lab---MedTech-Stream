@@ -439,7 +439,6 @@ class ConsentShare(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         default=ConsentAccessLevel.READ,
     )
-    include_doctor_summary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     purpose: Mapped[str | None] = mapped_column(String(255), nullable=True)
     view_scope: Mapped[ShareViewScope] = mapped_column(
         enum_column(ShareViewScope, name="share_view_scope"),

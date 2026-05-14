@@ -412,6 +412,7 @@ describe('Report history and sharing preference flow', () => {
     const emailInput = screen.getByLabelText(/clinician email/i);
     fireEvent.change(emailInput, { target: { value: 'doc@clinic.org' } });
     fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full_report' } });
+    fireEvent.click(screen.getByLabelText(/include doctor-ready summary pdf/i));
 
     await waitFor(() => {
       expect((screen.getByLabelText(/clinician email/i) as HTMLInputElement).value).toBe('doc@clinic.org');
@@ -433,6 +434,8 @@ describe('Report history and sharing preference flow', () => {
         expect.objectContaining({
           scope: 'report',
           access_level: 'comment',
+          view_scope: 'full_report',
+          include_doctor_summary: true,
         })
       );
     });
@@ -470,7 +473,7 @@ describe('Report history and sharing preference flow', () => {
     expect(screen.getByRole('button', { name: /update sharing|start sharing/i })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/clinician email/i), { target: { value: 'doc@clinic.org' } });
-    fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full' } });
+    fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full_report' } });
     fireEvent.click(screen.getByRole('button', { name: /update sharing|start sharing/i }));
 
     await waitFor(() => {
@@ -501,7 +504,7 @@ describe('Report history and sharing preference flow', () => {
     });
 
     fireEvent.change(screen.getByLabelText(/clinician email/i), { target: { value: 'doc2@clinic.org' } });
-    fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full' } });
+    fireEvent.change(screen.getByLabelText(/scope/i), { target: { value: 'full_report' } });
 
     fireEvent.click(screen.getByRole('button', { name: /start sharing/i }));
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import ClinicianReportViewPage from '../shared-reports/[reportId]/page';
 import { AuthProvider } from '@/store/authStore';
@@ -165,6 +165,71 @@ describe('Clinician scoped report view', () => {
     });
 
     expect(screen.getByRole('table')).toBeDefined();
+  });
+
+  it('submits structured clinician response templates from a shared report thread', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes(`/api/v1/clinician/shared-reports/${REPORT_ID}`)) {
+        return new Response(JSON.stringify({
+          report_id: REPORT_ID,
+          view_scope: 'full_report_with_threads',
+          include_doctor_summary: true,
+          patient: { id: 'p1', display_name: 'Alice Patient', email: 'alice@example.com', date_of_birth: null },
+          report_date: new Date().toISOString(),
+          panel_type: 'CBC Panel',
+          ai_summary: { summary: 'Some values flagged.' },
+          findings: [],
+          trends: [],
+          threads: [
+            {
+              id: 't1',
+              title: 'Discuss glucose',
+              status: 'open',
+              messages: [
+                { id: 'm1', author_user_id: 'p1', kind: 'text', body: 'What should I do?', created_at: new Date().toISOString() },
+              ],
+            },
+          ],
+          doctor_summary: { summary: 'Doctor remarks here.' },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/api/v1/threads/t1/messages') && init?.method === 'POST') {
+        return new Response(JSON.stringify({
+          id: 'm2',
+          author_user_id: 'c1',
+          kind: 'template',
+          body: JSON.stringify({ meaning: 'This can follow recent meals.', urgency: 'soon', action: 'Repeat fasting labs.' }),
+          created_at: new Date().toISOString(),
+        }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ detail: 'Not found' }), { status: 404 });
+    });
+    global.fetch = fetchMock;
+
+    renderView();
+
+    await waitFor(() => {
+      expect(screen.getByText(/clinician response template/i)).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByLabelText(/what the result means/i), { target: { value: 'This can follow recent meals.' } });
+    fireEvent.change(screen.getByLabelText(/urgency/i), { target: { value: 'soon' } });
+    fireEvent.change(screen.getByLabelText(/recommended action/i), { target: { value: 'Repeat fasting labs.' } });
+    fireEvent.click(screen.getByRole('button', { name: /submit clinical response/i }));
+
+    await waitFor(() => {
+      const postCall = fetchMock.mock.calls.find(([url, init]) => String(url).includes('/api/v1/threads/t1/messages') && init?.method === 'POST');
+      expect(postCall).toBeTruthy();
+      expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({
+        template_payload: {
+          meaning: 'This can follow recent meals.',
+          urgency: 'soon',
+          action: 'Repeat fasting labs.',
+        },
+      });
+      expect(screen.getByText(/clinician response/i)).toBeDefined();
+    });
   });
 
   it('access-denied state renders when backend returns 403', async () => {

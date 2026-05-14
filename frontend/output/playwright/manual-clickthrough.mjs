@@ -127,17 +127,27 @@ async function registerUser(email, role) {
   const checkedRole = await page.locator('input[name="role"]:checked').evaluate((element) => element.value);
   assert(checkedRole === role, `Expected selected role ${role}, got ${checkedRole}`);
   await clickButton('Create account');
-  await expectUrlContains('/parse', 25000);
-  await expectText('Upload Your Report');
+  if (role === 'clinician') {
+    await expectUrlContains('/clinician/shared-reports', 25000);
+    await expectText('Shared Reports');
+  } else {
+    await expectUrlContains('/parse', 25000);
+    await expectText('Upload Your Report');
+  }
 }
 
-async function loginUser(email) {
+async function loginUser(email, role = 'patient') {
   await goto('/auth/login');
   await page.getByLabel('Email address').fill(email);
   await page.getByLabel('Password').fill(password);
   await clickButton('Sign in');
-  await expectUrlContains('/parse', 25000);
-  await expectText('Upload Your Report');
+  if (role === 'clinician') {
+    await expectUrlContains('/clinician/shared-reports', 25000);
+    await expectText('Shared Reports');
+  } else {
+    await expectUrlContains('/parse', 25000);
+    await expectText('Upload Your Report');
+  }
 }
 
 async function parseTextReport(text) {
@@ -246,9 +256,9 @@ await step('reports history controls, search, sort, trend buttons, and open deta
     const options = await biomarkerSelect.locator('option').count();
     if (options > 1) await biomarkerSelect.selectOption({ index: 1 });
   }
-  await page.getByRole('button', { name: '1 Year' }).click();
-  await page.getByRole('button', { name: '6 Months' }).click();
-  await page.getByRole('button', { name: 'View Recommendations' }).click();
+  await expectText('Showing 1-');
+  await page.getByRole('button', { name: 'Previous' }).waitFor({ state: 'visible', timeout: 15000 });
+  await page.getByRole('button', { name: 'Next' }).waitFor({ state: 'visible', timeout: 15000 });
   await page.locator('button[aria-label^="Open report"]').first().click();
   await page.waitForURL((url) => /\/reports\/[^/]+$/.test(url.pathname), { timeout: 15000 });
   reportUrl = page.url();
@@ -261,7 +271,7 @@ await step('report detail interpretation sidebar, chat, export, and patient ques
   await page.locator('button[aria-label="Review My Report"]').click();
   await expectText('AI Interpretation', 60000);
   await page.locator('textarea.interp-chat-input').fill('What should I ask my clinician?');
-  await clickButton('Send');
+  await page.locator('.interp-send-btn').click();
   await expectText('What should I ask my clinician?');
   await page.getByLabel('Close interpretation panel').click();
   await page.evaluate(() => { window.__printCalls = 0; });
@@ -269,15 +279,16 @@ await step('report detail interpretation sidebar, chat, export, and patient ques
   const printCalls = await page.evaluate(() => window.__printCalls || 0);
   assert(printCalls >= 1, 'Export PDF did not call window.print()');
   await page.pdf({ path: path.join(outDir, 'doctor-summary-print.pdf'), format: 'A4', printBackground: true });
-  await expectText('Questions for My Clinician', 30000);
-  await page.getByRole('button', { name: '+ Ask something else (Free text)' }).click();
-  await page.locator('textarea').last().fill('Can we discuss my glucose trend?');
-  await clickButton('Send to Clinician');
-  await expectText('Conversations', 30000);
-  await page.locator('input[placeholder="Type a reply..."]').fill('Adding a patient follow-up reply.');
-  await clickButton('Reply');
+  await expectText('Clinician Conversation', 30000);
+  const conversationCard = page.locator('.report-section-card').filter({ hasText: 'Clinician Conversation' });
+  await conversationCard.getByRole('button', { name: '+ Write your own question' }).click();
+  await conversationCard.locator('input[placeholder^="Write a reply"]').fill('Can we discuss my glucose trend?');
+  await conversationCard.getByRole('button', { name: 'Send' }).click();
+  await conversationCard.getByText('Can we discuss my glucose trend?').first().waitFor({ state: 'visible', timeout: 30000 });
+  await conversationCard.locator('input[placeholder^="Write a reply"]').fill('Adding a patient follow-up reply.');
+  await conversationCard.getByRole('button', { name: 'Send' }).click();
   await page.waitForFunction(() => {
-    const input = document.querySelector('input[placeholder="Type a reply..."]');
+    const input = document.querySelector('input[placeholder^="Write a reply"]');
     return input && input.value === '';
   });
 });
@@ -286,7 +297,7 @@ await step('share report from detail page with clinician and include doctor summ
   await page.goto(reportUrl, { waitUntil: 'domcontentloaded' });
   await expectText('Share with Your Clinician');
   await page.locator('#clinician-email').fill(clinicianEmail);
-  await page.locator('#share-scope').selectOption('full');
+  await page.locator('#share-scope').selectOption('full_report_with_threads');
   await page.locator('#include-summary-pdf').check();
   await page.evaluate(() => { window.__printCalls = 0; });
   await clickButton('Start Sharing');
@@ -316,15 +327,15 @@ await step('clinician login, shared reports dashboard, shared detail, and notifi
     await clinicianPage.getByLabel('Email address').fill(clinicianEmail);
     await clinicianPage.getByLabel('Password').fill(password);
     await clinicianPage.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await clinicianPage.waitForURL((url) => url.href.includes('/parse'), { timeout: 25000 });
-    await clinicianPage.getByRole('button', { name: /^Shared Reports$/ }).click();
-    await clinicianPage.waitForURL((url) => url.href.includes('/reports/shared'), { timeout: 15000 });
+    await clinicianPage.waitForURL((url) => url.href.includes('/clinician/shared-reports'), { timeout: 25000 });
     await clinicianPage.getByText('Shared Reports', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
-    await clinicianPage.getByRole('button', { name: /^Open$/ }).first().click();
-    await clinicianPage.waitForURL((url) => /\/reports\/shared\/[^/]+$/.test(url.pathname), { timeout: 15000 });
-    await clinicianPage.getByText('Clinical Summary', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
+    const openSharedReport = clinicianPage.getByRole('link', { name: /^Open report for / }).first();
+    await openSharedReport.waitFor({ state: 'visible', timeout: 15000 });
+    await openSharedReport.click();
+    await clinicianPage.waitForFunction(() => /\/clinician\/shared-reports\/[^/]+$/.test(window.location.pathname), null, { timeout: 15000 });
+    await clinicianPage.getByText('AI Summary', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
     await clinicianPage.getByText('Doctor Summary', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
-    await clinicianPage.getByText('Lab Results & Biomarkers', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
+    await clinicianPage.getByText('Test Results', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
     await clinicianPage.getByText('Conversation Threads', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
     await clinicianPage.getByText('Clinician Response Template', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
     await clinicianPage.getByLabel('What the result means:').fill('This pattern can fit recent meals or early glucose intolerance.');
@@ -334,7 +345,7 @@ await step('clinician login, shared reports dashboard, shared detail, and notifi
     await clinicianPage.getByText('Clinician Response', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
     await clinicianPage.screenshot({ path: path.join(outDir, 'clinician-shared-detail.png'), fullPage: true });
     await clinicianPage.getByRole('link', { name: 'Shared Reports' }).first().click();
-    await clinicianPage.waitForURL((url) => url.href.includes('/reports/shared'), { timeout: 15000 });
+    await clinicianPage.waitForFunction(() => window.location.pathname === '/clinician/shared-reports', null, { timeout: 15000 });
     await clinicianPage.getByRole('button', { name: 'Notifications' }).click();
     await clinicianPage.getByText('Recent updates and shared-report activity', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
     await clinicianPage.getByRole('button', { name: 'Mark all read', exact: true }).first().click();
@@ -351,7 +362,7 @@ await step('patient login and revoke share through report detail UI', async () =
   await page.bringToFront();
   await page.goto(reportUrl, { waitUntil: 'domcontentloaded' });
   await page.locator('#clinician-email').fill(clinicianEmail);
-  await page.locator('#share-scope').selectOption('full');
+  await page.locator('#share-scope').selectOption('full_report_with_threads');
   await clickButton('Start Sharing');
   await expectText('Sharing preferences updated.', 30000);
   await clickButton('Revoke Access');

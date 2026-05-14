@@ -1,0 +1,33 @@
+services:
+  postgres:
+    ports: !override
+      - "${POSTGRES_PORT:-5433}:5432"
+
+  backend:
+    environment:
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3100}
+    ports: !override
+      - "${BACKEND_PORT:-8100}:8000"
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8100}
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8100}
+    ports: !override
+      - "${FRONTEND_PORT:-3100}:3000"
+
+  announce:
+    command: >
+      sh -c '
+        for i in $(seq 1 120); do
+          wget -q -O- --header="Host: localhost" http://backend:8000/api/v1/health >/dev/null 2>&1 &&
+          wget -q -O- http://frontend:3000 >/dev/null 2>&1 && break;
+          sleep 1;
+        done;
+        echo;
+        echo "Frontend: http://localhost:3100";
+        echo "Backend:  http://localhost:8100/api/v1/health";
+        tail -f /dev/null
+      '

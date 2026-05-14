@@ -18,6 +18,7 @@ from app.db.models import (
     NotificationKind,
     Report,
     ReportFinding,
+    ShareViewScope,
     ThreadMessage,
     ThreadParticipant,
     ThreadStatus,
@@ -133,6 +134,38 @@ async def _ensure_thread_access(
     if await _has_active_report_share(session, report=thread.report, user_id=user.id):
         return
     raise ThreadServiceError("Forbidden", 403)
+
+
+async def _clinician_has_thread_write_access(
+    session: AsyncSession,
+    *,
+    thread: ConversationThread,
+    user_id: str,
+) -> bool:
+    """T21: clinicians may only post when they hold a full_report_with_threads share."""
+    if thread.report_id is None:
+        return False
+    now = datetime.now(UTC)
+    share = await session.scalar(
+        select(ConsentShare.id).where(
+            ConsentShare.subject_user_id == thread.subject_user_id,
+            ConsentShare.grantee_user_id == user_id,
+            ConsentShare.view_scope == ShareViewScope.FULL_REPORT_WITH_THREADS,
+            ConsentShare.revoked_at.is_(None),
+            ConsentShare.expires_at > now,
+            or_(
+                and_(
+                    ConsentShare.scope == ConsentScope.PATIENT,
+                    ConsentShare.report_id.is_(None),
+                ),
+                and_(
+                    ConsentShare.scope == ConsentScope.REPORT,
+                    ConsentShare.report_id == thread.report_id,
+                ),
+            ),
+        )
+    )
+    return share is not None
 
 
 async def _list_active_clinician_recipients(
@@ -335,6 +368,15 @@ async def add_thread_message(
 ) -> ThreadMessage:
     thread = await _load_thread(session, thread_id=thread_id)
     await _ensure_thread_access(session, thread=thread, user=message_input.author)
+
+    author_roles = set(role_names_for_user(message_input.author))
+    if "clinician" in author_roles and "patient" not in author_roles:
+        if not await _clinician_has_thread_write_access(
+            session, thread=thread, user_id=message_input.author.id
+        ):
+            raise ThreadServiceError(
+                "Thread replies require full_report_with_threads share scope.", 403
+            )
 
     if thread.status != ThreadStatus.OPEN:
         raise ThreadServiceError("Thread is closed", 409)

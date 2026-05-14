@@ -9,12 +9,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  background: #ffffff;
-  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
+  border: 1.5px solid var(--border, #d1d5db);
+  background: var(--surface-container-low, #f3f4f6);
+  color: var(--on-surface, #1a1c1e);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.notifications-bell-button:hover {
+  background: var(--primary-fixed, #e8eeff);
+  color: var(--primary, #1a56db);
+  border-color: var(--primary, #1a56db);
 }
 
 .notifications-badge-dot {

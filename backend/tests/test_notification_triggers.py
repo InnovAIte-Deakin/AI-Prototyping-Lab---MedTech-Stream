@@ -70,6 +70,7 @@ def test_clinician_reply_emits_patient_notification(consent_api) -> None:
             "scope": "report",
             "access_level": "comment",
             "expires_at": _future_expiry_iso(),
+            "view_scope": "full_report_with_threads",
         },
     )
     thread_resp = consent_api.client.post(

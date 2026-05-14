@@ -18,10 +18,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("reports") as batch_op:
-        batch_op.add_column(sa.Column("chat_history_json", sa.JSON(), nullable=True))
+    # chat_history_json was already added by 20260427_04 on the T17/T21 branch.
+    # This revision exists solely as a chain pointer for the merge migration.
+    pass
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("reports") as batch_op:
-        batch_op.drop_column("chat_history_json")
+    pass

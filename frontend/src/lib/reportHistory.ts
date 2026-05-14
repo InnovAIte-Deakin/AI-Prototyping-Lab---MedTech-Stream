@@ -2,7 +2,10 @@ import { ParsedRow } from '@/types/ui';
 
 export type SharingPreferences = {
   clinicianEmail: string;
-  scope: 'summary' | 'full';
+  /** Legacy field kept for localStorage compatibility. Prefer viewScope. */
+  scope?: 'summary' | 'full';
+  viewScope: 'summary_only' | 'full_report' | 'full_report_with_threads';
+  includeDoctorSummary: boolean;
   expiresAt: number;
   active: boolean;
 };

@@ -663,8 +663,23 @@ async def translate_summary(
 
     prompt = (
         f"Translate the following patient education summary from English into {language_label}. "
-        "Preserve headings, bullet symbols (- or numbered lists), paragraph spacing, and tone. "
-        "Return only the translated text with no commentary or transliteration.\n\nTEXT:\n"
+        "Your job is not only to translate words. Rewrite the summary so it is easy to understand "
+        "for a child, teen, or adult while keeping the medical meaning accurate.\n\n"
+        "Keep this exact structure, in this order. Translate the headings and body into the target language:\n"
+        "1. Big picture - 2 or 3 short sentences that explain the overall result calmly.\n"
+        "2. What stood out - 3 to 5 simple bullet points. Each bullet should name the result, say if it is "
+        "high, low, normal, or unclear, and explain why that matters in everyday words.\n"
+        "3. What it means in plain words - explain the medical terms using familiar language. If a term like "
+        "cholesterol, hemoglobin, glucose, kidney, liver, inflammation, or infection appears, define it briefly.\n"
+        "4. What to ask your clinician - 2 to 4 practical questions the patient can bring to a doctor or nurse.\n"
+        "5. Reminder - one short sentence saying this is educational only and not a diagnosis.\n\n"
+        "Rules:\n"
+        "- Use short sentences and simple words.\n"
+        "- Do not add new medical facts, diagnoses, causes, or treatment advice that are not supported by the text.\n"
+        "- Do not make the result sound scarier or safer than the source text.\n"
+        "- Do not include English unless the target language normally uses the medical term.\n"
+        "- Return only the translated, structured text with no commentary or transliteration.\n\n"
+        "TEXT:\n"
         f"{trimmed}"
     )
 
